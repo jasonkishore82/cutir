@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+body { @apply bg-bg text-gray-200 antialiased; font-family: Inter, system-ui, sans-serif; margin: 0; overflow: hidden; }
+input, select, textarea, button { @apply outline-none; }
+.field { @apply w-full rounded bg-bg border border-edge px-2 py-1 text-sm focus:border-accent; }
+.label { @apply block text-[11px] uppercase tracking-wide text-gray-500 mb-1; }
