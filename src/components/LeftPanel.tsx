@@ -4,7 +4,10 @@ import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
 import { useLibrary } from "../store/library";
 import {
+  layerIdOf,
+  linesOfLayer,
   linesToText,
+  orderByLayers,
   useProject,
   type AnimationName,
   type Aspect,
@@ -67,6 +70,10 @@ function pickFile(accept: string, onFile: (f: File) => void) {
 
 export default function LeftPanel() {
   const project = useProject((s) => s.project);
+  const activeLayerId = useProject((s) => s.activeLayerId);
+  const setActiveLayer = useProject((s) => s.setActiveLayer);
+  const layer = project.layers.find((l) => l.id === activeLayerId) ?? project.layers[0];
+  const layerLines = linesOfLayer(project, layer.id);
   const { style } = project;
   const setStyle = useProject((s) => s.setStyle);
   const setAspect = useProject((s) => s.setAspect);
@@ -152,19 +159,34 @@ export default function LeftPanel() {
       </Section>
 
       <Section title="Lyrics">
+        {project.layers.length > 1 && (
+          <label className="block">
+            <span className="label">Editing layer</span>
+            <select className="field" value={layer.id} onChange={(e) => setActiveLayer(e.target.value)}>
+              {project.layers.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <textarea
           className="field h-32 resize-y font-mono text-xs"
-          placeholder="One lyric line per row"
-          value={linesToText(project.lines)}
+          placeholder={project.layers.length > 1 ? `One line per row for "${layer.name}"` : "One lyric line per row"}
+          value={linesToText(layerLines)}
           onChange={(e) => setLinesFromText(e.target.value)}
         />
         <button
           className={btn}
           onClick={() =>
             pickFile(".lrc,.srt,text/plain", async (f) => {
-              const lines = parseSubtitleFile(f.name, await f.text());
-              if (!lines.length) return alert("No timed lines found in that file.");
-              useProject.getState().update((p) => ({ ...p, lines }));
+              const imported = parseSubtitleFile(f.name, await f.text());
+              if (!imported.length) return alert("No timed lines found in that file.");
+              // replaces the lines of the layer being edited; other layers stay as they are
+              useProject.getState().update((p) => {
+                const lid = p.layers.some((l) => l.id === useProject.getState().activeLayerId) ? useProject.getState().activeLayerId : p.layers[0].id;
+                const others = p.lines.filter((l) => layerIdOf(p, l) !== lid);
+                return orderByLayers({ ...p, lines: [...others, ...imported.map((l) => ({ ...l, layerId: lid }))] });
+              });
             })
           }
         >

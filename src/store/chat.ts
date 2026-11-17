@@ -11,7 +11,7 @@ import {
   type RawOllamaCall,
 } from "../lib/ollama";
 import { cancelAlignment, isAutoSyncIntent, syncOverridesFromText } from "../lib/autosync";
-import { CHAT_ONLY_PROMPT, OLLAMA_TOOLS, applyCalls, buildSystemPrompt, isSmallTalk, parseActionsFromText, type CallResult, type RawCall } from "../lib/tools";
+import { CHAT_ONLY_PROMPT, applyCalls, buildSystemPrompt, getOllamaTools, isSmallTalk, parseActionsFromText, selectToolGroups, type CallResult, type RawCall } from "../lib/tools";
 
 export type Applied = { results: CallResult[]; before: Project; after: Project; undone?: boolean };
 
@@ -111,8 +111,9 @@ export const useChat = create<ChatState>((set, get) => {
   /** One streaming request. Returns the raw text and any structured tool calls. */
   const runOnce = async (text: string, replyId: string, mode: "tools" | "json" | "chat", signal: AbortSignal) => {
     const { baseUrl, model } = get();
+    const groups = selectToolGroups(text, useProject.getState().project); // only offer the tools that could matter
     const messages: ChatMessage[] = [
-      { role: "system", content: mode === "chat" ? CHAT_ONLY_PROMPT : buildSystemPrompt(useProject.getState().project, mode === "json") },
+      { role: "system", content: mode === "chat" ? CHAT_ONLY_PROMPT : buildSystemPrompt(useProject.getState().project, mode === "json", groups) },
       ...historyFor(),
     ];
     // historyFor already includes the new user message at the end
@@ -121,7 +122,7 @@ export const useChat = create<ChatState>((set, get) => {
     let content = "";
     const rawCalls: RawOllamaCall[] = [];
     let tokens = 0;
-    for await (const chunk of streamChat({ baseUrl, model, messages, tools: mode === "tools" ? OLLAMA_TOOLS : undefined, signal })) {
+    for await (const chunk of streamChat({ baseUrl, model, messages, tools: mode === "tools" ? getOllamaTools(groups) : undefined, signal })) {
       if (chunk.content || chunk.thinking || chunk.toolCalls) tokens = chunk.evalCount ?? tokens + 1;
       else if (chunk.evalCount) tokens = chunk.evalCount;
       patchMsg(replyId, { tokens });

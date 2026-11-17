@@ -39,11 +39,23 @@ export type LyricLine = {
   end: number;
   words?: { text: string; start: number; end: number }[];
   styleOverride?: Partial<TextStyle>;
+  /** Which layer this line lives on. Missing = the first layer. */
+  layerId?: string;
+};
+
+/** A timeline layer (lane). Today every layer holds text; the style here overrides the project style for its lines. */
+export type Layer = {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  style?: Partial<TextStyle>;
 };
 
 export type Project = {
   audio?: AssetRef;
   background: Background;
+  layers: Layer[]; // drawn bottom to top, in array order; never empty
   lines: LyricLine[];
   style: TextStyle;
   aspect: Aspect;
@@ -74,8 +86,11 @@ export const DEFAULT_STYLE: TextStyle = {
   animationMs: 200,
 };
 
+export const mainLayer = (): Layer => ({ id: "main", name: "Lyrics", visible: true, locked: false });
+
 export const defaultProject = (): Project => ({
   background: DEFAULT_GRADIENT,
+  layers: [mainLayer()],
   lines: [],
   style: DEFAULT_STYLE,
   aspect: "16:9",
@@ -85,6 +100,34 @@ export const defaultProject = (): Project => ({
 /* ---------- Helpers ---------- */
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
+
+/** The layer a line belongs to (lines without a valid layerId belong to the first layer). */
+export const layerIdOf = (p: Pick<Project, "layers">, l: LyricLine): string =>
+  l.layerId && p.layers.some((x) => x.id === l.layerId) ? l.layerId : p.layers[0].id;
+
+export const linesOfLayer = (p: Project, layerId: string) => p.lines.filter((l) => layerIdOf(p, l) === layerId);
+
+/**
+ * Keep `lines` grouped by layer (in layer order). Line numbers used by the AI and the lyrics box follow this order.
+ * Also gives every line an explicit layerId, so reordering layers never moves lines to another layer.
+ */
+export function orderByLayers(p: Project): Project {
+  const rank = new Map(p.layers.map((l, i) => [l.id, i]));
+  const lines = p.lines
+    .map((l, i) => {
+      const id = layerIdOf(p, l);
+      return { l: l.layerId === id ? l : { ...l, layerId: id }, i, r: rank.get(id) ?? 0 };
+    })
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((x) => x.l);
+  return { ...p, lines };
+}
+
+/** Project style, then the layer's style, then the line's own override. */
+export function effectiveStyle(p: Project, line: LyricLine): TextStyle {
+  const layer = p.layers.find((x) => x.id === layerIdOf(p, line));
+  return { ...p.style, ...layer?.style, ...line.styleOverride };
+}
 
 const DEFAULT_LEN = 3;
 const DEFAULT_GAP = 0.2;
@@ -128,6 +171,8 @@ type State = {
 
   // non-undoable UI state
   selectedLineId: string | null;
+  /** The layer the lyrics box, tap-sync and "add" act on. */
+  activeLayerId: string;
   chatOpen: boolean;
   syncMode: boolean;
   syncIndex: number;
@@ -150,6 +195,7 @@ type State = {
   updateLine: (id: string, patch: Partial<LyricLine>, coalesceKey?: string) => void;
   loadProject: (p: Project) => void;
   select: (id: string | null) => void;
+  setActiveLayer: (id: string) => void;
   toggleChat: () => void;
   setSync: (on: boolean, index?: number) => void;
   setSyncIndex: (i: number) => void;
@@ -165,6 +211,7 @@ export const useProject = create<State>((set, get) => ({
   past: [],
   future: [],
   selectedLineId: null,
+  activeLayerId: "main",
   chatOpen: true,
   syncMode: false,
   syncIndex: 0,
@@ -238,11 +285,19 @@ export const useProject = create<State>((set, get) => ({
   setAspect: (aspect) => get().update((p) => ({ ...p, aspect })),
   setBackground: (background) => get().update((p) => ({ ...p, background })),
   setAudio: (audio) => get().update((p) => ({ ...p, audio })),
-  setLinesFromText: (text) => get().update((p) => ({ ...p, lines: linesFromText(text, p.lines) }), "lyrics-text"),
+  // the lyrics box edits only the ACTIVE layer's lines; other layers are untouched
+  setLinesFromText: (text) =>
+    get().update((p) => {
+      const lid = p.layers.some((l) => l.id === get().activeLayerId) ? get().activeLayerId : p.layers[0].id;
+      const mine = linesFromText(text, linesOfLayer(p, lid)).map((l) => ({ ...l, layerId: lid }));
+      const others = p.lines.filter((l) => layerIdOf(p, l) !== lid);
+      return orderByLayers({ ...p, lines: [...others, ...mine] });
+    }, "lyrics-text"),
   updateLine: (id, patch, key) =>
     get().update((p) => ({ ...p, lines: p.lines.map((l) => (l.id === id ? { ...l, ...patch } : l)) }), key),
-  loadProject: (project) => set({ project, past: [], future: [], selectedLineId: null }),
+  loadProject: (project) => set({ project, past: [], future: [], selectedLineId: null, activeLayerId: project.layers[0].id }),
   select: (selectedLineId) => set({ selectedLineId }),
+  setActiveLayer: (activeLayerId) => set({ activeLayerId }),
   toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
   setSync: (syncMode, index) => set((s) => ({ syncMode, syncIndex: index ?? (syncMode ? 0 : s.syncIndex) })),
   setSyncIndex: (syncIndex) => set({ syncIndex }),
@@ -252,7 +307,10 @@ export const useProject = create<State>((set, get) => ({
 
 export function normalizeProject(raw: Partial<Project>): Project {
   const d = defaultProject();
-  return { ...d, ...raw, style: { ...DEFAULT_STYLE, ...raw.style }, lines: raw.lines ?? [] };
+  const layers: Layer[] = raw.layers?.length
+    ? raw.layers.map((l) => ({ ...l, id: l.id || uid(), name: l.name || "Layer", visible: l.visible !== false, locked: !!l.locked }))
+    : d.layers;
+  return orderByLayers({ ...d, ...raw, layers, style: { ...DEFAULT_STYLE, ...raw.style }, lines: raw.lines ?? [] });
 }
 
 /** Debounced autosave: calls `save` ~400ms after the last change to the project. */

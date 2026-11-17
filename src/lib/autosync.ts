@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { useProject, type LyricLine } from "../store/project";
+import { linesOfLayer, useProject, type LyricLine } from "../store/project";
 import { DEFAULT_ALIGNER_URL, alignLines, type AlignProgress } from "./aligner";
 
 /**
@@ -45,7 +45,8 @@ export async function runAlignment(over: SyncOverrides = {}): Promise<{ lines: L
   if (useSyncJob.getState().phase === "running") throw new Error("Auto-sync is already running.");
   const { project } = useProject.getState();
   if (!project.audio?.url) throw new Error("Upload the song first (Audio, in the left panel).");
-  if (!project.lines.length) throw new Error("Add the lyrics first.");
+  const main = linesOfLayer(project, project.layers[0].id); // only the main lyrics layer is timed to the song
+  if (!main.length) throw new Error(`Add the lyrics first (layer "${project.layers[0].name}").`);
 
   const s = { ...getAlignSettings(), ...over };
   abortCtl = new AbortController();
@@ -55,7 +56,7 @@ export async function runAlignment(over: SyncOverrides = {}): Promise<{ lines: L
     const result = await alignLines(
       s.url,
       { url: project.audio.url, name: project.audio.name },
-      project.lines,
+      main,
       { language: s.language, model: s.model, separate: s.separate },
       abortCtl.signal,
       (p) => useSyncJob.setState({ stage: p.stage, pct: p.pct })

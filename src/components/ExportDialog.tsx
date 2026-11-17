@@ -102,7 +102,11 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
               <div className="h-full bg-accent transition-[width]" style={{ width: `${Math.round((progress?.fraction ?? 0) * 100)}%` }} />
             </div>
             <div className="flex justify-between text-[11px] text-gray-400">
-              <span>{progress?.stage}</span>
+              <span className="truncate">
+                {progress?.stage}
+                {progress?.engine === "gpu" && <span className="ml-2 rounded bg-green-900/50 px-1.5 py-0.5 text-[10px] text-green-300">fast encoder</span>}
+                {progress?.engine === "cpu" && <span className="ml-2 rounded bg-yellow-900/50 px-1.5 py-0.5 text-[10px] text-yellow-300">compatibility mode (slower)</span>}
+              </span>
               <span>{Math.round((progress?.fraction ?? 0) * 100)}%</span>
             </div>
           </div>

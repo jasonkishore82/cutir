@@ -1,19 +1,30 @@
 import { z } from "zod";
-import { useProject, type Project } from "../../store/project";
+import { layerIdOf, useProject, type Project } from "../../store/project";
 import { createRegistry, toOllamaTool, toolSignature, type AnyTool, type ToolGroup } from "./registry";
 import { lineTools } from "./lines";
 import { styleTools } from "./style";
 import { sceneTools } from "./scene";
 import { syncTools } from "./sync";
+import { layerTools } from "./layers";
 
 /** The one list of tools. Add a tool to a group file; it is picked up everywhere from here. */
-export const registry = createRegistry([...styleTools, ...lineTools, ...sceneTools, ...syncTools]);
+export const registry = createRegistry([...styleTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools]);
 
 export const TOOL_NAMES = registry.all.map((t) => t.name);
 
 /** Tool definitions in Ollama's format, generated from the zod schemas. Pass groups to send a subset. */
 export const getOllamaTools = (groups?: ToolGroup[]) => registry.list(groups).map(toOllamaTool);
 export const OLLAMA_TOOLS = getOllamaTools();
+
+/**
+ * Which tool groups to offer for this message. Fewer tools = better accuracy and a shorter prompt for small models.
+ * Layer tools are only sent when the request (or the project) involves layers.
+ */
+export function selectToolGroups(text: string, p: Project): ToolGroup[] {
+  const groups: ToolGroup[] = ["style", "lines", "scene", "sync"];
+  if (p.layers.length > 1 || /\b(layers?|tracks?|lanes?|translation|translate|subtitles?|overlay|credits?|caption)\b/i.test(text)) groups.push("layers");
+  return groups;
+}
 
 /* ---------- applying calls ---------- */
 
@@ -98,7 +109,11 @@ export function buildSystemPrompt(p: Project, fallbackJson: boolean, groups?: To
       ? `gradient ${p.background.colors.join(",")} angle ${p.background.angle}`
       : `asset ${p.background.asset?.name ?? "(none)"}`;
   const shown = p.lines.slice(0, MAX_PROMPT_LINES);
-  const rows = shown.map((l, i) => `${i + 1} | ${l.start.toFixed(2)}-${l.end.toFixed(2)} | ${l.text.slice(0, 70)}`).join("\n");
+  const multi = p.layers.length > 1;
+  const layerName = (l: (typeof p.lines)[number]) => p.layers.find((x) => x.id === layerIdOf(p, l))?.name ?? "";
+  const rows = shown
+    .map((l, i) => `${i + 1} | ${multi ? `${layerName(l)} | ` : ""}${l.start.toFixed(2)}-${l.end.toFixed(2)} | ${l.text.slice(0, 70)}`)
+    .join("\n");
   const more = p.lines.length > shown.length ? `\n(+${p.lines.length - shown.length} more lines)` : "";
 
   const parts = [
@@ -107,7 +122,10 @@ export function buildSystemPrompt(p: Project, fallbackJson: boolean, groups?: To
     `STYLE: ${JSON.stringify(p.style)}`,
     `BACKGROUND: ${bg}`,
     `ASPECT: ${p.aspect}`,
-    `LINES (index | start-end | text):\n${rows || "(none)"}${more}`,
+    ...(multi
+      ? [`LAYERS (drawn bottom to top): ${p.layers.map((l, i) => `${i + 1} ${l.name}${l.visible ? "" : " (hidden)"}${l.locked ? " (locked)" : ""}`).join(", ")}`]
+      : []),
+    `LINES (${multi ? "index | layer | start-end | text" : "index | start-end | text"}):\n${rows || "(none)"}${more}`,
   ];
   if (fallbackJson) {
     parts.push(
@@ -125,26 +143,87 @@ export const isSmallTalk = (text: string) => SMALL_TALK.test(text);
 export const CHAT_ONLY_PROMPT =
   "You are the assistant inside Cutir, a lyric video editor. Reply in one or two short friendly sentences. You can change text style, lyric lines and timings, backgrounds, animations and aspect ratio when asked. Do not claim to have changed anything.";
 
-/** Pull `{actions:[...]}` out of a model reply (fenced block, or a bare JSON object). */
-export function parseActionsFromText(text: string): { calls: RawCall[]; stripped: string } {
-  const candidates: { raw: string; whole: string }[] = [];
-  for (const m of text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) candidates.push({ raw: m[1], whole: m[0] });
-  if (!candidates.length) {
-    const m = /\{[\s\S]*"actions"[\s\S]*\}/.exec(text);
-    if (m) candidates.push({ raw: m[0], whole: m[0] });
-  }
-  for (const c of candidates) {
-    try {
-      const obj = JSON.parse(c.raw.trim());
-      const list = Array.isArray(obj) ? obj : obj?.actions;
-      if (!Array.isArray(list)) continue;
-      const calls = list
-        .filter((x) => x && typeof x.tool === "string")
-        .map((x) => ({ tool: x.tool as string, args: x.args ?? x.arguments ?? {} }));
-      if (calls.length) return { calls, stripped: text.replace(c.whole, "").trim() };
-    } catch {
-      /* not JSON, try the next candidate */
+/** Index of the bracket that closes the one at `from` (string-aware), or -1. */
+function matchBracket(s: string, from: number): number {
+  let depth = 0;
+  let inStr = false;
+  for (let i = from; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (c === "\\") i++;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') inStr = true;
+    else if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") {
+      depth--;
+      if (depth === 0) return i;
     }
   }
-  return { calls: [], stripped: text };
+  return -1;
+}
+
+/** Every JSON object/array embedded in free text (inside code fences, <tool_call> tags, or bare). */
+function findJson(text: string): { value: unknown; start: number; end: number }[] {
+  const found: { value: unknown; start: number; end: number }[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{" && text[i] !== "[") continue;
+    const end = matchBracket(text, i);
+    if (end < 0) continue;
+    try {
+      found.push({ value: JSON.parse(text.slice(i, end + 1)), start: i, end: end + 1 });
+      i = end; // skip past it; nested objects are part of this one
+    } catch {
+      /* not valid JSON starting here; keep scanning */
+    }
+  }
+  return found;
+}
+
+/**
+ * Turn the many shapes models use for a tool call into RawCalls:
+ *   {"name":"set_aspect","arguments":{...}}      (Qwen / OpenAI style)
+ *   {"tool":"set_aspect","args":{...}}           (our own JSON-reply format)
+ *   {"function":{"name":...,"arguments":...}}    (Ollama tool_calls entries)
+ *   {"actions":[...]} / {"tool_calls":[...]} / [ ... ]
+ * Only names of registered tools count, so ordinary JSON in a reply is left alone.
+ */
+function toCalls(v: unknown): RawCall[] {
+  if (Array.isArray(v)) return v.flatMap(toCalls);
+  if (!v || typeof v !== "object") return [];
+  const o = v as Record<string, unknown>;
+  if (Array.isArray(o.actions)) return o.actions.flatMap(toCalls);
+  if (Array.isArray(o.tool_calls)) return o.tool_calls.flatMap(toCalls);
+  const fn = o.function && typeof o.function === "object" ? (o.function as Record<string, unknown>) : o;
+  const name = fn.name ?? fn.tool;
+  if (typeof name !== "string" || !registry.get(name)) return [];
+  return [{ tool: name, args: fn.arguments ?? fn.parameters ?? fn.args ?? {} }];
+}
+
+/** Pull tool calls out of a model reply that wrote them as text. Returns the reply with the JSON removed. */
+export function parseActionsFromText(text: string): { calls: RawCall[]; stripped: string } {
+  const calls: RawCall[] = [];
+  const cut: [number, number][] = [];
+  for (const j of findJson(text)) {
+    const c = toCalls(j.value);
+    if (c.length) {
+      calls.push(...c);
+      cut.push([j.start, j.end]);
+    }
+  }
+  if (!calls.length) return { calls: [], stripped: text };
+
+  let stripped = "";
+  let pos = 0;
+  for (const [a, b] of cut) {
+    stripped += text.slice(pos, a);
+    pos = b;
+  }
+  stripped += text.slice(pos);
+  // leftover wrappers around the removed JSON
+  stripped = stripped
+    .replace(/```(?:json)?\s*```/gi, "")
+    .replace(/<\/?tool_call>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { calls, stripped };
 }

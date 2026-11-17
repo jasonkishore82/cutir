@@ -31,3 +31,10 @@ input, select, textarea, button { @apply outline-none; }
 }
 @keyframes stripes { to { background-position: 14px 0; } }
 @media (prefers-reduced-motion: reduce) { .progress-stripes { animation: none; } }
+
+/* timeline: a scrollbar that is always visible (styling the pseudo-elements also disables auto-hiding overlay scrollbars) */
+.timeline-scroll { scrollbar-width: auto; scrollbar-color: #5b6577 #0f1115; }
+.timeline-scroll::-webkit-scrollbar { height: 14px; }
+.timeline-scroll::-webkit-scrollbar-track { background: #0f1115; border-top: 1px solid #262c36; }
+.timeline-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 7px; border: 3px solid #0f1115; }
+.timeline-scroll::-webkit-scrollbar-thumb:hover { background: #e0709a; }

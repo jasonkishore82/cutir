@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { uid, type LyricLine } from "../../store/project";
+import { layerIdOf, linesOfLayer, orderByLayers, uid, useProject, type LyricLine } from "../../store/project";
+import { findLayer } from "../../store/layers";
 import { defineTool } from "./registry";
 import { idx, num, seconds } from "./schema";
 import { lineAt, round2, withLines } from "./helpers";
@@ -7,22 +8,34 @@ import { lineAt, round2, withLines } from "./helpers";
 export const addLine = defineTool({
   name: "add_line",
   group: "lines",
-  description: "Add a new lyric line. index = position to insert at (1-based, default: end). start/end in seconds are optional.",
+  description:
+    "Add a new text line. layer = layer name or number (default: the layer being edited). index = position within that layer (1-based, default: end). start/end in seconds are optional.",
   params: z.object({
-    text: z.string().min(1).describe("the lyric text"),
+    text: z.string().min(1).describe("the text"),
+    layer: z.union([z.string(), z.number()]).optional().describe("layer name or number"),
     index: idx.optional(),
     start: seconds.optional(),
     end: seconds.optional(),
   }),
   apply: (p, a) => {
-    const at = Math.min(a.index ?? p.lines.length + 1, p.lines.length + 1);
-    const prev = p.lines[at - 2];
+    let layer = a.layer !== undefined ? findLayer(p, a.layer) : undefined;
+    if (a.layer !== undefined && !layer) throw new Error(`layer "${a.layer}" does not exist (layers: ${p.layers.map((l, i) => `${i + 1} ${l.name}`).join(", ")})`);
+    if (!layer) {
+      const active = useProject.getState().activeLayerId; // default to the layer the user is working on
+      layer = p.layers.find((l) => l.id === active) ?? p.layers[0];
+    }
+    if (layer.locked) throw new Error(`layer "${layer.name}" is locked`);
+    const mine = linesOfLayer(p, layer.id);
+    const at = Math.min(a.index ?? mine.length + 1, mine.length + 1);
+    const prev = mine[at - 2];
     const start = round2(a.start ?? (prev ? prev.end + 0.2 : 0));
     const end = round2(a.end ?? start + 3);
     if (end <= start) throw new Error(`end (${end}) must be after start (${start})`);
-    const line: LyricLine = { id: uid(), text: a.text.trim(), start, end };
-    const lines = [...p.lines.slice(0, at - 1), line, ...p.lines.slice(at - 1)];
-    return { project: withLines(p, lines), summary: `line ${at} added: "${line.text}"` };
+    const line: LyricLine = { id: uid(), text: a.text.trim(), start, end, layerId: layer.id };
+    const next = [...mine.slice(0, at - 1), line, ...mine.slice(at - 1)];
+    const others = p.lines.filter((l) => layerIdOf(p, l) !== layer!.id);
+    const project = orderByLayers({ ...p, lines: [...others, ...next] });
+    return { project, summary: `line ${project.lines.indexOf(line) + 1} added to ${layer.name}: "${line.text}"` };
   },
 });
 
@@ -94,8 +107,8 @@ export const splitLine = defineTool({
     const words = l.text.split(/\s+/).filter(Boolean);
     if (a.at_word >= words.length) throw new Error(`line ${a.index} has ${words.length} words; at_word must be 1-${words.length - 1}`);
     const mid = round2(l.start + ((l.end - l.start) * a.at_word) / words.length);
-    const first: LyricLine = { id: l.id, text: words.slice(0, a.at_word).join(" "), start: l.start, end: mid, styleOverride: l.styleOverride };
-    const second: LyricLine = { id: uid(), text: words.slice(a.at_word).join(" "), start: mid, end: l.end, styleOverride: l.styleOverride };
+    const first: LyricLine = { id: l.id, text: words.slice(0, a.at_word).join(" "), start: l.start, end: mid, styleOverride: l.styleOverride, layerId: l.layerId };
+    const second: LyricLine = { id: uid(), text: words.slice(a.at_word).join(" "), start: mid, end: l.end, styleOverride: l.styleOverride, layerId: l.layerId };
     const lines = [...p.lines.slice(0, a.index - 1), first, second, ...p.lines.slice(a.index)];
     return { project: withLines(p, lines), summary: `line ${a.index} split after word ${a.at_word}` };
   },

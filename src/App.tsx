@@ -78,6 +78,67 @@ function ResizeHandle({ width, set, dir, min, max, reset, storeKey }: {
   );
 }
 
+/** Horizontal drag handle above the timeline: dragging up makes the timeline taller. */
+function TimelineResizeHandle({ height, set }: { height: number; set: (h: number) => void }) {
+  const [active, setActive] = useState(false);
+  const min = 170;
+  const max = Math.max(260, Math.round(window.innerHeight * 0.7));
+  const clampH = (h: number) => Math.min(max, Math.max(min, Math.round(h)));
+
+  const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.setPointerCapture(e.pointerId);
+    const y0 = e.clientY;
+    const h0 = height;
+    let last = h0;
+    setActive(true);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    const move = (ev: PointerEvent) => {
+      last = clampH(h0 - (ev.clientY - y0));
+      set(last);
+    };
+    const up = () => {
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setActive(false);
+      try {
+        localStorage.setItem("cutir:tlH", String(last));
+      } catch {
+        /* storage unavailable */
+      }
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      title="Drag to resize the timeline, double-click to reset"
+      onPointerDown={onDown}
+      onDoubleClick={() => {
+        set(240);
+        try {
+          localStorage.setItem("cutir:tlH", "240");
+        } catch {
+          /* ignore */
+        }
+      }}
+      className="group relative h-1 shrink-0 cursor-row-resize touch-none"
+    >
+      <span className="absolute inset-x-0 -top-1.5 -bottom-1.5" />
+      <span className={`absolute inset-x-0 top-0 transition-colors ${active ? "h-[3px] bg-sky-500" : "h-px bg-edge group-hover:bg-sky-500"}`} />
+    </div>
+  );
+}
+
 /** Editable project name in the editor header. */
 function ProjectName() {
   const id = useLibrary((s) => s.currentId);
@@ -115,6 +176,7 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [leftW, setLeftW] = useState(() => readW("cutir:leftW", 280));
   const [chatW, setChatW] = useState(() => readW("cutir:chatW", 360));
+  const [tlH, setTlH] = useState(() => readW("cutir:tlH", 240));
 
   useEffect(() => {
     useLibrary.getState().init(); // loads the project list (and migrates the old single autosave)
@@ -185,7 +247,8 @@ export default function App() {
 
       {exporting && <ExportDialog onClose={() => setExporting(false)} />}
 
-      <footer className="h-[200px] shrink-0 border-t border-edge bg-panel">
+      <TimelineResizeHandle height={tlH} set={setTlH} />
+      <footer style={{ height: tlH }} className="shrink-0 bg-panel">
         <Timeline />
       </footer>
     </div>

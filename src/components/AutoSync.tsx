@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useProject } from "../store/project";
+import { layerIdOf, useProject } from "../store/project";
 import { ALIGNER_HELP, DEFAULT_ALIGNER_URL, checkAligner, isTagLine } from "../lib/aligner";
 import { useSyncJob } from "../lib/autosync";
 import { applyCalls } from "../lib/tools";
@@ -24,6 +24,7 @@ const write = (k: string, v: string) => {
 export default function AutoSync() {
   const audio = useProject((s) => s.project.audio);
   const lines = useProject((s) => s.project.lines);
+  const layers = useProject((s) => s.project.layers);
   const phase = useSyncJob((s) => s.phase);
 
   const [url, setUrl] = useState(() => read("cutir:alignerUrl", DEFAULT_ALIGNER_URL));
@@ -33,7 +34,8 @@ export default function AutoSync() {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const sungCount = lines.filter((l) => !isTagLine(l.text)).length;
+  // only the main (first) layer is timed to the song
+  const sungCount = lines.filter((l) => layerIdOf({ layers }, l) === layers[0].id && !isTagLine(l.text)).length;
   const busy = phase !== "idle";
   const canRun = !!audio?.url && sungCount > 0 && !busy;
 

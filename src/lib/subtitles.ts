@@ -66,7 +66,7 @@ export function parseSubtitleFile(name: string, text: string): LyricLine[] {
 /* ---------- export: .srt and .ass (karaoke) ---------- */
 
 import { wrapText } from "./renderer";
-import type { Project } from "../store/project";
+import { effectiveStyle, layerIdOf, type Project, type TextStyle } from "../store/project";
 
 const p2 = (n: number, w = 2) => String(n).padStart(w, "0");
 
@@ -75,12 +75,14 @@ function srtStamp(t: number) {
   return `${p2(Math.floor(ms / 3600000))}:${p2(Math.floor(ms / 60000) % 60)}:${p2(Math.floor(ms / 1000) % 60)},${p2(ms % 1000, 3)}`;
 }
 
+/** Hidden layers are left out. Lines from all visible layers are merged in time order. */
 export function toSrt(p: Project): string {
-  const up = (s: string) => (p.style.uppercase ? s.toUpperCase() : s);
+  const visible = new Set(p.layers.filter((l) => l.visible).map((l) => l.id));
   return (
-    [...p.lines]
+    p.lines
+      .filter((l) => visible.has(layerIdOf(p, l)))
       .sort((a, b) => a.start - b.start)
-      .map((l, i) => `${i + 1}\n${srtStamp(l.start)} --> ${srtStamp(l.end)}\n${up(l.text)}`)
+      .map((l, i) => `${i + 1}\n${srtStamp(l.start)} --> ${srtStamp(l.end)}\n${effectiveStyle(p, l).uppercase ? l.text.toUpperCase() : l.text}`)
       .join("\n\n") + "\n"
   );
 }
@@ -103,11 +105,16 @@ export function toAss(p: Project): string {
   const dims = { "16:9": [1920, 1080], "9:16": [1080, 1920], "1:1": [1080, 1080] }[p.aspect];
   const [W, H] = dims;
   const k = Math.min(W, H) / 1080;
-  const s = p.style;
-  const align = s.position === "top" ? 8 : s.position === "bottom" ? 2 : 5;
-  const marginV = s.position === "center" ? 0 : Math.round(110 * k);
-  const outline = Math.max(0, s.outline.width * k);
-  const shadow = s.shadow.opacity > 0 ? Math.abs(s.shadow.offsetY) * k : 0;
+
+  // one ASS style per layer (the project style with that layer's overrides on top)
+  const styleLine = (name: string, s: TextStyle) => {
+    const align = s.position === "top" ? 8 : s.position === "bottom" ? 2 : 5;
+    const marginV = s.position === "center" ? 0 : Math.round(110 * k);
+    const outline = Math.max(0, s.outline.width * k);
+    const shadow = s.shadow.opacity > 0 ? Math.abs(s.shadow.offsetY) * k : 0;
+    // Primary = already sung (full colour), Secondary = not yet sung (dimmed): karaoke fills left to right
+    return `Style: ${name},${s.fontFamily},${Math.round(s.fontSize * k)},${assColor(s.color)},${assColor(s.color, 0x90)},${assColor(s.outline.color)},${assColor("#000000", 0x73)},0,0,0,0,100,100,${s.letterSpacing * k},0,1,${outline.toFixed(1)},${shadow.toFixed(1)},${align},40,40,${marginV},1`;
+  };
 
   const head = [
     "[Script Info]",
@@ -119,16 +126,19 @@ export function toAss(p: Project): string {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    // Primary = already sung (full colour), Secondary = not yet sung (dimmed): karaoke fills left to right
-    `Style: Default,${s.fontFamily},${Math.round(s.fontSize * k)},${assColor(s.color)},${assColor(s.color, 0x90)},${assColor(s.outline.color)},${assColor("#000000", 0x73)},0,0,0,0,100,100,${s.letterSpacing * k},0,1,${outline.toFixed(1)},${shadow.toFixed(1)},${align},40,40,${marginV},1`,
+    ...p.layers.map((layer, i) => styleLine(`L${i}`, { ...p.style, ...layer.style })),
     "",
     "[Events]",
     "Format: Layer, Start, End, Name, MarginL, MarginR, MarginV, Effect, Text",
   ];
 
-  const events = [...p.lines]
+  const layerIndex = new Map(p.layers.map((l, i) => [l.id, i]));
+  const events = p.lines
+    .filter((l) => p.layers[layerIndex.get(layerIdOf(p, l)) ?? 0].visible)
     .sort((a, b) => a.start - b.start)
     .map((l) => {
+      const s = effectiveStyle(p, l);
+      const li = layerIndex.get(layerIdOf(p, l)) ?? 0;
       const text = s.uppercase ? l.text.toUpperCase() : l.text;
       const rows = wrapText(text, s.maxCharsPerLine);
       const flat = rows.flatMap((r) => r.split(" "));
@@ -147,7 +157,7 @@ export function toAss(p: Project): string {
             .join(" ")
         )
         .join("\\N");
-      return `Dialogue: 0,${assStamp(l.start)},${assStamp(l.end)},Default,,0,0,0,,${body}`;
+      return `Dialogue: ${li},${assStamp(l.start)},${assStamp(l.end)},L${li},,0,0,0,,${body}`;
     });
 
   return [...head, ...events, ""].join("\n");

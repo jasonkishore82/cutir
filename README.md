@@ -64,7 +64,8 @@ Then in the left panel use **Auto-sync lyrics** under *Lyrics*. It gives every l
 ## Using it
 
 1. **Audio / background / lyrics** in the left panel (or import `.lrc` / `.srt`).
-2. **Timeline:** drag blocks to move them, drag edges to resize (snaps to 0.05s). `Tap to sync` plays the song: press **Space** at the start of each line and **Enter** at the end of the current one.
+2. **Timeline:** drag blocks to move them, drag edges to resize (snaps to 0.05s). `Tap to sync` plays the song: press **Space** at the start of each line and **Enter** at the end of the current one. Mouse wheel scrolls sideways, **Ctrl+wheel** zooms, **Fit** shows the whole song, and you can drag the top edge of the timeline to make it taller.
+   - **Layers:** each lane is a layer (up to 8), drawn bottom to top, with its own text. Click **+ Layer** to add one (for example a translation under the lyrics). Per layer you can rename it (double-click the name), hide it (eye), lock it, and set its position, size and colour or reorder it (⋯). Double-click empty space in a lane to add text, double-click a block to edit it, and drag a block up or down to move it to another layer. **Right-click** a block for Edit, Duplicate, Copy, Split at playhead, Set start/end to playhead, Play from here, Loop, Move to layer and Delete; right-click empty lane space for Add text here / at playhead and Paste. Shortcuts: Ctrl+D duplicate, Ctrl+C / Ctrl+V copy and paste (pastes at the playhead), Delete. The Lyrics box, Tap to sync and new lines act on the layer you last clicked; auto-sync times the first layer only. `.srt` merges visible layers and `.ass` gives each layer its own style.
 3. **Chat:** describe edits in plain English ("shift lines 4 to 8 by 0.5s", "use a pink-to-orange gradient", "delete line 2"). Each reply that changes something shows an *Applied changes* card with an Undo button. You can attach images (vision models only) or `.txt` / `.lrc` / `.srt` files.
 4. **Export:** the `Export` button renders MP4 (H.264 + the original audio) at 1920x1080, 1080x1920 or 1080x1080, and can also save `.srt` and `.ass` (karaoke).
 
@@ -80,7 +81,7 @@ Then in the left panel use **Auto-sync lyrics** under *Lyrics*. It gives every l
 
 ## Notes
 
-- **Export runs in your browser** with ffmpeg.wasm (single-threaded core). Frames are encoded in 150-frame segments to keep memory bounded, but long songs still take a while; 30 fps is much faster than 60.
+- **Export runs in your browser.** It uses the browser's built-in H.264/AAC encoders (WebCodecs, hardware accelerated where available) through [Mediabunny](https://mediabunny.dev): a 2-minute 1080p30 song exports in seconds. If the browser cannot encode H.264 at the chosen size, Cutir automatically falls back to ffmpeg.wasm (single-threaded, roughly 15x slower) and the export dialog says "compatibility mode". Use a recent Chrome or Edge for the fast path.
 - The dev server sends COOP/COEP headers (see `vite.config.ts`). If you host a production build, send the same headers.
 - Projects autosave to localStorage and can be saved/opened as JSON. Audio and background files are not stored in the JSON; re-upload them after reopening a project.
 - Chats are kept in memory only.

@@ -11,7 +11,7 @@ import type { Project } from "../../store/project";
  * To add a tool: write defineTool({...}) in a group file and add it to that file's export. Nothing else.
  */
 
-export type ToolGroup = "style" | "lines" | "scene" | "sync";
+export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers";
 
 export type ToolResultOk = { project: Project; summary: string };
 

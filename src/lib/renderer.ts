@@ -1,4 +1,4 @@
-import type { Aspect, LyricLine, Project, TextStyle } from "../store/project";
+import { effectiveStyle, linesOfLayer, type Aspect, type LyricLine, type Project, type TextStyle } from "../store/project";
 
 /**
  * Single draw function shared by the live preview and the exporter.
@@ -172,13 +172,17 @@ export function drawFrame(
   ctx.clearRect(0, 0, w, h);
   drawBackground(ctx, project, w, h, assets);
 
-  const line = activeLine(project.lines, time);
-  if (line) drawLyric(ctx, project, line, time, w, h);
+  // layers are drawn bottom to top; each visible layer shows its own active line
+  for (const layer of project.layers) {
+    if (!layer.visible) continue;
+    const line = activeLine(linesOfLayer(project, layer.id), time);
+    if (line) drawLyric(ctx, project, line, time, w, h);
+  }
   ctx.restore();
 }
 
 function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricLine, t: number, w: number, h: number) {
-  const style: TextStyle = { ...project.style, ...line.styleOverride };
+  const style: TextStyle = effectiveStyle(project, line);
   const scale = Math.min(w, h) / REF;
   const fontPx = style.fontSize * scale;
   const lineH = fontPx * style.lineHeight;
