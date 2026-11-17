@@ -250,34 +250,18 @@ export const useProject = create<State>((set, get) => ({
 
 /* ---------- Persistence ---------- */
 
-const KEY = "cutir:project";
-
 export function normalizeProject(raw: Partial<Project>): Project {
   const d = defaultProject();
   return { ...d, ...raw, style: { ...DEFAULT_STYLE, ...raw.style }, lines: raw.lines ?? [] };
 }
 
-export function loadAutosave(): Project | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? normalizeProject(JSON.parse(raw)) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function startAutosave() {
+/** Debounced autosave: calls `save` ~400ms after the last change to the project. */
+export function startAutosave(save: (p: Project) => void) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return useProject.subscribe((s, prev) => {
     if (s.project === prev.project) return;
     clearTimeout(timer);
-    timer = setTimeout(() => {
-      try {
-        localStorage.setItem(KEY, serializeProject(s.project));
-      } catch {
-        /* storage unavailable or full: ignore */
-      }
-    }, 400);
+    timer = setTimeout(() => save(s.project), 400);
   });
 }
 

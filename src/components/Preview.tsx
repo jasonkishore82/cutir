@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "../store/project";
+import { ensureFont } from "../lib/fonts";
 import { ASPECT_RATIO, drawFrame, type MediaSource } from "../lib/renderer";
 import { getTime, pause, seek, setFallbackDuration, setLoop, setSource, tick, toggle, usePlayback } from "../lib/transport";
 
@@ -38,8 +39,9 @@ export default function Preview() {
 
   /* make sure the chosen font is loaded; the frame loop picks it up once ready */
   useEffect(() => {
-    document.fonts?.load(`48px "${fontFamily}"`).catch(() => {});
-  }, [fontFamily]);
+    ensureFont(fontFamily, lines.map((l) => l.text).join(" ")).catch(() => {}); // downloads Google fonts after a reload too
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fontFamily, lines.length]);
 
   /* background image / video element */
   const bgUrl = background.type === "asset" ? background.asset?.url : undefined;

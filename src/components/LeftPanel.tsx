@@ -1,6 +1,8 @@
-import { useRef, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { ensureFont, markFontReady } from "../lib/fonts";
 import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
+import { useLibrary } from "../store/library";
 import {
   linesToText,
   useProject,
@@ -72,16 +74,39 @@ export default function LeftPanel() {
   const setAudio = useProject((s) => s.setAudio);
   const setLinesFromText = useProject((s) => s.setLinesFromText);
   const lastAudioUrl = useRef<string>();
+  const [gfont, setGfont] = useState("");
+  const [gfontMsg, setGfontMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [gfontBusy, setGfontBusy] = useState(false);
+
+  /** Download a font from Google Fonts by name and use it. */
+  const useGoogleFont = async () => {
+    const name = gfont.trim();
+    if (!name || gfontBusy) return;
+    setGfontBusy(true);
+    setGfontMsg(null);
+    try {
+      const family = await ensureFont(name, useProject.getState().project.lines.map((l) => l.text).join(" "));
+      setStyle({ fontFamily: family });
+      setGfontMsg({ ok: true, text: `Using ${family}` });
+      setGfont("");
+    } catch (e) {
+      setGfontMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setGfontBusy(false);
+    }
+  };
 
   const loadAudio = (f: File) => {
     if (lastAudioUrl.current) URL.revokeObjectURL(lastAudioUrl.current);
     lastAudioUrl.current = URL.createObjectURL(f);
     setAudio({ name: f.name, kind: "audio", url: lastAudioUrl.current });
+    useLibrary.getState().saveAsset("audio", f, f.name); // so the project gets its song back when reopened
   };
 
   const loadBackground = (f: File) => {
     const kind = f.type.startsWith("video") ? "video" : "image";
     setBackground({ type: "asset", asset: { name: f.name, kind, url: URL.createObjectURL(f) } });
+    useLibrary.getState().saveAsset("bg", f, f.name);
   };
 
   const loadFont = async (f: File) => {
@@ -90,6 +115,7 @@ export default function LeftPanel() {
       const face = new FontFace(family, await f.arrayBuffer());
       await face.load();
       document.fonts.add(face);
+      markFontReady(family);
       setStyle({ fontFamily: family });
     } catch {
       alert("Could not load that font file.");
@@ -119,7 +145,7 @@ export default function LeftPanel() {
               title={g.name}
               className="h-8 rounded border border-edge"
               style={{ background: `linear-gradient(${g.angle}deg, ${g.colors.join(",")})` }}
-              onClick={() => setBackground({ type: "gradient", colors: g.colors, angle: g.angle, noise: true })}
+              onClick={() => (setBackground({ type: "gradient", colors: g.colors, angle: g.angle, noise: true }), useLibrary.getState().clearAsset("bg"))}
             />
           ))}
         </div>
@@ -172,6 +198,22 @@ export default function LeftPanel() {
           </select>
         </Row>
         <button className={btn} onClick={() => pickFile(".ttf,.otf", loadFont)}>Upload font (.ttf/.otf)</button>
+        <div className="space-y-1">
+          <div className="flex gap-1">
+            <input
+              className="field"
+              value={gfont}
+              placeholder="Google font, e.g. Roboto"
+              onChange={(e) => setGfont(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && useGoogleFont()}
+              aria-label="Google Fonts name"
+            />
+            <button className="px-2 text-xs rounded border border-edge hover:bg-edge disabled:opacity-40" onClick={useGoogleFont} disabled={!gfont.trim() || gfontBusy}>
+              {gfontBusy ? "…" : "Use"}
+            </button>
+          </div>
+          {gfontMsg && <p className={`text-[11px] ${gfontMsg.ok ? "text-green-400" : "text-red-400"}`}>{gfontMsg.text}</p>}
+        </div>
 
         <Slider label="Size" value={style.fontSize} min={24} max={240} onChange={(v) => setStyle({ fontSize: v })} />
         <div className="flex items-center gap-3">

@@ -3,13 +3,14 @@ import { useProject, uid, type Project } from "./project";
 import {
   DEFAULT_OLLAMA_URL,
   OllamaError,
-  listModels,
+  listModelInfo,
   normalizeUrl,
   streamChat,
   stripThink,
   type ChatMessage,
   type RawOllamaCall,
 } from "../lib/ollama";
+import { cancelAlignment, isAutoSyncIntent, syncOverridesFromText } from "../lib/autosync";
 import { CHAT_ONLY_PROMPT, OLLAMA_TOOLS, applyCalls, buildSystemPrompt, isSmallTalk, parseActionsFromText, type CallResult, type RawCall } from "../lib/tools";
 
 export type Applied = { results: CallResult[]; before: Project; after: Project; undone?: boolean };
@@ -23,6 +24,7 @@ export type ChatEntry = {
   applied?: Applied;
   streaming?: boolean;
   attachments?: Attachment[];
+  sync?: boolean; // reply is an auto-sync run: show the sync progress bar while streaming
   sent?: string; // what the model actually received (typed text + attached file text)
   at: number; // timestamp shown on the timeline
   thoughtSecs?: number; // how long the model took, shown as "Thought for Ns"
@@ -35,7 +37,9 @@ type Status = "unknown" | "checking" | "online" | "offline";
 type ChatState = {
   baseUrl: string;
   model: string;
-  models: string[];
+  models: string[]; // chat-capable models only
+  noToolModels: string[]; // of those, the ones Ollama says cannot call tools
+  hiddenModels: number; // embedding-only models left out of the list
   status: Status;
   statusDetail: string;
   messages: ChatEntry[]; // messages of the active chat
@@ -53,6 +57,7 @@ type ChatState = {
   newChat: () => void;
   switchChat: (id: string) => void;
   closeChat: (id: string) => void;
+  resetChats: () => void;
   undoApplied: (id: string) => void;
 };
 
@@ -133,6 +138,8 @@ export const useChat = create<ChatState>((set, get) => {
     baseUrl: normalizeUrl(read("cutir:ollamaUrl", DEFAULT_OLLAMA_URL)),
     model: read("cutir:ollamaModel", ""),
     models: [],
+    noToolModels: [],
+    hiddenModels: 0,
     status: "unknown",
     statusDetail: "",
     messages: [],
@@ -153,11 +160,24 @@ export const useChat = create<ChatState>((set, get) => {
     refreshModels: async () => {
       set({ status: "checking", statusDetail: "" });
       try {
-        const models = await listModels(get().baseUrl);
+        const infos = await listModelInfo(get().baseUrl);
+        // embedding-only models cannot chat; without capability info fall back to their names
+        const chatCapable = infos.filter((i) => (i.capabilities ? i.capabilities.includes("completion") : !/embed|bge-|nomic/i.test(i.name)));
+        const models = chatCapable.map((i) => i.name);
+        const noToolModels = chatCapable.filter((i) => i.capabilities && !i.capabilities.includes("tools")).map((i) => i.name);
+        noToolModels.forEach((m) => noTools.add(m)); // skip the failed first request: go straight to JSON replies
+        const hasTools = (m: string) => !noToolModels.includes(m);
         const cur = get().model;
-        const model = models.includes(cur) ? cur : models.find((m) => /qwen3/i.test(m)) ?? models[0] ?? "";
+        const model = models.includes(cur) ? cur : models.find((m) => /qwen3/i.test(m) && hasTools(m)) ?? models.find(hasTools) ?? models[0] ?? "";
         if (model !== cur) write("cutir:ollamaModel", model);
-        set({ models, model, status: "online", statusDetail: models.length ? `${models.length} models` : "No models installed. Run: ollama pull qwen3:8b" });
+        set({
+          models,
+          noToolModels,
+          hiddenModels: infos.length - models.length,
+          model,
+          status: "online",
+          statusDetail: models.length ? `${models.length} models` : "No chat models installed. Run: ollama pull qwen3:8b",
+        });
       } catch (e) {
         set({ status: "offline", models: [], statusDetail: e instanceof OllamaError ? e.message : (e as Error).message });
       }
@@ -166,6 +186,36 @@ export const useChat = create<ChatState>((set, get) => {
     send: async (raw, attachments = []) => {
       const text = raw.trim();
       if ((!text && !attachments.length) || get().busy) return;
+
+      // "auto sync" starts the sync directly: no model round trip, so it works even before a model is picked
+      if (isAutoSyncIntent(text) && !attachments.length) {
+        push({ role: "user", content: text, sent: text });
+        set((s) => ({
+          chats: s.chats.map((c) => (c.id === s.activeId && c.title === NEW_TITLE ? { ...c, title: text.length > 26 ? text.slice(0, 26) + "…" : text } : c)),
+        }));
+        const replyId = push({ role: "assistant", content: "", streaming: true, sync: true });
+        const t0 = Date.now();
+        set({ busy: true });
+        try {
+          const applied = await applyCalls([{ tool: "auto_sync", args: syncOverridesFromText(text) }]);
+          const r = applied.results[0];
+          if (r.ok) {
+            patchMsg(replyId, {
+              content: "Auto-sync finished. Press play to check the timing, or undo it from the card below.",
+              applied,
+              streaming: false,
+              thoughtSecs: Math.round((Date.now() - t0) / 1000),
+            });
+          } else {
+            set((s) => ({ messages: s.messages.filter((m) => m.id !== replyId) }));
+            push({ role: "error", content: r.summary.replace(/^auto_sync: /, "") });
+          }
+        } finally {
+          set({ busy: false });
+        }
+        return;
+      }
+
       if (!get().model) {
         push({ role: "error", content: get().status === "online" ? "Pick a model first (run `ollama pull qwen3:8b` if none are installed)." : "Not connected to Ollama. Start Ollama with OLLAMA_ORIGINS=* (or your dev URL) so the browser can reach it." });
         return;
@@ -217,7 +267,7 @@ ${a.data}
         }
 
         if (calls.length) {
-          const applied = applyCalls(calls);
+          const applied = await applyCalls(calls);
           const changed = applied.results.some((r) => r.ok && !r.noop);
           const failed = applied.results.some((r) => !r.ok);
           if (changed || failed) {
@@ -242,7 +292,10 @@ ${a.data}
       }
     },
 
-    stop: () => abort?.abort(),
+    stop: () => {
+      abort?.abort();
+      cancelAlignment();
+    },
     clear: () => set({ messages: [] }),
 
     // Chats are switched only while idle, so a streaming reply never lands in the wrong tab.
@@ -258,6 +311,11 @@ ${a.data}
       const s = get();
       if (s.busy || id === s.activeId) return;
       set({ activeId: id, byId: { ...s.byId, [s.activeId]: s.messages }, messages: s.byId[id] ?? [] });
+    },
+    resetChats: () => {
+      abort?.abort();
+      const c = { id: uid(), title: NEW_TITLE };
+      set({ chats: [c], activeId: c.id, byId: {}, messages: [], busy: false });
     },
     closeChat: (id) => {
       const s = get();

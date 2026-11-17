@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useChat, type Attachment, type ChatEntry } from "../store/chat";
 import { useProject } from "../store/project";
 import Thinking from "./Thinking";
+import SyncProgress from "./SyncProgress";
 
 const DOT: Record<string, string> = {
   online: "bg-green-500",
@@ -60,7 +61,7 @@ function AppliedCard({ m }: { m: ChatEntry }) {
 }
 
 export default function ChatPanel() {
-  const { baseUrl, model, models, status, statusDetail, messages, busy, chats, activeId } = useChat();
+  const { baseUrl, model, models, noToolModels, status, statusDetail, messages, busy, chats, activeId } = useChat();
   const { setBaseUrl, setModel, refreshModels, send, stop, clear, newChat, switchChat, closeChat } = useChat.getState();
   const [draft, setDraft] = useState("");
   const [atts, setAtts] = useState<Attachment[]>([]);
@@ -187,7 +188,7 @@ export default function ChatPanel() {
           <select className="field flex-1" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
             {!models.length && <option value="">{status === "online" ? "no models installed" : "no models"}</option>}
             {models.map((m) => (
-              <option key={m} value={m}>{m}</option>
+              <option key={m} value={m}>{m}{noToolModels.includes(m) ? "  (no tools)" : ""}</option>
             ))}
           </select>
           <button
@@ -246,23 +247,32 @@ export default function ChatPanel() {
               );
             if (m.role === "user")
               return (
-                <Row key={m.id} dot="bg-accent" time={m.at}>
-                  {m.content && <p className="text-gray-100 whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>}
-                  {m.attachments && (
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {m.attachments.map((a, i) => (
-                        <span key={i} className="inline-flex items-center gap-1.5 rounded border border-edge bg-bg px-1.5 py-0.5 text-[11px] text-gray-300 max-w-full">
-                          {a.kind === "image" && <img src={`data:image/*;base64,${a.data}`} alt="" className="h-5 w-5 rounded object-cover" />}
-                          <span className="truncate">{a.name}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </Row>
+                // the only boxed message: timestamp above, square-cornered bordered box, no dot on the rail
+                <div key={m.id}>
+                  <div className="text-right text-[11px] text-gray-500 leading-4 mb-1">{clock(m.at)}</div>
+                  <div className="relative rounded-[3px] border border-edge bg-bg px-3 py-2">
+                    {m.content && <p className="text-gray-100 whitespace-pre-wrap break-words leading-relaxed">{m.content}</p>}
+                    {m.attachments && (
+                      <div className={`flex flex-wrap gap-1.5 ${m.content ? "mt-2" : ""}`}>
+                        {m.attachments.map((a, i) => (
+                          <span key={i} className="inline-flex items-center gap-1.5 rounded-[3px] border border-edge bg-panel px-1.5 py-0.5 text-[11px] text-gray-300 max-w-full">
+                            {a.kind === "image" && <img src={`data:image/*;base64,${a.data}`} alt="" className="h-5 w-5 rounded-[2px] object-cover" />}
+                            <span className="truncate">{a.name}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               );
             return (
               <div key={m.id} className="space-y-4">
-                {m.streaming && !m.content && (
+                {m.streaming && m.sync && (
+                  <Row dot="bg-accent animate-pulse">
+                    <SyncProgress />
+                  </Row>
+                )}
+                {m.streaming && !m.content && !m.sync && (
                   <Row dot="bg-gray-500 animate-pulse">
                     <Thinking tokens={m.tokens} />
                   </Row>

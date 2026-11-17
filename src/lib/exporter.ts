@@ -3,6 +3,7 @@ import coreURL from "@ffmpeg/core?url";
 import wasmURL from "@ffmpeg/core/wasm?url";
 import { ASPECT_SIZES, drawFrame, type MediaSource } from "./renderer";
 import type { Project } from "../store/project";
+import { ensureFont } from "./fonts";
 
 /**
  * MP4 export. Frames are rendered with the SAME drawFrame() as the preview, then encoded by ffmpeg.wasm.
@@ -77,7 +78,7 @@ export async function exportMp4(project: Project, { duration, onProgress, signal
 
   // fonts must be ready before the first frame, or early frames fall back to a default font
   try {
-    await document.fonts.load(`48px "${project.style.fontFamily}"`);
+    await ensureFont(project.style.fontFamily, project.lines.map((l) => l.text).join(" "));
   } catch {
     /* draw with whatever is available */
   }

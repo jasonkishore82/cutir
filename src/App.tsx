@@ -4,7 +4,9 @@ import Preview from "./components/Preview";
 import Timeline from "./components/Timeline";
 import ChatPanel from "./components/ChatPanel";
 import ExportDialog from "./components/ExportDialog";
-import { downloadProject, loadAutosave, normalizeProject, startAutosave, useProject } from "./store/project";
+import Home from "./components/Home";
+import { downloadProject, startAutosave, useProject } from "./store/project";
+import { installUnloadSave, useLibrary } from "./store/library";
 
 const readW = (k: string, d: number) => {
   try {
@@ -76,7 +78,34 @@ function ResizeHandle({ width, set, dir, min, max, reset, storeKey }: {
   );
 }
 
+/** Editable project name in the editor header. */
+function ProjectName() {
+  const id = useLibrary((s) => s.currentId);
+  const name = useLibrary((s) => s.entries.find((e) => e.id === s.currentId)?.name ?? "");
+  const [draft, setDraft] = useState<string | null>(null);
+  if (!id) return null;
+  const commit = () => {
+    if (draft !== null && draft.trim() && draft.trim() !== name) useLibrary.getState().renameProject(id, draft);
+    setDraft(null);
+  };
+  return (
+    <input
+      aria-label="Project name"
+      className="w-48 truncate rounded border border-transparent bg-transparent px-2 py-0.5 text-sm text-gray-200 hover:border-edge focus:border-accent focus:bg-bg"
+      value={draft ?? name}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") (setDraft(null), e.currentTarget.blur());
+      }}
+    />
+  );
+}
+
 export default function App() {
+  const screen = useLibrary((s) => s.screen);
+  const saveFailed = useLibrary((s) => s.saveFailed);
   const chatOpen = useProject((s) => s.chatOpen);
   const toggleChat = useProject((s) => s.toggleChat);
   const undo = useProject((s) => s.undo);
@@ -88,13 +117,14 @@ export default function App() {
   const [chatW, setChatW] = useState(() => readW("cutir:chatW", 360));
 
   useEffect(() => {
-    const saved = loadAutosave();
-    if (saved) useProject.getState().loadProject(saved);
-    return startAutosave();
+    useLibrary.getState().init(); // loads the project list (and migrates the old single autosave)
+    installUnloadSave();
+    return startAutosave((p) => useLibrary.getState().saveContent(p));
   }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (useLibrary.getState().screen !== "editor") return;
       const t = e.target as HTMLElement;
       const typing = t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
@@ -111,36 +141,25 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
-  const openProject = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json,application/json";
-    input.onchange = async () => {
-      const f = input.files?.[0];
-      if (!f) return;
-      try {
-        useProject.getState().loadProject(normalizeProject(JSON.parse(await f.text())));
-      } catch {
-        alert("Could not read that project file.");
-      }
-    };
-    input.click();
-  };
-
   const btn = "px-2 py-1 text-xs rounded border border-edge hover:bg-edge disabled:opacity-40 disabled:hover:bg-transparent";
+
+  if (screen === "home") return <Home />;
 
   return (
     <div className="h-full flex flex-col">
       <header className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-edge bg-panel">
-        <img src="/favicon.svg" alt="" className="h-6 w-6" />
-        <span className="font-semibold tracking-wide text-accent">Cutir</span>
+        <button className={`${btn} flex items-center gap-1.5`} onClick={() => useLibrary.getState().goHome()} title="Back to all projects">
+          <span aria-hidden>‹</span> Projects
+        </button>
+        <img src="/favicon.svg" alt="" className="ml-1 h-6 w-6" />
+        <ProjectName />
+        {saveFailed && <span className="text-[11px] text-red-400" title="Browser storage is full or blocked">⚠ not saved</span>}
         <div className="ml-4 flex gap-1">
           <button className={btn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">Undo</button>
           <button className={btn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">Redo</button>
         </div>
         <div className="ml-auto flex gap-1">
-          <button className={btn} onClick={openProject}>Open</button>
-          <button className={btn} onClick={() => downloadProject(useProject.getState().project)}>Save</button>
+          <button className={btn} onClick={() => downloadProject(useProject.getState().project)} title="Download the project as a .json file">Save file</button>
           <button className={`${btn} border-accent text-accent`} onClick={() => setExporting(true)}>Export</button>
           <button className={btn} onClick={toggleChat}>{chatOpen ? "Hide AI" : "Show AI"}</button>
         </div>

@@ -30,6 +30,33 @@ export async function listModels(baseUrl: string, signal?: AbortSignal): Promise
   return (data.models ?? []).map((m) => m.name).sort();
 }
 
+export type ModelInfo = { name: string; capabilities?: string[] };
+
+/**
+ * Installed models with their capabilities (completion, tools, vision, embedding...) from /api/show.
+ * Capabilities are missing on older Ollama versions; callers must cope with `undefined`.
+ */
+export async function listModelInfo(baseUrl: string, signal?: AbortSignal): Promise<ModelInfo[]> {
+  const names = await listModels(baseUrl, signal);
+  return Promise.all(
+    names.map(async (name): Promise<ModelInfo> => {
+      try {
+        const res = await fetch(`${normalizeUrl(baseUrl)}/api/show`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: name }),
+          signal,
+        });
+        if (!res.ok) return { name };
+        const j = await res.json();
+        return { name, capabilities: Array.isArray(j.capabilities) ? (j.capabilities as string[]) : undefined };
+      } catch {
+        return { name };
+      }
+    })
+  );
+}
+
 export type StreamChunk = { content?: string; thinking?: string; toolCalls?: RawOllamaCall[]; done?: boolean; evalCount?: number };
 
 /** POST /api/chat with stream:true; yields parsed NDJSON chunks. */
