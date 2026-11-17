@@ -129,11 +129,16 @@ type State = {
   // non-undoable UI state
   selectedLineId: string | null;
   chatOpen: boolean;
+  syncMode: boolean;
+  syncIndex: number;
 
   /** History-tracked mutation. Same `coalesceKey` within 600ms merges into one undo step. */
   update: (fn: (p: Project) => Project, coalesceKey?: string) => void;
   /** Run several updates as a single undo step (e.g. one AI reply). */
   batch: (fn: () => void) => void;
+  /** Start/finish a continuous gesture (drag, tap-sync). Everything in between is one undo step. */
+  beginGesture: () => void;
+  endGesture: () => void;
   undo: () => void;
   redo: () => void;
 
@@ -146,6 +151,8 @@ type State = {
   loadProject: (p: Project) => void;
   select: (id: string | null) => void;
   toggleChat: () => void;
+  setSync: (on: boolean, index?: number) => void;
+  setSyncIndex: (i: number) => void;
 };
 
 let batchDepth = 0;
@@ -159,6 +166,8 @@ export const useProject = create<State>((set, get) => ({
   future: [],
   selectedLineId: null,
   chatOpen: true,
+  syncMode: false,
+  syncIndex: 0,
 
   update: (fn, coalesceKey) => {
     const { project, past } = get();
@@ -184,20 +193,29 @@ export const useProject = create<State>((set, get) => ({
   },
 
   batch: (fn) => {
-    if (batchDepth === 0) batchBase = get().project;
-    batchDepth++;
+    get().beginGesture();
     try {
       fn();
     } finally {
-      batchDepth--;
-      if (batchDepth === 0 && batchBase) {
-        const { project, past } = get();
-        if (project !== batchBase) {
-          set({ past: [...past, batchBase].slice(-HISTORY_LIMIT), future: [] });
-        }
-        batchBase = null;
-        lastKey = undefined;
+      get().endGesture();
+    }
+  },
+
+  beginGesture: () => {
+    if (batchDepth === 0) batchBase = get().project;
+    batchDepth++;
+  },
+
+  endGesture: () => {
+    if (batchDepth === 0) return;
+    batchDepth--;
+    if (batchDepth === 0 && batchBase) {
+      const { project, past } = get();
+      if (project !== batchBase) {
+        set({ past: [...past, batchBase].slice(-HISTORY_LIMIT), future: [] });
       }
+      batchBase = null;
+      lastKey = undefined;
     }
   },
 
@@ -226,6 +244,8 @@ export const useProject = create<State>((set, get) => ({
   loadProject: (project) => set({ project, past: [], future: [], selectedLineId: null }),
   select: (selectedLineId) => set({ selectedLineId }),
   toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
+  setSync: (syncMode, index) => set((s) => ({ syncMode, syncIndex: index ?? (syncMode ? 0 : s.syncIndex) })),
+  setSyncIndex: (syncIndex) => set({ syncIndex }),
 }));
 
 /* ---------- Persistence ---------- */

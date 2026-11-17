@@ -5,5 +5,29 @@
 html, body, #root { height: 100%; }
 body { @apply bg-bg text-gray-200 antialiased; font-family: Inter, system-ui, sans-serif; margin: 0; overflow: hidden; }
 input, select, textarea, button { @apply outline-none; }
+.shimmer {
+  background: linear-gradient(90deg, #8b93a3 0%, #8b93a3 35%, #ffd0e0 50%, #8b93a3 65%, #8b93a3 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 1.8s linear infinite;
+}
+@keyframes shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shimmer { animation: none; color: #8b93a3; background: none; }
+}
 .field { @apply w-full rounded bg-bg border border-edge px-2 py-1 text-sm focus:border-accent; }
 .label { @apply block text-[11px] uppercase tracking-wide text-gray-500 mb-1; }
+
+/* animated candy-stripe fill for running progress bars */
+.progress-stripes {
+  background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 75%, transparent 75%);
+  background-size: 14px 14px;
+  animation: stripes 0.8s linear infinite;
+}
+@keyframes stripes { to { background-position: 14px 0; } }
+@media (prefers-reduced-motion: reduce) { .progress-stripes { animation: none; } }

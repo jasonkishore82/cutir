@@ -1,4 +1,6 @@
 import { useRef, type ReactNode } from "react";
+import { parseSubtitleFile } from "../lib/subtitles";
+import AutoSync from "./AutoSync";
 import {
   linesToText,
   useProject,
@@ -130,7 +132,19 @@ export default function LeftPanel() {
           value={linesToText(project.lines)}
           onChange={(e) => setLinesFromText(e.target.value)}
         />
-        <p className="text-[11px] text-gray-500">.lrc / .srt import arrives in Phase 3.</p>
+        <button
+          className={btn}
+          onClick={() =>
+            pickFile(".lrc,.srt,text/plain", async (f) => {
+              const lines = parseSubtitleFile(f.name, await f.text());
+              if (!lines.length) return alert("No timed lines found in that file.");
+              useProject.getState().update((p) => ({ ...p, lines }));
+            })
+          }
+        >
+          Import .lrc / .srt
+        </button>
+        <AutoSync />
       </Section>
 
       <Section title="Aspect ratio">

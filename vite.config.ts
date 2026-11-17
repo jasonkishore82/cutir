@@ -9,6 +9,9 @@ const isolation = {
 
 export default defineConfig({
   plugins: [react()],
+  // ffmpeg.wasm spawns its own worker; pre-bundling would break its worker/core URLs
+  optimizeDeps: { exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"] },
+  worker: { format: "es" },
   server: { headers: isolation },
   preview: { headers: isolation },
 });
