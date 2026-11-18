@@ -11,6 +11,7 @@ import {
   type RawOllamaCall,
 } from "../lib/ollama";
 import { cancelAlignment, isAutoSyncIntent, syncOverridesFromText } from "../lib/autosync";
+import { fontIntent, titleCaseFont } from "../lib/fonts";
 import { CHAT_ONLY_PROMPT, applyCalls, buildSystemPrompt, getOllamaTools, isSmallTalk, parseActionsFromText, selectToolGroups, type CallResult, type RawCall } from "../lib/tools";
 
 export type Applied = { results: CallResult[]; before: Project; after: Project; undone?: boolean };
@@ -78,6 +79,30 @@ const write = (k: string, v: string) => {
 
 const HISTORY_TURNS = 8;
 const noTools = new Set<string>(); // models that rejected the `tools` field this session
+
+/** A request clear enough to run without asking the model which tool to use. */
+type DirectIntent = { call: RawCall; done: string; already: string; failHint?: string; sync?: boolean };
+
+function directIntent(text: string): DirectIntent | null {
+  if (isAutoSyncIntent(text)) {
+    return {
+      call: { tool: "auto_sync", args: syncOverridesFromText(text) },
+      done: "Auto-sync finished. Press play to check the timing, or undo it from the card below.",
+      already: "The lyrics are already synced that way.",
+      sync: true,
+    };
+  }
+  const font = fontIntent(text);
+  if (font) {
+    return {
+      call: { tool: "set_font", args: { family: font } },
+      done: `Now using ${titleCaseFont(font)}. It was downloaded from Google Fonts.`,
+      already: `Already using ${titleCaseFont(font)}.`,
+      failHint: "\nCheck the spelling against fonts.google.com, and that you are online.",
+    };
+  }
+  return null;
+}
 let abort: AbortController | null = null;
 
 const NEW_TITLE = "New chat";
@@ -99,8 +124,10 @@ export const useChat = create<ChatState>((set, get) => {
     let lastUser = -1;
     turns.forEach((m, i) => m.role === "user" && (lastUser = i));
     return turns.map((m, i) => {
-      const note = m.applied ? ` (applied: ${m.applied.results.filter((r) => r.ok).map((r) => r.tool).join(", ") || "nothing"})` : "";
-      const msg: ChatMessage = { role: m.role as "user" | "assistant", content: (m.sent ?? m.content ?? "") + note || "ok" };
+      // Keep past assistant turns plain. A label like "(applied: set_background)" gets imitated by small models,
+      // which then answer with the label as text instead of calling the tool. The current state is in the system prompt anyway.
+      const content = m.role === "user" ? m.sent ?? m.content : m.content || (m.applied ? "Done." : "OK.");
+      const msg: ChatMessage = { role: m.role as "user" | "assistant", content: content || "OK." };
       // images are only re-sent with the latest user message (they are large)
       const imgs = i === lastUser ? m.attachments?.filter((a) => a.kind === "image").map((a) => a.data) : undefined;
       if (imgs?.length) msg.images = imgs;
@@ -188,28 +215,27 @@ export const useChat = create<ChatState>((set, get) => {
       const text = raw.trim();
       if ((!text && !attachments.length) || get().busy) return;
 
-      // "auto sync" starts the sync directly: no model round trip, so it works even before a model is picked
-      if (isAutoSyncIntent(text) && !attachments.length) {
+      // Clear requests ("auto sync", "use Roboto font") run directly: no model round trip, so a small model
+      // cannot get them wrong, and they work even before a model is picked.
+      const direct = !attachments.length ? directIntent(text) : null;
+      if (direct) {
         push({ role: "user", content: text, sent: text });
         set((s) => ({
           chats: s.chats.map((c) => (c.id === s.activeId && c.title === NEW_TITLE ? { ...c, title: text.length > 26 ? text.slice(0, 26) + "…" : text } : c)),
         }));
-        const replyId = push({ role: "assistant", content: "", streaming: true, sync: true });
+        const replyId = push({ role: "assistant", content: "", streaming: true, sync: direct.sync });
         const t0 = Date.now();
         set({ busy: true });
         try {
-          const applied = await applyCalls([{ tool: "auto_sync", args: syncOverridesFromText(text) }]);
+          const applied = await applyCalls([direct.call]);
           const r = applied.results[0];
-          if (r.ok) {
-            patchMsg(replyId, {
-              content: "Auto-sync finished. Press play to check the timing, or undo it from the card below.",
-              applied,
-              streaming: false,
-              thoughtSecs: Math.round((Date.now() - t0) / 1000),
-            });
+          if (r.ok && !r.noop) {
+            patchMsg(replyId, { content: direct.done, applied, streaming: false, thoughtSecs: Math.round((Date.now() - t0) / 1000) });
+          } else if (r.ok) {
+            patchMsg(replyId, { content: direct.already, streaming: false });
           } else {
             set((s) => ({ messages: s.messages.filter((m) => m.id !== replyId) }));
-            push({ role: "error", content: r.summary.replace(/^auto_sync: /, "") });
+            push({ role: "error", content: `${r.summary.replace(/^\w+: /, "")}${direct.failHint ?? ""}` });
           }
         } finally {
           set({ busy: false });
@@ -260,6 +286,9 @@ ${a.data}
           .map((c) => ({ tool: c.function!.name!, args: c.function!.arguments ?? {} }));
 
         let shown = stripThink(out.content);
+        // older chats may contain "(applied: ...)" labels that a model copies back as its reply; never show them
+        const leaked = /\(applied:[^)]*\)/i.test(shown);
+        shown = shown.replace(/\(applied:[^)]*\)/gi, "").trim();
         if (!calls.length && !chatOnly) {
           // fallback: ```json {actions:[...]} ``` in the text (also catches tool-capable models that answer in text)
           const parsed = parseActionsFromText(shown);
@@ -278,7 +307,15 @@ ${a.data}
             patchMsg(replyId, { content: shown || "That's already how it is, so nothing changed.", streaming: false, thoughtSecs: took() });
           }
         } else {
-          patchMsg(replyId, { content: shown || "(no reply)", streaming: false, thoughtSecs: took() });
+          patchMsg(replyId, {
+            content:
+              shown ||
+              (leaked
+                ? "I couldn't turn that into an edit. Try being more specific, for example: \"make the background a violet, pink and green gradient\"."
+                : "(no reply)"),
+            streaming: false,
+            thoughtSecs: took(),
+          });
         }
       } catch (e) {
         const aborted = (e as Error).name === "AbortError";

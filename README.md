@@ -43,14 +43,27 @@ Instead of `*` you can use just the dev URL, e.g. `http://localhost:5173`.
 
 In the chat panel the status dot turns green when Ollama is reachable. Pick a model from the dropdown (the refresh button re-reads `/api/tags`).
 
-### Auto-sync lyrics (optional Python helper)
+### Backend (optional): auto-sync lyrics
 
-Cutir can time your lyrics to the song automatically with [stable-ts](https://github.com/jianfch/stable-ts) (Whisper forced alignment). It runs locally; nothing is uploaded anywhere.
+The web app works on its own. The Python backend in [`backend/`](backend/) adds features that need server-side tools. Today that is **auto-sync**: it times your lyrics to the song with [stable-ts](https://github.com/jianfch/stable-ts) (Whisper forced alignment). It runs locally; nothing is uploaded anywhere.
 
 ```bash
-cd tools/aligner
-pip install -r requirements.txt      # needs ffmpeg on PATH
-python server.py                     # http://127.0.0.1:8765
+cd backend
+python -m venv .venv && .venv\Scripts\activate        # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt                       # needs ffmpeg on PATH
+python run.py                                         # http://127.0.0.1:8765
+```
+
+If you run `npm run build` first, the backend also serves the whole app at `http://127.0.0.1:8765/`, so that one command runs everything. During development keep using `npm run dev` for the web app next to it.
+
+```
+backend/
+  run.py                  start the server
+  app/main.py             app setup, CORS, serves dist/
+  app/config.py           settings (environment variables)
+  app/routers/align.py    POST /api/align, POST /api/align_stream (streams progress)
+  app/routers/health.py   GET  /api/health
+  app/services/aligner.py the aligner itself (stable-ts, Demucs)
 ```
 
 Then in the left panel use **Auto-sync lyrics** under *Lyrics*. It gives every line (and every word) a start/end time; undo with Ctrl+Z.
@@ -58,8 +71,8 @@ Then in the left panel use **Auto-sync lyrics** under *Lyrics*. It gives every l
 - `[Verse]` / `[Chorus]` tag lines (Suno adds these) are skipped and removed.
 - For produced songs (Suno, anything with a backing track) turn on **Separate vocals** (`pip install demucs`); alignment is far more accurate on the isolated voice. Use the `small` or `medium` model for better accuracy.
 - Set the **Language** (`en`, `es`, `hi`, ... or `auto`).
-- Env vars: `CUTIR_ALIGNER_PORT`, `CUTIR_ALIGNER_MODEL`, `CUTIR_ALIGNER_DEVICE`, and `CUTIR_ALIGNER_BACKEND=faster` to use faster-whisper (no PyTorch).
-- The helper only accepts requests from pages on `localhost`.
+- Env vars: `CUTIR_PORT` (default 8765), `CUTIR_HOST` (default 127.0.0.1), `CUTIR_ALIGNER_MODEL`, `CUTIR_ALIGNER_DEVICE`, and `CUTIR_ALIGNER_BACKEND=faster` to use faster-whisper (no PyTorch).
+- It listens on `127.0.0.1` only and accepts API calls only from pages on `localhost`.
 
 ## Using it
 

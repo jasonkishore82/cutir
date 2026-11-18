@@ -272,8 +272,9 @@ export default function ChatPanel() {
                     <SyncProgress />
                   </Row>
                 )}
-                {m.streaming && !m.content && !m.sync && (
-                  <Row dot="bg-gray-500 animate-pulse">
+                {/* a reply that is really a tool call written as text ({..}, ```json, <tool_call>) is shown as "thinking", not as raw JSON */}
+                {m.streaming && !m.sync && (!m.content || /^\s*(```|\{|\[|<tool_call>)/.test(m.content)) && (
+                  <Row dot="bg-sky-400 animate-pulse">
                     <Thinking tokens={m.tokens} />
                   </Row>
                 )}
@@ -282,7 +283,7 @@ export default function ChatPanel() {
                     <p className="text-gray-500">Thought for {m.thoughtSecs}s</p>
                   </Row>
                 )}
-                {m.content && (
+                {m.content && !(m.streaming && /^\s*(```|\{|\[|<tool_call>)/.test(m.content)) && (
                   <Row time={m.streaming ? undefined : m.at}>
                     <p className="text-gray-300 whitespace-pre-wrap break-words leading-relaxed">
                       {m.content}

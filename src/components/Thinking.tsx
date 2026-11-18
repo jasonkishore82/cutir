@@ -39,7 +39,7 @@ export default function Thinking({ tokens = 0 }: { tokens?: number }) {
         <span className="tabular-nums">· {secs}s</span>
       </div>
       <div className="flex items-center gap-2">
-        <span className="w-4 text-center text-red-400 text-base leading-none">{GLYPHS[glyph]}</span>
+        <span className="w-4 text-center text-sky-400 text-base leading-none">{GLYPHS[glyph]}</span>
         <span className="shimmer font-medium">{word}…</span>
       </div>
     </div>

@@ -6,7 +6,7 @@ html, body, #root { height: 100%; }
 body { @apply bg-bg text-gray-200 antialiased; font-family: Inter, system-ui, sans-serif; margin: 0; overflow: hidden; }
 input, select, textarea, button { @apply outline-none; }
 .shimmer {
-  background: linear-gradient(90deg, #8b93a3 0%, #8b93a3 35%, #ffd0e0 50%, #8b93a3 65%, #8b93a3 100%);
+  background: linear-gradient(90deg, #8b93a3 0%, #8b93a3 35%, #9fd4ff 50%, #8b93a3 65%, #8b93a3 100%);
   background-size: 250% 100%;
   -webkit-background-clip: text;
   background-clip: text;

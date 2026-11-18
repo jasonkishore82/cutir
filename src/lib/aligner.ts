@@ -3,7 +3,7 @@ import type { LyricLine } from "../store/project";
 export const DEFAULT_ALIGNER_URL = "http://127.0.0.1:8765";
 
 export const ALIGNER_HELP =
-  "Could not reach the aligner. Start it with: pip install -r tools/aligner/requirements.txt, then python tools/aligner/server.py";
+  "Could not reach the Cutir backend. Start it with: pip install -r backend/requirements.txt, then python backend/run.py";
 
 /** Section tags such as [Verse 1] or [Chorus] (Suno adds these); they are not sung. */
 export const isTagLine = (t: string) => /^\s*\[[^\]]*\]\s*$/.test(t);
@@ -24,9 +24,14 @@ const base = (u: string) => u.trim().replace(/\/+$/, "") || DEFAULT_ALIGNER_URL;
 
 export async function checkAligner(url: string, signal?: AbortSignal) {
   try {
-    const res = await fetch(`${base(url)}/health`, { signal });
+    const res = await fetch(`${base(url)}/api/health`, { signal });
     if (!res.ok) throw new Error(`status ${res.status}`);
-    return (await res.json()) as { ok: boolean; backend: string; model: string; ffmpeg: boolean };
+    return (await res.json()) as {
+      ok: boolean;
+      version: string;
+      ffmpeg: boolean;
+      aligner: { backend: string; model: string; device: string; stable_ts: boolean; demucs: boolean };
+    };
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
     throw new Error(ALIGNER_HELP);
@@ -65,7 +70,7 @@ export async function alignLines(
 
   let res: Response;
   try {
-    res = await fetch(`${base(url)}/align_stream`, { method: "POST", body: form, signal });
+    res = await fetch(`${base(url)}/api/align_stream`, { method: "POST", body: form, signal });
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
     throw new Error(ALIGNER_HELP);
