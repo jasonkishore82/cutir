@@ -3,13 +3,7 @@ import { useChat, type Attachment, type ChatEntry } from "../store/chat";
 import { useProject } from "../store/project";
 import Thinking from "./Thinking";
 import SyncProgress from "./SyncProgress";
-
-const DOT: Record<string, string> = {
-  online: "bg-green-500",
-  offline: "bg-red-500",
-  checking: "bg-yellow-400 animate-pulse",
-  unknown: "bg-gray-500",
-};
+import Composer from "./Composer";
 
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
@@ -61,13 +55,11 @@ function AppliedCard({ m }: { m: ChatEntry }) {
 }
 
 export default function ChatPanel() {
-  const { baseUrl, model, models, noToolModels, status, statusDetail, messages, busy, chats, activeId } = useChat();
-  const { setBaseUrl, setModel, refreshModels, send, stop, clear, newChat, switchChat, closeChat } = useChat.getState();
+  const { baseUrl, messages, busy, chats, activeId } = useChat();
+  const { refreshModels, send, newChat, switchChat, closeChat } = useChat.getState();
   const [draft, setDraft] = useState("");
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [urlDraft, setUrlDraft] = useState(baseUrl);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -78,11 +70,6 @@ export default function ChatPanel() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages]);
-
-  const commitUrl = () => {
-    const u = urlDraft.trim();
-    if (u && u !== baseUrl) setBaseUrl(u);
-  };
 
   const submit = () => {
     if ((!draft.trim() && !atts.length) || busy) return;
@@ -122,7 +109,6 @@ export default function ChatPanel() {
       }
     }
     if (next.length) setAtts((x) => [...x, ...next]);
-    if (fileRef.current) fileRef.current.value = "";
   };
 
   return (
@@ -169,41 +155,6 @@ export default function ChatPanel() {
         >
           +
         </button>
-      </div>
-
-      <div className="p-3 border-b border-edge space-y-2">
-        <div className="flex items-center gap-2">
-          <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${DOT[status]}`} title={statusDetail || status} />
-          <input
-            className="field"
-            value={urlDraft}
-            onChange={(e) => setUrlDraft(e.target.value)}
-            onBlur={commitUrl}
-            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget.blur(), commitUrl())}
-            placeholder="http://localhost:11434"
-            aria-label="Ollama URL"
-          />
-        </div>
-        <div className="flex gap-2">
-          <select className="field flex-1" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
-            {!models.length && <option value="">{status === "online" ? "no models installed" : "no models"}</option>}
-            {models.map((m) => (
-              <option key={m} value={m}>{m}{noToolModels.includes(m) ? "  (no tools)" : ""}</option>
-            ))}
-          </select>
-          <button
-            className="px-2 text-xs rounded border border-edge hover:bg-edge"
-            onClick={() => refreshModels()}
-            title="Refresh models"
-          >
-            ↻
-          </button>
-          <button className="px-2 text-xs rounded border border-edge hover:bg-edge" onClick={clear} title="Clear chat">
-            Clear
-          </button>
-        </div>
-        {status === "offline" && <p className="text-[11px] text-red-400">{statusDetail}</p>}
-        {status === "online" && !models.length && <p className="text-[11px] text-yellow-400">{statusDetail}</p>}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-3 text-[13px]">
@@ -299,72 +250,16 @@ export default function ChatPanel() {
         <div ref={endRef} />
       </div>
 
-      <div className="p-3 border-t border-edge">
-        {atts.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {atts.map((a, i) => (
-              <span key={i} className="inline-flex items-center gap-1.5 rounded border border-edge bg-bg pl-1.5 pr-1 py-0.5 text-[11px] text-gray-300 max-w-[160px]">
-                {a.kind === "image" && <img src={`data:image/*;base64,${a.data}`} alt="" className="h-5 w-5 rounded object-cover" />}
-                <span className="truncate">{a.name}</span>
-                <button
-                  aria-label={`Remove ${a.name}`}
-                  className="text-gray-500 hover:text-gray-100 leading-none px-0.5"
-                  onClick={() => setAtts((x) => x.filter((_, j) => j !== i))}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        {attachError && <p className="text-[11px] text-red-400 mb-1">{attachError}</p>}
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <textarea
-              className="field resize-none h-20 !pb-8"
-              placeholder="Describe an edit…  (Enter to send, Shift+Enter for newline)"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  submit();
-                }
-              }}
-            />
-            <input
-              ref={fileRef}
-              type="file"
-              multiple
-              accept="image/*,.txt,.lrc,.srt,.json,.md"
-              className="hidden"
-              onChange={(e) => addFiles(e.target.files)}
-            />
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={busy}
-              title="Attach an image or a .txt / .lrc / .srt file (images need a vision model)"
-              aria-label="Attach file"
-              className="absolute left-1.5 bottom-1.5 h-6 w-6 flex items-center justify-center rounded text-gray-500 hover:text-gray-100 hover:bg-edge disabled:opacity-40"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-              </svg>
-            </button>
-          </div>
-          {busy ? (
-            <button className="px-3 text-xs rounded border border-red-700 text-red-300 hover:bg-red-950" onClick={stop}>Stop</button>
-          ) : (
-            <button
-              className="px-3 text-xs rounded bg-accent text-black font-medium disabled:opacity-40"
-              onClick={submit}
-              disabled={!draft.trim() && !atts.length}
-            >
-              Send
-            </button>
-          )}
-        </div>
+      <div className="border-t border-edge">
+        <Composer
+          draft={draft}
+          setDraft={setDraft}
+          atts={atts}
+          setAtts={setAtts}
+          attachError={attachError}
+          onAddFiles={addFiles}
+          onSubmit={submit}
+        />
       </div>
     </div>
   );

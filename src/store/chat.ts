@@ -12,6 +12,7 @@ import {
 } from "../lib/ollama";
 import { cancelAlignment, isAutoSyncIntent, syncOverridesFromText } from "../lib/autosync";
 import { fontIntent, titleCaseFont } from "../lib/fonts";
+import { beginReply, endReply, speakReplyStream, spokenSummary, stopSpeaking, turnEnded } from "../lib/voice";
 import { CHAT_ONLY_PROMPT, applyCalls, buildSystemPrompt, getOllamaTools, isSmallTalk, parseActionsFromText, selectToolGroups, type CallResult, type RawCall } from "../lib/tools";
 
 export type Applied = { results: CallResult[]; before: Project; after: Project; undone?: boolean };
@@ -155,7 +156,9 @@ export const useChat = create<ChatState>((set, get) => {
       patchMsg(replyId, { tokens });
       if (chunk.content) {
         content += chunk.content;
-        patchMsg(replyId, { content: stripThink(content) });
+        const clean = stripThink(content);
+        patchMsg(replyId, { content: clean });
+        speakReplyStream(clean); // sentences are spoken as they complete, while the model is still writing
       }
       if (chunk.toolCalls) rawCalls.push(...chunk.toolCalls);
     }
@@ -225,20 +228,26 @@ export const useChat = create<ChatState>((set, get) => {
         }));
         const replyId = push({ role: "assistant", content: "", streaming: true, sync: direct.sync });
         const t0 = Date.now();
+        beginReply();
         set({ busy: true });
         try {
           const applied = await applyCalls([direct.call]);
           const r = applied.results[0];
           if (r.ok && !r.noop) {
             patchMsg(replyId, { content: direct.done, applied, streaming: false, thoughtSecs: Math.round((Date.now() - t0) / 1000) });
+            endReply(spokenSummary(applied.results));
           } else if (r.ok) {
             patchMsg(replyId, { content: direct.already, streaming: false });
+            endReply(direct.already);
           } else {
             set((s) => ({ messages: s.messages.filter((m) => m.id !== replyId) }));
-            push({ role: "error", content: `${r.summary.replace(/^\w+: /, "")}${direct.failHint ?? ""}` });
+            const why = r.summary.replace(/^\w+: /, "");
+            push({ role: "error", content: `${why}${direct.failHint ?? ""}` });
+            endReply(`That didn't work. ${why}`);
           }
         } finally {
           set({ busy: false });
+          turnEnded();
         }
         return;
       }
@@ -264,6 +273,7 @@ ${a.data}
       abort = new AbortController();
       const t0 = Date.now();
       const took = () => Math.round((Date.now() - t0) / 1000);
+      beginReply(); // silence anything still being read out from the previous reply
       set({ busy: true });
 
       try {
@@ -302,20 +312,21 @@ ${a.data}
           const failed = applied.results.some((r) => !r.ok);
           if (changed || failed) {
             patchMsg(replyId, { content: shown, applied, streaming: false, thoughtSecs: took() });
+            endReply(spokenSummary(applied.results));
           } else {
             // every call was a no-op: just talk, don't show an "Applied changes" card
-            patchMsg(replyId, { content: shown || "That's already how it is, so nothing changed.", streaming: false, thoughtSecs: took() });
+            const msg = shown || "That's already how it is, so nothing changed.";
+            patchMsg(replyId, { content: msg, streaming: false, thoughtSecs: took() });
+            endReply(msg);
           }
         } else {
-          patchMsg(replyId, {
-            content:
-              shown ||
-              (leaked
-                ? "I couldn't turn that into an edit. Try being more specific, for example: \"make the background a violet, pink and green gradient\"."
-                : "(no reply)"),
-            streaming: false,
-            thoughtSecs: took(),
-          });
+          const msg =
+            shown ||
+            (leaked
+              ? "I couldn't turn that into an edit. Try being more specific, for example: \"make the background a violet, pink and green gradient\"."
+              : "(no reply)");
+          patchMsg(replyId, { content: msg, streaming: false, thoughtSecs: took() });
+          endReply(msg);
         }
       } catch (e) {
         const aborted = (e as Error).name === "AbortError";
@@ -327,12 +338,14 @@ ${a.data}
       } finally {
         abort = null;
         set({ busy: false });
+        turnEnded(); // hands-free mode: listen again once the reply has been spoken
       }
     },
 
     stop: () => {
       abort?.abort();
       cancelAlignment();
+      stopSpeaking();
     },
     clear: () => set({ messages: [] }),
 

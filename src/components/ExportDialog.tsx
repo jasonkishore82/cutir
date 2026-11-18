@@ -99,7 +99,7 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
         {running || progress ? (
           <div className="space-y-1.5">
             <div className="h-2 rounded bg-bg overflow-hidden">
-              <div className="h-full bg-accent transition-[width]" style={{ width: `${Math.round((progress?.fraction ?? 0) * 100)}%` }} />
+              <div className="h-full bg-gradient-to-r from-sky-500 to-sky-300 transition-[width]" style={{ width: `${Math.round((progress?.fraction ?? 0) * 100)}%` }} />
             </div>
             <div className="flex justify-between text-[11px] text-gray-400">
               <span className="truncate">

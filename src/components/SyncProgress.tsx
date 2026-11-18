@@ -68,7 +68,7 @@ export default function SyncProgress() {
       </div>
       <div className="h-2 overflow-hidden rounded-full border border-edge bg-bg">
         <div
-          className={`h-full rounded-full bg-accent ${running ? "progress-stripes" : ""}`}
+          className={`h-full rounded-full bg-gradient-to-r from-sky-500 to-sky-300 ${running ? "progress-stripes" : ""}`}
           style={{ width: `${Math.max(2, value * 100)}%`, transition: "width 120ms linear" }}
         />
       </div>

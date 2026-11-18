@@ -181,7 +181,7 @@ export default function Preview() {
         <button className={btn} onClick={() => seek(0)} title="Back to start">|&lt;</button>
         <input
           type="range"
-          className="flex-1 accent-[#e0709a]"
+          className="flex-1 accent-[#38bdf8]"
           min={0}
           max={duration || 1}
           step={0.01}

@@ -49,7 +49,7 @@ function Slider(props: { label: string; value: number; min: number; max: number;
     <Row label={`${props.label}: ${props.value}`}>
       <input
         type="range"
-        className="w-full accent-[#e0709a]"
+        className="w-full accent-[#38bdf8]"
         min={props.min}
         max={props.max}
         step={props.step ?? 1}

@@ -7,7 +7,7 @@ export default {
         bg: "#0f1115",
         panel: "#161a21",
         edge: "#262c36",
-        accent: "#e0709a",
+        accent: "#38bdf8",
       },
     },
   },
