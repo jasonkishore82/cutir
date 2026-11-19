@@ -214,3 +214,42 @@ editable and undoable as one operation.
 
 Every idea keeps Cutir's rules: project data in, frames out, the same draw path for preview and export, every edit one
 undoable operation, and every feature reachable from the chat.
+
+## Beat sync plan
+
+Not built yet. It builds on ideas 2, 3 and 8 above and comes after the phase 12-14 timeline work.
+
+### 1. Find the beats once (foundation)
+
+- When a song is added, detect its tempo and every beat time from onset strength (sudden jumps in spectral energy,
+  such as drum hits).
+- Run it in the Python backend next to auto-sync (librosa or madmom, accurate) or in the browser with Web Audio (works
+  offline).
+- Save beats as timeline markers of kind `beat` (downbeats flagged), so beat times are project data: preview and
+  export always match, and the song is not re-analysed on each render.
+- Show beat ticks on the ruler, downbeats stronger. Line edges, keyframes and clip edits snap to them (phase 13
+  snapping).
+
+### 2. React to the beats
+
+- New animation slot next to In / Out / Loop: `animation.beat: { name, strength }`. Effects: pulse, flash, shake,
+  nudge, colour swap, jump cut.
+- The renderer takes the time since the nearest beat and applies a short decaying effect, combined with the other
+  animations through `combineFx`, like a loop.
+- Hit strength follows the drum onset at that beat, so big hits react more than soft ones.
+
+### 3. Follow the energy
+
+- Work out the song's loudness curve once and store it with the media item.
+- It drives size, motion speed and shake strength: calm in quiet verses, intense in loud choruses.
+
+### 4. Later
+
+- Virtual camera moves timed to downbeats (idea 7).
+- Kinetic templates with a built-in beat reaction, such as "Hip-hop punch" (idea 9).
+- Chat tools for requests like "pulse on the beat" or "cut to the next line on every downbeat".
+
+### Order
+
+Beat detection together with words as objects, then beat reactions: the biggest visible change for the least work.
+Best done as its own phase once phases 12-14 land.
