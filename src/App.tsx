@@ -182,9 +182,9 @@ export default function App() {
   const [section, setSectionState] = useState<SectionId>(() => {
     try {
       const v = localStorage.getItem("cutir:section");
-      return v === "lyrics" || v === "style" || v === "motion" ? v : "media";
+      return v === "media" || v === "lyrics" || v === "style" || v === "motion" ? v : "import";
     } catch {
-      return "media";
+      return "import";
     }
   });
   const setSection = (s: SectionId) => {

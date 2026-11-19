@@ -50,7 +50,7 @@ function Tile({ item, onUse }: { item: MediaItem; onUse: (item: MediaItem) => vo
         <p className="truncate text-[12px] text-gray-200" title={item.name}>{item.name}</p>
         <p className="text-[10px] text-gray-500">{size(item.size)}</p>
         <button
-          className="w-full truncate rounded-md border border-edge px-2 py-1 text-[11px] text-gray-300 hover:bg-raised hover:text-white"
+          className="w-full whitespace-nowrap rounded-md border border-edge px-1 py-1 text-[11px] text-gray-300 hover:bg-raised hover:text-white"
           onClick={() => onUse(item)}
         >
           {item.kind === "audio" ? "Set song" : "Set background"}

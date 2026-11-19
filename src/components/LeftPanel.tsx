@@ -120,41 +120,10 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
         <h2 className="text-gradient text-[19px] font-semibold tracking-tight">{meta.title}</h2>
       </header>
 
-      {tab === "media" && (
+      {tab === "import" && (
         <>
           <Card title="Media pool">
             <MediaPool onUse={useFromPool} />
-          </Card>
-
-          <Card title="Song">
-            <ActionButton icon="music" active={!!project.audio} onClick={() => pickFile("audio/*,.mp3,.wav,.m4a", chooseAudio)}>
-              {project.audio ? project.audio.name : "Choose audio file"}
-            </ActionButton>
-          </Card>
-
-          <Card title="Background">
-            <ActionButton
-              icon="image"
-              active={project.background.type === "asset"}
-              onClick={() => pickFile("image/*,video/*", chooseBackground)}
-            >
-              {project.background.type === "asset" && project.background.asset ? project.background.asset.name : "Choose image or video"}
-            </ActionButton>
-            <div>
-              <span className="label">Gradients</span>
-              <div className="grid grid-cols-4 gap-2">
-                {GRADIENT_PRESETS.map((g) => (
-                  <button
-                    key={g.name}
-                    title={g.name}
-                    aria-label={`${g.name} gradient`}
-                    className="aspect-square rounded-xl border border-white/10 ring-offset-2 ring-offset-panel hover:ring-2 hover:ring-white/30"
-                    style={{ background: `linear-gradient(${g.angle}deg, ${g.colors.join(",")})` }}
-                    onClick={() => (setBackground({ type: "gradient", colors: g.colors, angle: g.angle, noise: true }), useLibrary.getState().clearAsset("bg"))}
-                  />
-                ))}
-              </div>
-            </div>
           </Card>
 
           <Card title="Canva">
@@ -184,6 +153,41 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
                 <li>Choose Share, then Download, and pick PNG, JPG, GIF or MP4.</li>
                 <li>Import the file here, or drop it on this card.</li>
               </ol>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {tab === "media" && (
+        <>
+          <Card title="Song">
+            <ActionButton icon="music" active={!!project.audio} onClick={() => pickFile("audio/*,.mp3,.wav,.m4a", chooseAudio)}>
+              {project.audio ? project.audio.name : "Choose audio file"}
+            </ActionButton>
+          </Card>
+
+          <Card title="Background">
+            <ActionButton
+              icon="image"
+              active={project.background.type === "asset"}
+              onClick={() => pickFile("image/*,video/*", chooseBackground)}
+            >
+              {project.background.type === "asset" && project.background.asset ? project.background.asset.name : "Choose image or video"}
+            </ActionButton>
+            <div>
+              <span className="label">Gradients</span>
+              <div className="grid grid-cols-4 gap-2">
+                {GRADIENT_PRESETS.map((g) => (
+                  <button
+                    key={g.name}
+                    title={g.name}
+                    aria-label={`${g.name} gradient`}
+                    className="aspect-square rounded-xl border border-white/10 ring-offset-2 ring-offset-panel hover:ring-2 hover:ring-white/30"
+                    style={{ background: `linear-gradient(${g.angle}deg, ${g.colors.join(",")})` }}
+                    onClick={() => (setBackground({ type: "gradient", colors: g.colors, angle: g.angle, noise: true }), useLibrary.getState().clearAsset("bg"))}
+                  />
+                ))}
+              </div>
             </div>
           </Card>
 

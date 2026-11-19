@@ -1,8 +1,9 @@
 import { Icon, type IconName } from "./ui";
 
-export type SectionId = "media" | "lyrics" | "style" | "motion";
+export type SectionId = "import" | "media" | "lyrics" | "style" | "motion";
 
 export const SECTIONS: { id: SectionId; label: string; icon: IconName; title: string }[] = [
+  { id: "import", label: "Import", icon: "import", title: "Import" },
   { id: "media", label: "Media", icon: "media", title: "Media" },
   { id: "lyrics", label: "Lyrics", icon: "lyrics", title: "Lyrics" },
   { id: "style", label: "Style", icon: "style", title: "Text style" },
