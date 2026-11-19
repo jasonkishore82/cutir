@@ -12,7 +12,7 @@ Reference: Multi-angle and dual-system sound are standard for interviews, concer
 - Switch video only, audio only or both; adjust cuts afterwards like normal edits
 
 ## Lyric and music use
-- Beat detection to snap cuts to the beat; beat markers on the ruler
+- Snap cuts to the beat using the beat markers from phase 16.5
 - Auto-assemble a montage from clips on the beat as a starting point
 
 ## Done when
