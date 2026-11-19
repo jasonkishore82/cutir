@@ -35,7 +35,7 @@ export const APP_TOOLS: ToolSpec[] = [
   {
     name: "get_project",
     description:
-      "Summary of the project open in Cutir: aspect, frame rate, duration, playhead, lyric lines (index, layer, times, text), the timeline's tracks and clips with ids, markers, in/out, the media library and what is selected. Read this first.",
+      "Summary of the project open in Cutir: aspect, frame rate, duration, playhead, lyric lines (index, layer, times, text, emphasised words and other word overrides as 1-based word numbers), beats (count, tempo) and the beat reaction and energy, the timeline's tracks and clips with ids, markers, in/out, the media library and what is selected. Read this first.",
     inputSchema: obj(),
   },
   { name: "list_media", description: "Files in the Cutir media library: id, name, kind, duration, size, status.", inputSchema: obj() },

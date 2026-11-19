@@ -7,10 +7,11 @@ import { addLayer, moveLayer, moveLineToLayer, removeLayer, updateLayer, updateL
 import { getTime, play, seek, setLoop, usePlayback, pause } from "../lib/transport";
 import { addKeyAtPlayhead, copyKey, pasteKey, removeKey, splitKeyframes, updateKey, useKeyUi } from "../lib/keyframes";
 import { EASING_NAMES, TRANSITIONS, TRANSITION_NAMES } from "../lib/animations";
-import TrackLanes from "./TrackLanes";
-import { activeTimeline } from "../model/convert";
+import TrackLanes, { energyPath } from "./TrackLanes";
+import { activeTimeline, beatsOf } from "../model/convert";
+import { isBeat } from "../model/types";
 import * as TE from "../timeline/engine";
-import { timecode, useTimelineUi } from "../timeline/ui";
+import { beatSnapOn, timecode, useTimelineUi } from "../timeline/ui";
 import { handleTimelineKey, loopRange, sourceEdit, sourceEditProblem, SOURCE_EDITS } from "../timeline/commands";
 import { useMedia } from "../store/media";
 import { useCacheInfo } from "../render/cache";
@@ -22,6 +23,7 @@ const RULER_H = 18;
 const LANE_H = 44;
 const GUTTER = 176; // width of the fixed layer-header column
 const MAX_LAYERS = 8;
+const SNAP_PX = 8; // beat snapping reach, in pixels
 
 const snap = (t: number) => Math.round(Math.round(t / SNAP) * SNAP * 100) / 100;
 const isTyping = (t: EventTarget | null) => {
@@ -388,6 +390,11 @@ export default function Timeline() {
   const tool = useTimelineUi((s) => s.tool);
   const cacheRanges = useCacheInfo((s) => s.ranges);
   const snapping = useTimelineUi((s) => s.snapping);
+  const beatSnap = useTimelineUi((s) => s.beatSnap);
+  const beats = useProject((s) => beatsOf(activeTimeline(s.doc)));
+  const energy = useProject((s) => s.project.energy);
+  const beatsRef = useRef(beats);
+  beatsRef.current = beats;
   const sourceName = useMedia((s) => s.items.find((i) => i.id === useTimelineUi.getState().sourceId)?.name);
   useTimelineUi((s) => s.sourceId); // re-render when the source changes
   const total = useMemo(
@@ -498,6 +505,24 @@ export default function Timeline() {
     return () => sc.removeEventListener("wheel", onWheel);
   }, []);
 
+  /* ---------- visible time window (beat ticks and the energy curve draw only what is in view) ---------- */
+  const [view, setView] = useState({ t0: 0, t1: 60 });
+  useEffect(() => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const update = () => setView({ t0: Math.max(0, sc.scrollLeft / pps - 1), t1: (sc.scrollLeft + sc.clientWidth) / pps + 1 });
+    update();
+    sc.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      sc.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [pps]);
+
+  /** Snap a time to the nearest beat within reach, when beat snapping is on (Alt flips snapping). */
+  const toBeat = (t: number, alt: boolean) => (beatSnapOn(alt) ? TE.snapToBeat(beatsRef.current, t, SNAP_PX / ppsRef.current) : t);
+
   const fitToView = () => {
     const sc = scrollRef.current;
     if (!sc) return;
@@ -511,7 +536,7 @@ export default function Timeline() {
   /* ---------- seeking by dragging on ruler / waveform ---------- */
   const seekFromEvent = (e: React.PointerEvent) => {
     const rect = e.currentTarget.getBoundingClientRect(); // left edge = time 0
-    seek(Math.max(0, (e.clientX - rect.left) / pps));
+    seek(Math.max(0, toBeat((e.clientX - rect.left) / pps, e.altKey)));
   };
   const onScrubDown = (e: React.PointerEvent) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -546,14 +571,25 @@ export default function Timeline() {
     const dt = (e.clientX - d.x0) / pps;
     let start = d.start;
     let end = d.end;
+    // an edge near a beat lands on it (beat snapping on), else times keep to the 0.05 s grid
+    const edge = (t: number) => {
+      const b = toBeat(t, e.altKey);
+      return b !== t ? b : snap(t);
+    };
     if (d.mode === "move") {
       const len = d.end - d.start;
-      start = Math.max(0, snap(d.start + dt));
-      end = snap(start + len);
+      const s0 = d.start + dt;
+      const bs = toBeat(s0, e.altKey);
+      const be = toBeat(s0 + len, e.altKey) - len;
+      // whichever edge is closer to a beat wins; with no beat in reach keep to the grid
+      const onBeat = bs !== s0 || be !== s0;
+      const pick = !onBeat ? snap(s0) : bs === s0 ? be : be === s0 ? bs : Math.abs(bs - s0) <= Math.abs(be - s0) ? bs : be;
+      start = Math.max(0, pick);
+      end = onBeat ? start + len : snap(start + len);
     } else if (d.mode === "l") {
-      start = Math.min(Math.max(0, snap(d.start + dt)), d.end - MIN_LEN);
+      start = Math.min(Math.max(0, edge(d.start + dt)), d.end - MIN_LEN);
     } else {
-      end = Math.max(snap(d.end + dt), d.start + MIN_LEN);
+      end = Math.max(edge(d.end + dt), d.start + MIN_LEN);
     }
     const st = useProject.getState();
     st.updateLine(d.id, { start, end });
@@ -614,8 +650,11 @@ export default function Timeline() {
       useProject.getState().beginGesture();
     }
     const fps = useProject.getState().project.fps;
-    const t = Math.min(d.dur, Math.max(0, d.time0 + (e.clientX - d.x0) / pps));
-    updateKey(d.lineId, d.id, { time: Math.round(t * fps) / fps });
+    const line = useProject.getState().project.lines.find((x) => x.id === d.lineId);
+    const raw = d.time0 + (e.clientX - d.x0) / pps;
+    const onBeat = line ? toBeat(line.start + raw, e.altKey) - line.start : raw; // beats are on the timeline's clock
+    const t = Math.min(d.dur, Math.max(0, onBeat));
+    updateKey(d.lineId, d.id, { time: onBeat !== raw ? t : Math.round(t * fps) / fps });
   };
   const onKeyUp = () => {
     const d = keyDrag.current;
@@ -849,6 +888,23 @@ export default function Timeline() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [stopSync]);
 
+  // beat ticks in view, thinned so they never crowd (downbeats are kept longest)
+  const beatTicks = useMemo(() => {
+    const shown = TE.thinBeats(TE.inWindow(beats, view.t0, view.t1), pps);
+    let beat = "";
+    let down = "";
+    for (const b of shown) {
+      const x = (b.time * pps).toFixed(1);
+      if (b.downbeat) down += `M${x},${RULER_H}V${RULER_H - 9}`;
+      else beat += `M${x},${RULER_H}V${RULER_H - 4}`;
+    }
+    return { beat, down };
+  }, [beats, view.t0, view.t1, pps]);
+  const energyArea = useMemo(
+    () => (energy ? energyPath(energy, { start: 0, duration: total, sourceIn: 0, speed: 1 }, view.t0, view.t1, pps, WAVE_H) : ""),
+    [energy, view.t0, view.t1, pps, total]
+  );
+
   const ticks = useMemo(() => {
     const step = pps >= 120 ? 1 : pps >= 50 ? 5 : pps >= 25 ? 10 : pps >= 10 ? 30 : 60;
     return Array.from({ length: Math.floor(total / step) + 1 }, (_, i) => i * step);
@@ -903,6 +959,14 @@ export default function Timeline() {
             className={`rounded px-1.5 py-0.5 text-[11px] ${snapping ? "bg-accent/25 text-accent" : "text-gray-400 hover:bg-white/10"}`}
           >
             Snap
+          </button>
+          <button
+            aria-pressed={beatSnap}
+            title={`Snap to beats (Shift+N): line edges, keyframes, clips and the playhead land on the nearest beat while snapping is on.${beats.length ? "" : " No beats detected yet."}`}
+            onClick={() => useTimelineUi.setState({ beatSnap: !beatSnap })}
+            className={`rounded px-1.5 py-0.5 text-[11px] ${beatSnap && snapping ? "bg-accent/25 text-accent" : beatSnap ? "text-accent/70 hover:bg-white/10" : "text-gray-400 hover:bg-white/10"}`}
+          >
+            Beats
           </button>
         </div>
         <div className="flex items-center gap-0.5" role="group" aria-label="Edit from the media library">
@@ -981,7 +1045,13 @@ export default function Timeline() {
                     <span className="absolute top-0 h-full border-r-2 border-accent" style={{ left: tlOut * pps - 2 }} title={`Out ${timecode(tlOut, fps)} (O)`} />
                   )}
                   {tlIn !== undefined && tlOut !== undefined && <span className="absolute top-0 h-full bg-accent/15" style={{ left: tlIn * pps, width: (tlOut - tlIn) * pps }} />}
-                  {tlMarkers.filter((m) => !m.clipId).map((m) => (
+                  {(beatTicks.beat || beatTicks.down) && (
+                    <svg className="pointer-events-none absolute left-0 top-0" width={width} height={RULER_H} aria-hidden>
+                      <path d={beatTicks.beat} style={{ stroke: "rgb(var(--white) / 0.28)", strokeWidth: 1 }} />
+                      <path d={beatTicks.down} style={{ stroke: "rgb(var(--white) / 0.6)", strokeWidth: 1.5 }} />
+                    </svg>
+                  )}
+                  {tlMarkers.filter((m) => !m.clipId && !isBeat(m)).map((m) => (
                     <button
                       key={m.id}
                       className="absolute top-0 z-10 h-0 w-0 -translate-x-[5px] border-x-[5px] border-t-[9px] border-x-transparent"
@@ -997,8 +1067,15 @@ export default function Timeline() {
                     />
                   ))}
                 </div>
-                <div ref={waveRef} style={{ height: WAVE_H, width }} className={audioUrl ? "" : "flex items-center px-3 text-xs text-gray-600"}>
-                  {!audioUrl && "Upload audio to see the waveform"}
+                <div className="relative" style={{ height: WAVE_H, width }}>
+                  {audioUrl && energyArea && (
+                    <svg className="pointer-events-none absolute left-0 top-0" width={width} height={WAVE_H} aria-hidden>
+                      <path d={energyArea} style={{ fill: "rgb(var(--accent) / 0.12)", stroke: "rgb(var(--accent) / 0.3)", strokeWidth: 1 }} />
+                    </svg>
+                  )}
+                  <div ref={waveRef} style={{ height: WAVE_H, width }} className={`relative ${audioUrl ? "" : "flex items-center px-3 text-xs text-gray-600"}`}>
+                    {!audioUrl && "Upload audio to see the waveform"}
+                  </div>
                 </div>
               </div>
               {loop && <div className="absolute top-0 bottom-0 bg-accent/10 pointer-events-none" style={{ left: loop.start * pps, width: (loop.end - loop.start) * pps }} />}

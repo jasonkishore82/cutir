@@ -12,12 +12,18 @@ export type EffectName =
   | "typewriter" | "word-highlight" | "word-by-word" | "letter-by-letter";
 export type LoopName = "none" | "float" | "pulse" | "shake" | "glow" | "wave";
 export type Easing = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "back" | "elastic";
+/** Short decaying reactions that fire on each beat (phase 16.5). */
+export type BeatName = "none" | "pulse" | "flash" | "shake" | "nudge" | "colour-swap" | "jump-cut";
+/** The beat slot: `strength` 0..2 (1 = normal); `downbeatsOnly` reacts on the first beat of each bar only. */
+export type BeatSlot = { name: BeatName; strength: number; downbeatsOnly: boolean };
 
 /** How a line appears, stays and leaves. `ms` of 0 means the effect's own automatic duration (typewriter) or none. */
 export type AnimationSpec = {
   in: { name: EffectName; ms: number; easing: Easing };
   out: { name: EffectName; ms: number; easing: Easing };
   loop: { name: LoopName; speed: number };
+  /** Reaction on each beat of the song (phase 16.5). Missing = none. */
+  beat?: BeatSlot;
 };
 export type Position = "top" | "center" | "bottom";
 
@@ -61,7 +67,38 @@ export type TextStyle = {
   transform: Transform;
   animation: AnimationSpec;
   highlight: Highlight;
+  /**
+   * Looks for emphasised words, by level: index 0 is level 1 (mild) to index 2 is level 3 (strongest). A word's
+   * `emphasis` picks one; changing a level here restyles every word at that level. Missing = DEFAULT_EMPHASIS.
+   */
+  emphasis?: EmphasisLevel[];
+  /** How much the song's loudness drives motion: 0 = not at all, 1 = fully (phase 16.5). Missing = 0. */
+  energy?: number;
 };
+
+/** How an emphasis level changes a word: size multiplier, optional colour and bolder weight. */
+export type EmphasisLevel = { scale: number; color?: string; bold?: boolean };
+
+/**
+ * Per-word overrides of a line, keyed by word index (words of `line.text` split on whitespace, counted across the
+ * whole line). Everything falls back to the line.
+ */
+export type WordOverride = {
+  /** Style on top of the line's resolved style (colour, font, outline, animation slots...). */
+  style?: StyleOverride;
+  /** Extra placement of the word relative to where the line's layout puts it. x, y are fractions of the canvas. */
+  transform?: { x?: number; y?: number; scale?: number; rotation?: number };
+  /** Motion keyframes for this word; times are relative to the line's start, like line keyframes. */
+  keyframes?: Keyframe[];
+  /** Emphasis level 1..3 (0 or missing = normal). */
+  emphasis?: 0 | 1 | 2 | 3;
+};
+
+/** One beat of the song, read from the timeline's beat markers. `strength` is the onset strength, 0..1. */
+export type Beat = { time: number; downbeat: boolean; strength: number };
+
+/** Loudness curve of a song: `values[i]` (0..1) is the level at `i / rate` seconds. */
+export type EnergyCurve = { rate: number; values: number[] };
 
 /** Overrides for a layer or a line: any subset of the style, including single fields inside shadow, outline and transform. */
 type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
@@ -80,6 +117,8 @@ export type LyricLine = {
   keyframes?: Keyframe[];
   /** Transition into the next line on the same layer. Missing = the project's default transition. */
   transition?: Transition;
+  /** Per-word overrides (phase 16.5), keyed by word index. */
+  wordOverrides?: Record<number, WordOverride>;
 };
 
 /** Properties a keyframe can animate. All are offsets on top of the resolved style and the in/out/loop animation. */
@@ -111,6 +150,12 @@ export type Project = {
   fps: 30 | 60;
   /** Default transition between consecutive lines; a line's own `transition` overrides it. */
   transition: Transition;
+  /**
+   * Read-only, derived from the document by docToView (never written back by viewToDoc): the beats of the active
+   * timeline (its `kind: "beat"` markers, sorted by time) and the song's loudness curve. Change them with editDoc.
+   */
+  beats?: Beat[];
+  energy?: EnergyCurve;
 };
 
 /* ---------- Defaults ---------- */
@@ -138,9 +183,18 @@ export const DEFAULT_STYLE: TextStyle = {
     in: { name: "fade", ms: 200, easing: "linear" },
     out: { name: "fade", ms: 200, easing: "linear" },
     loop: { name: "none", speed: 1 },
+    beat: { name: "none", strength: 1, downbeatsOnly: false },
   },
   highlight: { tint: false, color: "#ffd84a", activeScale: 1 },
+  emphasis: [{ scale: 1.3 }, { scale: 1.65, bold: true }, { scale: 2, bold: true, color: "#ffd84a" }],
+  energy: 0,
 };
+
+export const DEFAULT_EMPHASIS: EmphasisLevel[] = DEFAULT_STYLE.emphasis!;
+export const DEFAULT_BEAT: BeatSlot = DEFAULT_STYLE.animation.beat!;
+
+/** Words of a line as word overrides index them: `line.text` split on whitespace, empty parts dropped. */
+export const lineWords = (text: string): string[] => text.split(/\s+/).filter(Boolean);
 
 export const mainLayer = (): Layer => ({ id: "main", name: "Lyrics", visible: true, locked: false });
 
@@ -193,7 +247,7 @@ function deepMerge(base: Record<string, unknown>, over: Record<string, unknown>)
 }
 
 /** Lay overrides over a base style. Groups (shadow, outline, transform, animation) merge field by field. */
-function mergeStyle(base: TextStyle, ...layers: (StyleOverride | undefined)[]): TextStyle {
+export function mergeStyle(base: TextStyle, ...layers: (StyleOverride | undefined)[]): TextStyle {
   let out = base as unknown as Record<string, unknown>;
   for (const o of layers) if (o) out = deepMerge(out, o as Record<string, unknown>);
   return out as unknown as TextStyle;
@@ -217,6 +271,54 @@ export const effectiveStyle = resolveStyle;
 const DEFAULT_LEN = 3;
 const DEFAULT_GAP = 0.2;
 
+/**
+ * Pairs of word indexes (old, new) that are the same word, by longest common subsequence on lower-cased words, so
+ * fixing a typo or adding a word keeps the other words' overrides.
+ */
+export function matchWords(a: string[], b: string[]): [number, number][] {
+  const A = a.map((w) => w.toLowerCase());
+  const B = b.map((w) => w.toLowerCase());
+  const L: number[][] = Array.from({ length: A.length + 1 }, () => new Array<number>(B.length + 1).fill(0));
+  for (let i = A.length - 1; i >= 0; i--)
+    for (let j = B.length - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const out: [number, number][] = [];
+  for (let i = 0, j = 0; i < A.length && j < B.length; ) {
+    if (A[i] === B[j]) out.push([i++, j++]);
+    else if (L[i + 1][j] >= L[i][j + 1]) i++;
+    else j++;
+  }
+  return out;
+}
+
+/** A line with new text: word overrides follow their words; word timings stay only when every word still matches. */
+export function retext(line: LyricLine, text: string): LyricLine {
+  const before = lineWords(line.text);
+  const after = lineWords(text);
+  const pairs = matchWords(before, after);
+  const next: LyricLine = { ...line, text, words: undefined };
+  if (line.words && line.words.length === before.length && before.length === after.length && pairs.length === after.length)
+    next.words = pairs.map(([i, j]) => ({ ...line.words![i], text: after[j] }));
+  if (line.wordOverrides) {
+    const wo: Record<number, WordOverride> = {};
+    for (const [i, j] of pairs) if (line.wordOverrides[i]) wo[j] = line.wordOverrides[i];
+    if (Object.keys(wo).length) next.wordOverrides = wo;
+    else delete next.wordOverrides;
+  }
+  return next;
+}
+
+/** A line with one word's override merged with `patch` (undefined fields removed, empty overrides dropped). */
+export function setWordOverride(line: LyricLine, index: number, patch: Partial<WordOverride>): LyricLine {
+  const cur: Record<string, unknown> = { ...(line.wordOverrides?.[index] ?? {}), ...patch };
+  for (const k of Object.keys(cur)) if (cur[k] === undefined || (k === "emphasis" && cur[k] === 0)) delete cur[k];
+  const wo = { ...(line.wordOverrides ?? {}) };
+  if (Object.keys(cur).length) wo[index] = cur as WordOverride;
+  else delete wo[index];
+  const next: LyricLine = { ...line, wordOverrides: wo };
+  if (!Object.keys(wo).length) delete next.wordOverrides;
+  return next;
+}
+
 /** Rebuild lines from textarea text, keeping existing ids/timings by index. */
 export function linesFromText(text: string, prev: LyricLine[]): LyricLine[] {
   const rows = text.split("\n").map((r) => r.trim()).filter(Boolean);
@@ -224,7 +326,7 @@ export function linesFromText(text: string, prev: LyricLine[]): LyricLine[] {
   rows.forEach((row, i) => {
     const old = prev[i];
     if (old) {
-      out.push(old.text === row ? old : { ...old, text: row, words: undefined });
+      out.push(old.text === row ? old : retext(old, row));
       return;
     }
     // New line: place after the previous line with a default length.
@@ -262,6 +364,8 @@ type State = {
   selectedLineId: string | null;
   /** Every selected line, the primary one included. */
   selectedIds: string[];
+  /** A single word picked on the preview (double-click a line); null = whole lines are selected. */
+  selectedWord: { lineId: string; index: number } | null;
   /** The layer the lyrics box, tap-sync and "add" act on. */
   activeLayerId: string;
   chatOpen: boolean;
@@ -298,6 +402,10 @@ type State = {
   select: (id: string | null, add?: boolean) => void;
   selectMany: (ids: string[]) => void;
   setActiveLayer: (id: string) => void;
+  /** Pick one word of a line (also selects that line), or null to go back to whole lines. */
+  selectWord: (w: { lineId: string; index: number } | null) => void;
+  /** Merge `patch` into one word's override (undoable). Undefined fields are removed; an empty override is dropped. */
+  updateWord: (lineId: string, index: number, patch: Partial<WordOverride>, coalesceKey?: string) => void;
   toggleChat: () => void;
   setSync: (on: boolean, index?: number) => void;
   setSyncIndex: (i: number) => void;
@@ -346,6 +454,7 @@ export const useProject = create<State>((set, get) => ({
   future: [],
   selectedLineId: null,
   selectedIds: [],
+  selectedWord: null,
   activeLayerId: "main",
   chatOpen: false,
   syncMode: false,
@@ -439,20 +548,23 @@ export const useProject = create<State>((set, get) => ({
   loadDoc: (doc) => {
     const project = docToView(doc);
     lastKey = undefined;
-    set({ doc, project, past: [], future: [], selectedLineId: null, selectedIds: [], activeLayerId: project.layers[0].id });
+    set({ doc, project, past: [], future: [], selectedLineId: null, selectedIds: [], selectedWord: null, activeLayerId: project.layers[0].id });
   },
   select: (id, add) =>
     set((s) => {
-      if (id === null) return { selectedLineId: null, selectedIds: [] };
-      if (!add) return { selectedLineId: id, selectedIds: [id] };
+      if (id === null) return { selectedLineId: null, selectedIds: [], selectedWord: null };
+      if (!add) return { selectedLineId: id, selectedIds: [id], selectedWord: s.selectedWord?.lineId === id ? s.selectedWord : null };
       if (s.selectedIds.includes(id)) {
         const rest = s.selectedIds.filter((x) => x !== id);
         return { selectedIds: rest, selectedLineId: s.selectedLineId === id ? rest[rest.length - 1] ?? null : s.selectedLineId };
       }
       return { selectedIds: [...s.selectedIds, id], selectedLineId: id };
     }),
-  selectMany: (ids) => set({ selectedIds: ids, selectedLineId: ids[ids.length - 1] ?? null }),
+  selectMany: (ids) => set({ selectedIds: ids, selectedLineId: ids[ids.length - 1] ?? null, selectedWord: null }),
   setActiveLayer: (activeLayerId) => set({ activeLayerId }),
+  selectWord: (w) => set(w ? { selectedWord: w, selectedLineId: w.lineId, selectedIds: [w.lineId] } : { selectedWord: null }),
+  updateWord: (lineId, index, patch, key) =>
+    get().update((p) => ({ ...p, lines: p.lines.map((l) => (l.id === lineId ? setWordOverride(l, index, patch) : l)) }), key),
   toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
   setSync: (syncMode, index) => set((s) => ({ syncMode, syncIndex: index ?? (syncMode ? 0 : s.syncIndex) })),
   setSyncIndex: (syncIndex) => set({ syncIndex }),

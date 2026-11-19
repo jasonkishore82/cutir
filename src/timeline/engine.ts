@@ -1,4 +1,6 @@
 import type { Clip, Marker, ProjectDoc, Timeline, Track, TrackKind } from "../model/types";
+import { isBeat } from "../model/types";
+import { beatsOf } from "../model/convert";
 
 /**
  * The editing engine for multi-track timelines (phases 13 and 14).
@@ -132,7 +134,42 @@ export function targetTrack(tl: Timeline, kind: TrackKind): Track | undefined {
 
 /* ---------- snapping ---------- */
 
-export type SnapSource = { playhead?: number; markers?: boolean; edges?: boolean; grid?: number };
+/** What edges snap to. `markers` = user markers (on unless false); `beats` = beat markers (off unless true). */
+export type SnapSource = { playhead?: number; markers?: boolean; beats?: boolean; edges?: boolean; grid?: number };
+
+/** Index of the first item with `time >= t` in a list sorted by time (binary search). */
+export function lowerBound(list: { time: number }[], t: number): number {
+  let lo = 0;
+  let hi = list.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid].time < t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Items of a time-sorted list inside [t0, t1] (binary search; for drawing only what is in view). */
+export function inWindow<T extends { time: number }>(list: T[], t0: number, t1: number): T[] {
+  return list.slice(lowerBound(list, t0), lowerBound(list, t1 + EPS));
+}
+
+/**
+ * The nearest beat to t within `tolerance` seconds, else t unchanged. `beats` must be sorted by time.
+ * On a tie between a beat and a downbeat the downbeat wins.
+ */
+export function snapToBeat(beats: { time: number; downbeat?: boolean }[], t: number, tolerance: number): number {
+  if (!beats.length) return t;
+  const i = lowerBound(beats, t);
+  let best: { time: number; downbeat?: boolean } | undefined;
+  for (const b of [beats[i - 1], beats[i]]) {
+    if (!b || Math.abs(b.time - t) > tolerance + EPS) continue;
+    const d = Math.abs(b.time - t);
+    const bd = best ? Math.abs(best.time - t) : Infinity;
+    if (d < bd - EPS || (Math.abs(d - bd) <= EPS && b.downbeat && !best?.downbeat)) best = b;
+  }
+  return best ? best.time : t;
+}
 
 /** Times that edges snap to. `exclude` = clips being dragged (they do not snap to themselves). */
 export function snapPoints(tl: Timeline, src: SnapSource, exclude: Iterable<string> = [], range?: [number, number]): number[] {
@@ -140,11 +177,37 @@ export function snapPoints(tl: Timeline, src: SnapSource, exclude: Iterable<stri
   const pts: number[] = [0];
   if (src.playhead !== undefined) pts.push(src.playhead);
   if (src.edges !== false) for (const c of tl.clips) if (editable(c) && !ex.has(c.id)) pts.push(c.start, clipEnd(c));
-  if (src.markers !== false) for (const m of tl.markers) if (!m.clipId) pts.push(m.time);
+  if (src.markers !== false) for (const m of tl.markers) if (!m.clipId && !isBeat(m)) pts.push(m.time);
+  if (src.beats) {
+    const all = beatsOf(tl);
+    const near = range ? inWindow(all, range[0] - 1, range[1] + 1) : all;
+    // downbeats first: snapTime and snapDelta keep the first of equally near points
+    for (const b of near) if (b.downbeat) pts.push(b.time);
+    for (const b of near) if (!b.downbeat) pts.push(b.time);
+  }
   if (tl.inPoint !== undefined) pts.push(tl.inPoint);
   if (tl.outPoint !== undefined) pts.push(tl.outPoint);
   if (src.grid && range) for (let t = Math.ceil(range[0] / src.grid) * src.grid; t <= range[1]; t += src.grid) pts.push(t);
   return pts;
+}
+
+/**
+ * Beat ticks worth drawing at a zoom level: every beat when they are at least `minPx` apart, else every downbeat,
+ * else every n-th downbeat, so ticks never crowd. `beats` sorted by time.
+ */
+export function thinBeats<T extends { time: number; downbeat: boolean }>(beats: T[], pps: number, minPx = 4): T[] {
+  if (beats.length < 2) return beats;
+  const span = beats[beats.length - 1].time - beats[0].time;
+  const gap = span / (beats.length - 1); // typical beat spacing
+  if (gap * pps >= minPx) return beats;
+  const downs = beats.filter((b) => b.downbeat);
+  if (downs.length < 2) {
+    const every = Math.ceil(minPx / Math.max(gap * pps, 1e-9));
+    return beats.filter((_, i) => i % every === 0);
+  }
+  const barGap = (downs[downs.length - 1].time - downs[0].time) / (downs.length - 1);
+  const every = Math.max(1, Math.ceil(minPx / Math.max(barGap * pps, 1e-9)));
+  return every === 1 ? downs : downs.filter((_, i) => i % every === 0);
 }
 
 /** Snap a single time. Returns the snapped time and the point it snapped to (for drawing a guide). */
@@ -649,9 +712,12 @@ export function addMarker(tl: Timeline, time: number, m: Partial<Omit<Marker, "i
 export const updateMarker = (tl: Timeline, id: string, patch: Partial<Omit<Marker, "id">>): Timeline => ({ ...tl, markers: tl.markers.map((m) => (m.id === id ? { ...m, ...patch } : m)) });
 export const removeMarker = (tl: Timeline, id: string): Timeline => ({ ...tl, markers: tl.markers.filter((m) => m.id !== id) });
 
-/** The next (dir 1) or previous (dir -1) ruler marker from t. */
+/** Ruler markers placed by the user (not on a clip, not beats), sorted by time. */
+export const userMarkers = (tl: Timeline): Marker[] => tl.markers.filter((m) => !m.clipId && !isBeat(m)).sort((a, b) => a.time - b.time);
+
+/** The next (dir 1) or previous (dir -1) user marker on the ruler from t (beats are skipped). */
 export function nearMarker(tl: Timeline, t: number, dir: 1 | -1): Marker | undefined {
-  const ruler = tl.markers.filter((m) => !m.clipId).sort((a, b) => a.time - b.time);
+  const ruler = userMarkers(tl);
   return dir > 0 ? ruler.find((m) => m.time > t + EPS) : [...ruler].reverse().find((m) => m.time < t - EPS);
 }
 

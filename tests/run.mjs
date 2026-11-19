@@ -17,7 +17,7 @@ let failed = 0;
 
 for (const f of files) {
   const file = join(out, f.replace(/\.ts$/, ".mjs"));
-  await build({ input: join(here, f), platform: "node", logLevel: "silent", output: { file, format: "esm" } });
+  await build({ input: join(here, f), platform: "node", logLevel: "silent", output: { file, format: "esm", codeSplitting: false } }); // one file even when a module is imported lazily
   console.log(`\n== ${f}`);
   const r = spawnSync(process.execPath, [file], { stdio: "inherit" });
   if (r.status !== 0) failed++;

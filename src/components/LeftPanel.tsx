@@ -6,6 +6,8 @@ import KeyframesCard from "./KeyframesCard";
 import ClipCard from "./ClipCard";
 import TemplatesCard from "./TemplatesCard";
 import TransitionsCard from "./TransitionsCard";
+import WordCard, { FONTS } from "./WordCard";
+import KineticCard from "./KineticCard";
 import MediaPool, { PoolThumb } from "./MediaPool";
 import { useMedia, type MediaItem } from "../store/media";
 import { SECTIONS, type SectionId } from "./SectionTabs";
@@ -24,7 +26,6 @@ import {
   type Position,
 } from "../store/project";
 
-const FONTS = ["Permanent Marker", "IBM Plex Sans KR", "Inter", "Arial", "Georgia", "Impact", "Courier New"];
 const POSITIONS: Position[] = ["top", "center", "bottom"];
 const ASPECTS: Aspect[] = ["16:9", "9:16", "1:1"];
 
@@ -298,6 +299,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
 
       {tab === "style" && (
         <>
+          <WordCard />
           <ScopeBar />
 
           <TemplatesCard />
@@ -356,6 +358,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
       {tab === "motion" && (
         <>
           <ClipCard />
+          <WordCard />
           <ScopeBar />
 
           <Card title="Position">
@@ -393,6 +396,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
           )}
 
           <AnimationCard />
+          <KineticCard />
           <TransitionsCard />
           <KeyframesCard />
         </>

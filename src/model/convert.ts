@@ -1,5 +1,5 @@
-import type { AssetRef, Background, Layer, LyricLine, Project } from "../store/project";
-import type { Clip, MediaRef, ProjectDoc, Timeline, Track } from "./types";
+import type { AssetRef, Background, Beat, Layer, LyricLine, Project } from "../store/project";
+import type { Clip, Marker, MediaRef, ProjectDoc, Timeline, Track } from "./types";
 import { SCHEMA_VERSION } from "./types";
 
 /**
@@ -115,6 +115,7 @@ export function viewToDoc(view: Project, prev?: ProjectDoc): ProjectDoc {
     if (l.words !== undefined) text.words = l.words;
     if (l.styleOverride !== undefined) text.style = l.styleOverride;
     if (l.transition !== undefined) text.transition = l.transition;
+    if (l.wordOverrides !== undefined) text.wordOverrides = l.wordOverrides;
     const kept = prevClip(l.id);
     clips.push({
       id: l.id,
@@ -159,6 +160,20 @@ export function viewToDoc(view: Project, prev?: ProjectDoc): ProjectDoc {
 
 export const activeTimeline = (doc: ProjectDoc): Timeline => doc.timelines.find((t) => t.id === doc.activeTimelineId) ?? doc.timelines[0];
 
+const beatCache = new WeakMap<Marker[], Beat[]>();
+/** The timeline's beats (its beat markers on the ruler), sorted by time. Cached per markers array. */
+export function beatsOf(tl: Timeline): Beat[] {
+  let b = beatCache.get(tl.markers);
+  if (!b) {
+    b = tl.markers
+      .filter((m) => m.kind === "beat" && !m.clipId)
+      .map((m) => ({ time: m.time, downbeat: !!m.downbeat, strength: m.strength ?? 1 }))
+      .sort((x, y) => x.time - y.time);
+    beatCache.set(tl.markers, b);
+  }
+  return b;
+}
+
 export function docToView(doc: ProjectDoc): Project {
   const tl = activeTimeline(doc);
   const media = (id?: string) => (id ? doc.media.find((m) => m.id === id) : undefined);
@@ -192,6 +207,7 @@ export function docToView(doc: ProjectDoc): Project {
       line.layerId = c.trackId;
       if (c.keyframes.transform !== undefined) line.keyframes = c.keyframes.transform;
       if (t.transition !== undefined) line.transition = t.transition;
+      if (t.wordOverrides !== undefined) line.wordOverrides = t.wordOverrides;
       return line;
     });
 
@@ -205,5 +221,10 @@ export function docToView(doc: ProjectDoc): Project {
     transition: tl.transition,
   };
   if (songMedia) view.audio = assetFromMedia(songMedia);
+  // derived, read-only: beats from the timeline's beat markers, energy from the song's analysis
+  const beats = beatsOf(tl);
+  if (beats.length) view.beats = beats;
+  const energy = songMedia?.analysis?.energy;
+  if (energy) view.energy = energy;
   return view;
 }

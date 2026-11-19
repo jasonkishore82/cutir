@@ -12,7 +12,7 @@ import type { ProjectDoc } from "../../model/types";
  * To add a tool: write defineTool({...}) in a group file and add it to that file's export. Nothing else.
  */
 
-export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers" | "transform" | "motion" | "timeline";
+export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers" | "transform" | "motion" | "timeline" | "kinetic";
 
 export type ToolResultOk = { project: Project; summary: string };
 

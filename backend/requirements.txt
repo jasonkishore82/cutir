@@ -7,5 +7,11 @@ python-multipart>=0.0.9
 # Installs PyTorch; for a GPU build see https://pytorch.org/get-started/locally/
 stable-ts>=2.17
 
+# Beat detection (tempo, beats, downbeats, loudness curve). Without it the web app detects beats in the browser.
+librosa>=0.10
+
+# Optional, better downbeats for beat detection (needs Cython and numpy first; skip it if it will not build):
+# madmom
+
 # Optional, for the "Separate vocals" option (slower, much better on full songs):
 # demucs

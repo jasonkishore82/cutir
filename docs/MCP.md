@@ -133,6 +133,7 @@ Every tool in `src/lib/tools/` is offered as an MCP tool with the same name, des
 | Sync | `auto_sync` |
 | Placement | `move_text`, `scale_text`, `rotate_text` |
 | Motion | `add_keyframe`, `clear_keyframes`, `set_transition`, `apply_template` |
+| Kinetic | `set_word_style`, `emphasize_words`, `auto_emphasis`, `set_beat_reaction`, `set_energy`, `snap_to_beats`, `detect_beats` |
 
 Unlike small local models, Claude can handle the full list, so MCP sends every group (no keyword routing).
 `set_animation` stays hidden (it is an alias).
@@ -156,6 +157,30 @@ its prompt then lists the clip ids, tracks and library.
 
 Without a marked target track, clips go on the top-most plain video track and the first plain audio track (never
 the lyric background or song track).
+
+### Kinetic tools (phase 16.5, also in the in-app chat)
+
+Defined in `src/lib/tools/kinetic.ts` (group `kinetic`). The chat offers them when a message mentions beats, pulse,
+flash, shake, drums, emphasis, energy, kinetic or words, and its prompt then says whether beats exist (with the tempo)
+and which words already carry emphasis. Lines are 1-based; words are 1-based within a line or given as their text
+(first match, case and punctuation ignored).
+
+| Tool | Does | Writes |
+|---|---|---|
+| `set_word_style` | One word's colour, emphasis, scale, x / y nudge (percent), rotation, font, own in / out effect; `reset` back to the line | `line.wordOverrides[i]` |
+| `emphasize_words` | Emphasis level 1-3 (0 clears) on listed words of a line | `wordOverrides[i].emphasis` |
+| `auto_emphasis` | Rule-based key words (held notes, long words, hook words, no stop words) on all or listed lines; replaces earlier levels | `applyAutoEmphasis` |
+| `set_beat_reaction` | Beat slot (pulse, flash, shake, nudge, colour-swap, jump-cut, none), `strength` 0-2, `downbeatsOnly`; on the project, a `layer` or `lines` | `animation.beat` |
+| `set_energy` | How much loudness drives motion, 0-1; project, `layer` or `lines` | `style.energy` |
+| `snap_to_beats` | Line `edges` (start, end, both) to the nearest beat or downbeat; lines stay 0.1 s long and never overlap on a layer; error without beats | line times |
+| `detect_beats` | Analyse the song (backend, else the browser) and store beat markers + tempo; or `tempo` / `firstDownbeat` for a steady grid | `applyBeatResult` |
+
+`detect_beats` runs the slow analysis in the registry's `prepare` step and writes the result in `applyDoc`, so it is
+still one undo step.
+
+`get_project` also returns, per line, `emphasis` (`{"3 love": 3}`, 1-based word number and text), `words` (other
+non-empty word overrides) and an own `beat` / `energy` when set; and at the top `beats` (count, downbeats, first,
+last, tempo, source; `null` before detection), `beatReaction` and `energy`. Beat markers are left out of `markers`.
 
 ### App tools (MCP only)
 

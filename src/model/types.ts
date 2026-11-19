@@ -1,4 +1,4 @@
-import type { Aspect, Easing, Keyframe, KeyProp, StyleOverride, TextStyle, Transition } from "../store/project";
+import type { Aspect, Easing, EnergyCurve, Keyframe, KeyProp, StyleOverride, TextStyle, Transition, WordOverride } from "../store/project";
 
 /**
  * Project model v2: one project holds settings, a media pool, bins and several timelines, each made of tracks and
@@ -61,6 +61,25 @@ export type MediaRef = {
   poolId?: string;
   /** Object URL for this session only; never saved. */
   url?: string;
+  /** Beat and loudness analysis of an audio (or video with audio) item (phase 16.5). */
+  analysis?: AudioAnalysis;
+};
+
+/**
+ * What beat detection found. The beat times themselves are `kind: "beat"` markers on the timeline that uses the
+ * song, so they can be edited and snapped to; this keeps the song-level facts and the loudness curve.
+ */
+export type AudioAnalysis = {
+  /** Beats per minute. */
+  tempo: number;
+  /** Time of the first downbeat, in source seconds. */
+  firstDownbeat: number;
+  /** Beats per bar (4 for most songs). */
+  beatsPerBar: number;
+  /** backend = librosa/madmom, browser = Web Audio, manual = tempo and offset typed by the user. */
+  source: "backend" | "browser" | "manual";
+  /** RMS loudness, normalised 0..1. */
+  energy?: EnergyCurve;
 };
 
 export type Bin = { id: string; name: string; parentId?: string; mediaIds: string[] };
@@ -94,6 +113,8 @@ export type TextPayload = {
   style?: StyleOverride;
   /** Hand-over into the next clip on the same track. */
   transition?: Transition;
+  /** Per-word overrides keyed by word index (phase 16.5). */
+  wordOverrides?: Record<number, WordOverride>;
 };
 
 export type ClipEffect = { id: string; type: string; enabled: boolean; params: Record<string, unknown> };
@@ -146,7 +167,25 @@ export type ClipTransform = {
 
 export const IDENTITY_TRANSFORM: ClipTransform = { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1, blend: "normal", fit: "contain" };
 
-export type Marker = { id: string; time: number; name: string; color: string; note?: string; /** On a clip instead of the ruler. */ clipId?: string };
+export type Marker = {
+  id: string;
+  time: number;
+  name: string;
+  color: string;
+  note?: string;
+  /** On a clip instead of the ruler. */
+  clipId?: string;
+  /** "beat" markers come from beat detection (phase 16.5). Missing = "user". */
+  kind?: "user" | "beat";
+  /** Beat markers: first beat of a bar. */
+  downbeat?: boolean;
+  /** Beat markers: onset strength 0..1. */
+  strength?: number;
+  /** Beat markers: the media item whose analysis made this marker (re-detection replaces only these). */
+  sourceMediaId?: string;
+};
+
+export const isBeat = (m: Marker) => m.kind === "beat";
 
 export type Timeline = {
   id: string;

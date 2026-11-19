@@ -12,7 +12,24 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esmMin = (fn, res, err) => () => {
+	if (err) throw err[0];
+	try {
+		return fn && (res = fn(fn = 0)), res;
+	} catch (e) {
+		throw err = [e], e;
+	}
+};
 var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod, mod.exports), cb = null), mod.exports);
+var __exportAll = (all, no_symbols) => {
+	let target = {};
+	for (var name in all) __defProp(target, name, {
+		get: all[name],
+		enumerable: true
+	});
+	if (!no_symbols) __defProp(target, Symbol.toStringTag, { value: "Module" });
+	return target;
+};
 var __copyProps = (to, from, except, desc) => {
 	if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
 		key = keys[i];
@@ -19462,33 +19479,36 @@ require_subprotocol();
 require_websocket();
 var import_websocket_server = /* @__PURE__ */ __toESM(require_websocket_server(), 1);
 // ../node_modules/zustand/esm/vanilla.mjs
-const createStoreImpl = (createState) => {
-	let state;
-	const listeners = /* @__PURE__ */ new Set();
-	const setState = (partial, replace) => {
-		const nextState = typeof partial === "function" ? partial(state) : partial;
-		if (!Object.is(nextState, state)) {
-			const previousState = state;
-			state = (replace != null ? replace : typeof nextState !== "object" || nextState === null) ? nextState : Object.assign({}, state, nextState);
-			listeners.forEach((listener) => listener(state, previousState));
-		}
+var createStoreImpl, createStore;
+var init_vanilla = __esmMin((() => {
+	createStoreImpl = (createState) => {
+		let state;
+		const listeners = /* @__PURE__ */ new Set();
+		const setState = (partial, replace) => {
+			const nextState = typeof partial === "function" ? partial(state) : partial;
+			if (!Object.is(nextState, state)) {
+				const previousState = state;
+				state = (replace != null ? replace : typeof nextState !== "object" || nextState === null) ? nextState : Object.assign({}, state, nextState);
+				listeners.forEach((listener) => listener(state, previousState));
+			}
+		};
+		const getState = () => state;
+		const getInitialState = () => initialState;
+		const subscribe = (listener) => {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		};
+		const api = {
+			setState,
+			getState,
+			getInitialState,
+			subscribe
+		};
+		const initialState = state = createState(setState, getState, api);
+		return api;
 	};
-	const getState = () => state;
-	const getInitialState = () => initialState;
-	const subscribe = (listener) => {
-		listeners.add(listener);
-		return () => listeners.delete(listener);
-	};
-	const api = {
-		setState,
-		getState,
-		getInitialState,
-		subscribe
-	};
-	const initialState = state = createState(setState, getState, api);
-	return api;
-};
-const createStore = ((createState) => createState ? createStoreImpl(createState) : createStoreImpl);
+	createStore = ((createState) => createState ? createStoreImpl(createState) : createStoreImpl);
+}));
 // ../node_modules/react/cjs/react.production.min.js
 /**
 * @license React
@@ -21411,78 +21431,38 @@ current: null };
 		if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ !== "undefined" && typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop === "function") __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(/* @__PURE__ */ new Error());
 	})();
 }));
-// ../node_modules/zustand/esm/react.mjs
-var import_react = /* @__PURE__ */ __toESM((/* @__PURE__ */ __commonJSMin(((exports, module) => {
+// ../node_modules/react/index.js
+var require_react = /* @__PURE__ */ __commonJSMin(((exports, module) => {
 	if (process.env.NODE_ENV === "production") module.exports = require_react_production_min();
 	else module.exports = require_react_development();
-})))(), 1);
-const identity = (arg) => arg;
+}));
+// ../node_modules/zustand/esm/react.mjs
 function useStore(api, selector = identity) {
 	const slice = import_react.useSyncExternalStore(api.subscribe, import_react.useCallback(() => selector(api.getState()), [api, selector]), () => selector(api.getInitialState()));
 	import_react.useDebugValue(slice);
 	return slice;
 }
-const createImpl = (createState) => {
-	const api = createStore(createState);
-	const useBoundStore = (selector) => useStore(api, selector);
-	Object.assign(useBoundStore, api);
-	return useBoundStore;
-};
-const create = ((createState) => createState ? createImpl(createState) : createImpl);
+var import_react, identity, createImpl, create;
+var init_react = __esmMin((() => {
+	import_react = /* @__PURE__ */ __toESM(require_react(), 1);
+	init_vanilla();
+	identity = (arg) => arg;
+	createImpl = (createState) => {
+		const api = createStore(createState);
+		const useBoundStore = (selector) => useStore(api, selector);
+		Object.assign(useBoundStore, api);
+		return useBoundStore;
+	};
+	create = ((createState) => createState ? createImpl(createState) : createImpl);
+}));
+// ../node_modules/zustand/esm/index.mjs
+var init_esm = __esmMin((() => {
+	init_vanilla();
+	init_react();
+}));
+// ../src/model/types.ts
+var init_types = __esmMin((() => {}));
 // ../src/model/convert.ts
-/**
-* The lyric editor works on a "lyric view" (the `Project` type: audio, background, layers, lines, style). The saved
-* document is the general v2 model. These two functions map between them:
-*
-*   docToView(doc)          the active timeline seen as a lyric project
-*   viewToDoc(view, prev)   the document after the lyric view changed; everything the view does not cover
-*                           (other timelines, tracks, clips, media, bins, markers) is kept from `prev`
-*
-* The mapping is lossless for everything the view holds: docToView(viewToDoc(v)) equals v.
-*
-* Fixed ids tie the lyric project's single song and background to their clips and media.
-*/
-const IDS = {
-	timeline: "tl-main",
-	bgTrack: "v-bg",
-	audioTrack: "a-song",
-	bgClip: "c-bg",
-	audioClip: "c-song",
-	bgMedia: "m-bg",
-	audioMedia: "m-song"
-};
-/** Output sizes per aspect (kept here so the model does not depend on the renderer). */
-const SIZES = {
-	"16:9": [1920, 1080],
-	"9:16": [1080, 1920],
-	"1:1": [1080, 1080]
-};
-/** Seconds stored as start + duration come back as an end time; keep ends like 3.3 exact. */
-const tidy$2 = (n) => Math.round(n * 1e9) / 1e9;
-const LYRIC_FIXED = /* @__PURE__ */ new Set([IDS.bgTrack, IDS.audioTrack]);
-const baseClip = (id, trackId) => ({
-	id,
-	trackId,
-	start: 0,
-	duration: 0,
-	fill: true,
-	sourceIn: 0,
-	sourceOut: 0,
-	speed: 1,
-	enabled: true,
-	effects: [],
-	keyframes: {}
-});
-const track = (id, kind, name, prev) => prev ?? {
-	id,
-	kind,
-	name,
-	muted: false,
-	locked: false,
-	solo: false,
-	height: kind === "audio" ? 56 : 44,
-	hidden: false
-};
 function mediaFromAsset(id, slot, a, prev) {
 	const m = {
 		...prev ?? {},
@@ -21563,6 +21543,7 @@ function viewToDoc(view, prev) {
 		if (l.words !== void 0) text.words = l.words;
 		if (l.styleOverride !== void 0) text.style = l.styleOverride;
 		if (l.transition !== void 0) text.transition = l.transition;
+		if (l.wordOverrides !== void 0) text.wordOverrides = l.wordOverrides;
 		const kept = prevClip(l.id);
 		clips.push({
 			id: l.id,
@@ -21615,7 +21596,19 @@ function viewToDoc(view, prev) {
 		activeTimelineId: tlId
 	};
 }
-const activeTimeline = (doc) => doc.timelines.find((t) => t.id === doc.activeTimelineId) ?? doc.timelines[0];
+/** The timeline's beats (its beat markers on the ruler), sorted by time. Cached per markers array. */
+function beatsOf(tl) {
+	let b = beatCache.get(tl.markers);
+	if (!b) {
+		b = tl.markers.filter((m) => m.kind === "beat" && !m.clipId).map((m) => ({
+			time: m.time,
+			downbeat: !!m.downbeat,
+			strength: m.strength ?? 1
+		})).sort((x, y) => x.time - y.time);
+		beatCache.set(tl.markers, b);
+	}
+	return b;
+}
 function docToView(doc) {
 	const tl = activeTimeline(doc);
 	const media = (id) => id ? doc.media.find((m) => m.id === id) : void 0;
@@ -21653,13 +21646,14 @@ function docToView(doc) {
 			id: c.id,
 			text: t.text,
 			start: c.start,
-			end: tidy$2(c.start + c.duration)
+			end: tidy$3(c.start + c.duration)
 		};
 		if (t.words !== void 0) line.words = t.words;
 		if (t.style !== void 0) line.styleOverride = t.style;
 		line.layerId = c.trackId;
 		if (c.keyframes.transform !== void 0) line.keyframes = c.keyframes.transform;
 		if (t.transition !== void 0) line.transition = t.transition;
+		if (t.wordOverrides !== void 0) line.wordOverrides = t.wordOverrides;
 		return line;
 	});
 	const view = {
@@ -21672,11 +21666,58 @@ function docToView(doc) {
 		transition: tl.transition
 	};
 	if (songMedia) view.audio = assetFromMedia(songMedia);
+	const beats = beatsOf(tl);
+	if (beats.length) view.beats = beats;
+	const energy = songMedia?.analysis?.energy;
+	if (energy) view.energy = energy;
 	return view;
 }
+var IDS, SIZES, tidy$3, LYRIC_FIXED, baseClip, track, activeTimeline, beatCache;
+var init_convert = __esmMin((() => {
+	init_types();
+	IDS = {
+		timeline: "tl-main",
+		bgTrack: "v-bg",
+		audioTrack: "a-song",
+		bgClip: "c-bg",
+		audioClip: "c-song",
+		bgMedia: "m-bg",
+		audioMedia: "m-song"
+	};
+	SIZES = {
+		"16:9": [1920, 1080],
+		"9:16": [1080, 1920],
+		"1:1": [1080, 1080]
+	};
+	tidy$3 = (n) => Math.round(n * 1e9) / 1e9;
+	LYRIC_FIXED = /* @__PURE__ */ new Set([IDS.bgTrack, IDS.audioTrack]);
+	baseClip = (id, trackId) => ({
+		id,
+		trackId,
+		start: 0,
+		duration: 0,
+		fill: true,
+		sourceIn: 0,
+		sourceOut: 0,
+		speed: 1,
+		enabled: true,
+		effects: [],
+		keyframes: {}
+	});
+	track = (id, kind, name, prev) => prev ?? {
+		id,
+		kind,
+		name,
+		muted: false,
+		locked: false,
+		solo: false,
+		height: kind === "audio" ? 56 : 44,
+		hidden: false
+	};
+	activeTimeline = (doc) => doc.timelines.find((t) => t.id === doc.activeTimelineId) ?? doc.timelines[0];
+	beatCache = /* @__PURE__ */ new WeakMap();
+}));
 // ../src/model/ops.ts
-const isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-const idOf = (v) => isObj(v) && typeof v.id === "string" ? v.id : void 0;
 /** Patches that turn `a` into `b`. Unchanged subtrees (same reference or equal content) produce nothing. */
 function diff(a, b, path = [], out = []) {
 	if (a === b) return out;
@@ -21790,87 +21831,19 @@ function makeOperation(before, after, label) {
 		inverse: diff(after, before)
 	};
 }
-const applyOperation = (doc, op) => applyPatches(doc, op.patches);
-const revertOperation = (doc, op) => applyPatches(doc, op.inverse);
+var isObj, idOf, applyOperation, revertOperation;
+var init_ops = __esmMin((() => {
+	isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+	idOf = (v) => isObj(v) && typeof v.id === "string" ? v.id : void 0;
+	applyOperation = (doc, op) => applyPatches(doc, op.patches);
+	revertOperation = (doc, op) => applyPatches(doc, op.inverse);
+}));
+// ../src/model/migrate.ts
+var init_migrate = __esmMin((() => {
+	init_project();
+	init_convert();
+}));
 // ../src/store/project.ts
-const DEFAULT_GRADIENT = {
-	type: "gradient",
-	colors: [
-		"#1e2a6b",
-		"#5b3a8c",
-		"#d4687a",
-		"#f0a070"
-	],
-	angle: 135,
-	noise: true
-};
-const DEFAULT_STYLE = {
-	fontFamily: "Permanent Marker",
-	fontSize: 96,
-	color: "#ffffff",
-	uppercase: true,
-	letterSpacing: 2,
-	lineHeight: 1.2,
-	maxCharsPerLine: 24,
-	shadow: {
-		blur: 12,
-		offsetX: 0,
-		offsetY: 4,
-		opacity: .45
-	},
-	outline: {
-		width: 0,
-		color: "#000000"
-	},
-	position: "center",
-	transform: {
-		scale: 1,
-		rotation: 0
-	},
-	animation: {
-		in: {
-			name: "fade",
-			ms: 200,
-			easing: "linear"
-		},
-		out: {
-			name: "fade",
-			ms: 200,
-			easing: "linear"
-		},
-		loop: {
-			name: "none",
-			speed: 1
-		}
-	},
-	highlight: {
-		tint: false,
-		color: "#ffd84a",
-		activeScale: 1
-	}
-};
-const mainLayer = () => ({
-	id: "main",
-	name: "Lyrics",
-	visible: true,
-	locked: false
-});
-const defaultProject = () => ({
-	background: DEFAULT_GRADIENT,
-	layers: [mainLayer()],
-	lines: [],
-	style: DEFAULT_STYLE,
-	aspect: "16:9",
-	fps: 30,
-	transition: {
-		type: "none",
-		ms: 400
-	}
-});
-const uid = () => Math.random().toString(36).slice(2, 10);
-/** The layer a line belongs to (lines without a valid layerId belong to the first layer). */
-const layerIdOf = (p, l) => l.layerId && p.layers.some((x) => x.id === l.layerId) ? l.layerId : p.layers[0].id;
-const linesOfLayer = (p, layerId) => p.lines.filter((l) => layerIdOf(p, l) === layerId);
 /**
 * Keep `lines` grouped by layer (in layer order). Line numbers used by the AI and the lyrics box follow this order.
 * Also gives every line an explicit layerId, so reordering layers never moves lines to another layer.
@@ -21893,8 +21866,83 @@ function orderByLayers(p) {
 		lines
 	};
 }
-const DEFAULT_LEN = 3;
-const DEFAULT_GAP = .2;
+/** Merge `over` into `base`: plain objects merge field by field, everything else is replaced. Undefined is skipped. */
+function deepMerge(base, over) {
+	const out = { ...base };
+	for (const [k, v] of Object.entries(over)) {
+		if (v === void 0) continue;
+		out[k] = isPlain(v) && isPlain(out[k]) ? deepMerge(out[k], v) : v;
+	}
+	return out;
+}
+/** Lay overrides over a base style. Groups (shadow, outline, transform, animation) merge field by field. */
+function mergeStyle(base, ...layers) {
+	let out = base;
+	for (const o of layers) if (o) out = deepMerge(out, o);
+	return out;
+}
+/**
+* The one place the cascade lives: project style, then the layer's style, then the line's own override.
+* The renderer, the preview overlay, the exporters and the properties panel all read through this.
+*/
+function resolveStyle(p, line) {
+	const layer = p.layers.find((x) => x.id === layerIdOf(p, line));
+	return mergeStyle(p.style, layer?.style, line.styleOverride);
+}
+/**
+* Pairs of word indexes (old, new) that are the same word, by longest common subsequence on lower-cased words, so
+* fixing a typo or adding a word keeps the other words' overrides.
+*/
+function matchWords(a, b) {
+	const A = a.map((w) => w.toLowerCase());
+	const B = b.map((w) => w.toLowerCase());
+	const L = Array.from({ length: A.length + 1 }, () => new Array(B.length + 1).fill(0));
+	for (let i = A.length - 1; i >= 0; i--) for (let j = B.length - 1; j >= 0; j--) L[i][j] = A[i] === B[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+	const out = [];
+	for (let i = 0, j = 0; i < A.length && j < B.length;) if (A[i] === B[j]) out.push([i++, j++]);
+	else if (L[i + 1][j] >= L[i][j + 1]) i++;
+	else j++;
+	return out;
+}
+/** A line with new text: word overrides follow their words; word timings stay only when every word still matches. */
+function retext(line, text) {
+	const before = lineWords(line.text);
+	const after = lineWords(text);
+	const pairs = matchWords(before, after);
+	const next = {
+		...line,
+		text,
+		words: void 0
+	};
+	if (line.words && line.words.length === before.length && before.length === after.length && pairs.length === after.length) next.words = pairs.map(([i, j]) => ({
+		...line.words[i],
+		text: after[j]
+	}));
+	if (line.wordOverrides) {
+		const wo = {};
+		for (const [i, j] of pairs) if (line.wordOverrides[i]) wo[j] = line.wordOverrides[i];
+		if (Object.keys(wo).length) next.wordOverrides = wo;
+		else delete next.wordOverrides;
+	}
+	return next;
+}
+/** A line with one word's override merged with `patch` (undefined fields removed, empty overrides dropped). */
+function setWordOverride(line, index, patch) {
+	const cur = {
+		...line.wordOverrides?.[index] ?? {},
+		...patch
+	};
+	for (const k of Object.keys(cur)) if (cur[k] === void 0 || k === "emphasis" && cur[k] === 0) delete cur[k];
+	const wo = { ...line.wordOverrides ?? {} };
+	if (Object.keys(cur).length) wo[index] = cur;
+	else delete wo[index];
+	const next = {
+		...line,
+		wordOverrides: wo
+	};
+	if (!Object.keys(wo).length) delete next.wordOverrides;
+	return next;
+}
 /** Rebuild lines from textarea text, keeping existing ids/timings by index. */
 function linesFromText(text, prev) {
 	const rows = text.split("\n").map((r) => r.trim()).filter(Boolean);
@@ -21902,11 +21950,7 @@ function linesFromText(text, prev) {
 	rows.forEach((row, i) => {
 		const old = prev[i];
 		if (old) {
-			out.push(old.text === row ? old : {
-				...old,
-				text: row,
-				words: void 0
-			});
+			out.push(old.text === row ? old : retext(old, row));
 			return;
 		}
 		const start = out.length ? out[out.length - 1].end + DEFAULT_GAP : 0;
@@ -21919,12 +21963,6 @@ function linesFromText(text, prev) {
 	});
 	return out;
 }
-const COALESCE_MS = 600;
-let batchDepth = 0;
-let batchBase = null;
-let lastKey;
-let lastTime = 0;
-const firstDoc = viewToDoc(defaultProject());
 /** Fold a new lyric view into the document, sharing every unchanged part with the old document. */
 function fold(doc, view) {
 	const op = makeOperation(doc, viewToDoc(view, doc));
@@ -21933,7 +21971,6 @@ function fold(doc, view) {
 		op
 	};
 }
-const pushOp = (past, op) => op ? [...past, op].slice(-200) : past;
 /** Record a change: inside a batch just apply it; otherwise push (or merge, for the same key) one operation. */
 function commit(view, nextDoc, op, coalesceKey) {
 	const { doc, past } = useProject.getState();
@@ -21966,180 +22003,308 @@ function commit(view, nextDoc, op, coalesceKey) {
 		future: op ? [] : useProject.getState().future
 	});
 }
-const useProject = create((set, get) => ({
-	doc: firstDoc,
-	project: docToView(firstDoc),
-	past: [],
-	future: [],
-	selectedLineId: null,
-	selectedIds: [],
-	activeLayerId: "main",
-	chatOpen: false,
-	syncMode: false,
-	syncIndex: 0,
-	update: (fn, coalesceKey) => {
-		const { project, doc } = get();
-		const next = fn(project);
-		if (next === project) return;
-		const { doc: nextDoc, op } = fold(doc, next);
-		commit(next, nextDoc, op, coalesceKey);
-	},
-	editDoc: (fn, coalesceKey) => {
-		const { doc } = get();
-		const changed = fn(doc);
-		if (changed === doc) return;
-		const op = makeOperation(doc, changed);
-		if (!op) return;
-		const nextDoc = applyPatches(doc, op.patches);
-		commit(docToView(nextDoc), nextDoc, op, coalesceKey);
-	},
-	batch: (fn) => {
-		get().beginGesture();
-		try {
-			fn();
-		} finally {
-			get().endGesture();
+var DEFAULT_GRADIENT, DEFAULT_STYLE, DEFAULT_BEAT, lineWords, mainLayer, defaultProject, uid, layerIdOf, linesOfLayer, isPlain, DEFAULT_LEN, DEFAULT_GAP, COALESCE_MS, batchDepth, batchBase, lastKey, lastTime, firstDoc, pushOp, useProject;
+var init_project = __esmMin((() => {
+	init_esm();
+	init_convert();
+	init_ops();
+	init_migrate();
+	DEFAULT_GRADIENT = {
+		type: "gradient",
+		colors: [
+			"#1e2a6b",
+			"#5b3a8c",
+			"#d4687a",
+			"#f0a070"
+		],
+		angle: 135,
+		noise: true
+	};
+	DEFAULT_STYLE = {
+		fontFamily: "Permanent Marker",
+		fontSize: 96,
+		color: "#ffffff",
+		uppercase: true,
+		letterSpacing: 2,
+		lineHeight: 1.2,
+		maxCharsPerLine: 24,
+		shadow: {
+			blur: 12,
+			offsetX: 0,
+			offsetY: 4,
+			opacity: .45
+		},
+		outline: {
+			width: 0,
+			color: "#000000"
+		},
+		position: "center",
+		transform: {
+			scale: 1,
+			rotation: 0
+		},
+		animation: {
+			in: {
+				name: "fade",
+				ms: 200,
+				easing: "linear"
+			},
+			out: {
+				name: "fade",
+				ms: 200,
+				easing: "linear"
+			},
+			loop: {
+				name: "none",
+				speed: 1
+			},
+			beat: {
+				name: "none",
+				strength: 1,
+				downbeatsOnly: false
+			}
+		},
+		highlight: {
+			tint: false,
+			color: "#ffd84a",
+			activeScale: 1
+		},
+		emphasis: [
+			{ scale: 1.3 },
+			{
+				scale: 1.65,
+				bold: true
+			},
+			{
+				scale: 2,
+				bold: true,
+				color: "#ffd84a"
+			}
+		],
+		energy: 0
+	};
+	DEFAULT_STYLE.emphasis;
+	DEFAULT_BEAT = DEFAULT_STYLE.animation.beat;
+	lineWords = (text) => text.split(/\s+/).filter(Boolean);
+	mainLayer = () => ({
+		id: "main",
+		name: "Lyrics",
+		visible: true,
+		locked: false
+	});
+	defaultProject = () => ({
+		background: DEFAULT_GRADIENT,
+		layers: [mainLayer()],
+		lines: [],
+		style: DEFAULT_STYLE,
+		aspect: "16:9",
+		fps: 30,
+		transition: {
+			type: "none",
+			ms: 400
 		}
-	},
-	beginGesture: () => {
-		if (batchDepth === 0) batchBase = get().doc;
-		batchDepth++;
-	},
-	endGesture: () => {
-		if (batchDepth === 0) return;
-		batchDepth--;
-		if (batchDepth === 0 && batchBase) {
+	});
+	uid = () => Math.random().toString(36).slice(2, 10);
+	layerIdOf = (p, l) => l.layerId && p.layers.some((x) => x.id === l.layerId) ? l.layerId : p.layers[0].id;
+	linesOfLayer = (p, layerId) => p.lines.filter((l) => layerIdOf(p, l) === layerId);
+	isPlain = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+	DEFAULT_LEN = 3;
+	DEFAULT_GAP = .2;
+	COALESCE_MS = 600;
+	batchDepth = 0;
+	batchBase = null;
+	lastTime = 0;
+	firstDoc = viewToDoc(defaultProject());
+	pushOp = (past, op) => op ? [...past, op].slice(-200) : past;
+	useProject = create((set, get) => ({
+		doc: firstDoc,
+		project: docToView(firstDoc),
+		past: [],
+		future: [],
+		selectedLineId: null,
+		selectedIds: [],
+		selectedWord: null,
+		activeLayerId: "main",
+		chatOpen: false,
+		syncMode: false,
+		syncIndex: 0,
+		update: (fn, coalesceKey) => {
+			const { project, doc } = get();
+			const next = fn(project);
+			if (next === project) return;
+			const { doc: nextDoc, op } = fold(doc, next);
+			commit(next, nextDoc, op, coalesceKey);
+		},
+		editDoc: (fn, coalesceKey) => {
+			const { doc } = get();
+			const changed = fn(doc);
+			if (changed === doc) return;
+			const op = makeOperation(doc, changed);
+			if (!op) return;
+			const nextDoc = applyPatches(doc, op.patches);
+			commit(docToView(nextDoc), nextDoc, op, coalesceKey);
+		},
+		batch: (fn) => {
+			get().beginGesture();
+			try {
+				fn();
+			} finally {
+				get().endGesture();
+			}
+		},
+		beginGesture: () => {
+			if (batchDepth === 0) batchBase = get().doc;
+			batchDepth++;
+		},
+		endGesture: () => {
+			if (batchDepth === 0) return;
+			batchDepth--;
+			if (batchDepth === 0 && batchBase) {
+				const { doc, past } = get();
+				const op = makeOperation(batchBase, doc);
+				if (op) set({
+					past: pushOp(past, op),
+					future: []
+				});
+				batchBase = null;
+				lastKey = void 0;
+			}
+		},
+		undo: () => {
+			const { past, future, doc } = get();
+			if (!past.length) return;
+			lastKey = void 0;
+			const op = past[past.length - 1];
+			const prev = revertOperation(doc, op);
+			set({
+				doc: prev,
+				project: docToView(prev),
+				past: past.slice(0, -1),
+				future: [op, ...future]
+			});
+		},
+		redo: () => {
+			const { past, future, doc } = get();
+			if (!future.length) return;
+			lastKey = void 0;
+			const op = future[0];
+			const next = applyOperation(doc, op);
+			set({
+				doc: next,
+				project: docToView(next),
+				past: pushOp(past, op),
+				future: future.slice(1)
+			});
+		},
+		applyOperation: (op) => {
 			const { doc, past } = get();
-			const op = makeOperation(batchBase, doc);
-			if (op) set({
+			const next = applyOperation(doc, op);
+			lastKey = void 0;
+			set({
+				doc: next,
+				project: docToView(next),
 				past: pushOp(past, op),
 				future: []
 			});
-			batchBase = null;
-			lastKey = void 0;
-		}
-	},
-	undo: () => {
-		const { past, future, doc } = get();
-		if (!past.length) return;
-		lastKey = void 0;
-		const op = past[past.length - 1];
-		const prev = revertOperation(doc, op);
-		set({
-			doc: prev,
-			project: docToView(prev),
-			past: past.slice(0, -1),
-			future: [op, ...future]
-		});
-	},
-	redo: () => {
-		const { past, future, doc } = get();
-		if (!future.length) return;
-		lastKey = void 0;
-		const op = future[0];
-		const next = applyOperation(doc, op);
-		set({
-			doc: next,
-			project: docToView(next),
-			past: pushOp(past, op),
-			future: future.slice(1)
-		});
-	},
-	applyOperation: (op) => {
-		const { doc, past } = get();
-		const next = applyOperation(doc, op);
-		lastKey = void 0;
-		set({
-			doc: next,
-			project: docToView(next),
-			past: pushOp(past, op),
-			future: []
-		});
-	},
-	setStyle: (patch, key) => get().update((p) => ({
-		...p,
-		style: {
-			...p.style,
-			...patch
-		}
-	}), key ?? `style:${Object.keys(patch).join(",")}`),
-	setAspect: (aspect) => get().update((p) => ({
-		...p,
-		aspect
-	})),
-	setBackground: (background) => get().update((p) => ({
-		...p,
-		background
-	})),
-	setAudio: (audio) => get().update((p) => ({
-		...p,
-		audio
-	})),
-	setLinesFromText: (text) => get().update((p) => {
-		const lid = p.layers.some((l) => l.id === get().activeLayerId) ? get().activeLayerId : p.layers[0].id;
-		const mine = linesFromText(text, linesOfLayer(p, lid)).map((l) => ({
-			...l,
-			layerId: lid
-		}));
-		const others = p.lines.filter((l) => layerIdOf(p, l) !== lid);
-		return orderByLayers({
+		},
+		setStyle: (patch, key) => get().update((p) => ({
 			...p,
-			lines: [...others, ...mine]
-		});
-	}, "lyrics-text"),
-	updateLine: (id, patch, key) => get().update((p) => ({
-		...p,
-		lines: p.lines.map((l) => l.id === id ? {
-			...l,
-			...patch
-		} : l)
-	}), key),
-	loadProject: (project) => get().loadDoc(viewToDoc(project)),
-	loadDoc: (doc) => {
-		const project = docToView(doc);
-		lastKey = void 0;
-		set({
-			doc,
-			project,
-			past: [],
-			future: [],
-			selectedLineId: null,
-			selectedIds: [],
-			activeLayerId: project.layers[0].id
-		});
-	},
-	select: (id, add) => set((s) => {
-		if (id === null) return {
-			selectedLineId: null,
-			selectedIds: []
-		};
-		if (!add) return {
-			selectedLineId: id,
-			selectedIds: [id]
-		};
-		if (s.selectedIds.includes(id)) {
-			const rest = s.selectedIds.filter((x) => x !== id);
-			return {
-				selectedIds: rest,
-				selectedLineId: s.selectedLineId === id ? rest[rest.length - 1] ?? null : s.selectedLineId
+			style: {
+				...p.style,
+				...patch
+			}
+		}), key ?? `style:${Object.keys(patch).join(",")}`),
+		setAspect: (aspect) => get().update((p) => ({
+			...p,
+			aspect
+		})),
+		setBackground: (background) => get().update((p) => ({
+			...p,
+			background
+		})),
+		setAudio: (audio) => get().update((p) => ({
+			...p,
+			audio
+		})),
+		setLinesFromText: (text) => get().update((p) => {
+			const lid = p.layers.some((l) => l.id === get().activeLayerId) ? get().activeLayerId : p.layers[0].id;
+			const mine = linesFromText(text, linesOfLayer(p, lid)).map((l) => ({
+				...l,
+				layerId: lid
+			}));
+			const others = p.lines.filter((l) => layerIdOf(p, l) !== lid);
+			return orderByLayers({
+				...p,
+				lines: [...others, ...mine]
+			});
+		}, "lyrics-text"),
+		updateLine: (id, patch, key) => get().update((p) => ({
+			...p,
+			lines: p.lines.map((l) => l.id === id ? {
+				...l,
+				...patch
+			} : l)
+		}), key),
+		loadProject: (project) => get().loadDoc(viewToDoc(project)),
+		loadDoc: (doc) => {
+			const project = docToView(doc);
+			lastKey = void 0;
+			set({
+				doc,
+				project,
+				past: [],
+				future: [],
+				selectedLineId: null,
+				selectedIds: [],
+				selectedWord: null,
+				activeLayerId: project.layers[0].id
+			});
+		},
+		select: (id, add) => set((s) => {
+			if (id === null) return {
+				selectedLineId: null,
+				selectedIds: [],
+				selectedWord: null
 			};
-		}
-		return {
-			selectedIds: [...s.selectedIds, id],
-			selectedLineId: id
-		};
-	}),
-	selectMany: (ids) => set({
-		selectedIds: ids,
-		selectedLineId: ids[ids.length - 1] ?? null
-	}),
-	setActiveLayer: (activeLayerId) => set({ activeLayerId }),
-	toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
-	setSync: (syncMode, index) => set((s) => ({
-		syncMode,
-		syncIndex: index ?? (syncMode ? 0 : s.syncIndex)
-	})),
-	setSyncIndex: (syncIndex) => set({ syncIndex })
+			if (!add) return {
+				selectedLineId: id,
+				selectedIds: [id],
+				selectedWord: s.selectedWord?.lineId === id ? s.selectedWord : null
+			};
+			if (s.selectedIds.includes(id)) {
+				const rest = s.selectedIds.filter((x) => x !== id);
+				return {
+					selectedIds: rest,
+					selectedLineId: s.selectedLineId === id ? rest[rest.length - 1] ?? null : s.selectedLineId
+				};
+			}
+			return {
+				selectedIds: [...s.selectedIds, id],
+				selectedLineId: id
+			};
+		}),
+		selectMany: (ids) => set({
+			selectedIds: ids,
+			selectedLineId: ids[ids.length - 1] ?? null,
+			selectedWord: null
+		}),
+		setActiveLayer: (activeLayerId) => set({ activeLayerId }),
+		selectWord: (w) => set(w ? {
+			selectedWord: w,
+			selectedLineId: w.lineId,
+			selectedIds: [w.lineId]
+		} : { selectedWord: null }),
+		updateWord: (lineId, index, patch, key) => get().update((p) => ({
+			...p,
+			lines: p.lines.map((l) => l.id === lineId ? setWordOverride(l, index, patch) : l)
+		}), key),
+		toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
+		setSync: (syncMode, index) => set((s) => ({
+			syncMode,
+			syncIndex: index ?? (syncMode ? 0 : s.syncIndex)
+		})),
+		setSyncIndex: (syncIndex) => set({ syncIndex })
+	}));
 }));
 // ../node_modules/zod/v4/core/util.js
 function getEnumValues(entries) {
@@ -27846,6 +28011,8 @@ Object.keys(EFFECTS).filter((n) => EFFECTS[n].out);
 Object.keys(EASINGS);
 EASINGS["ease-in-out"];
 // ../src/lib/keyframes.ts
+init_esm();
+init_project();
 /**
 * Keyframes: custom motion on a line (position, scale, rotation, opacity).
 *
@@ -27981,6 +28148,7 @@ create(() => ({
 	clipboard: null
 }));
 // ../src/store/layers.ts
+init_project();
 /**
 * Pure layer operations on a Project. The timeline UI and the AI tools both use these, so a layer behaves
 * the same whichever way it was changed.
@@ -28167,6 +28335,7 @@ const StylePatch = object({
 	position: Position
 }).partial().strict();
 // ../src/lib/tools/helpers.ts
+init_project();
 const round2 = (n) => Math.round(n * 100) / 100;
 function lineAt(p, n) {
 	const l = p.lines[n - 1];
@@ -28177,6 +28346,24 @@ const withLines = (p, lines) => ({
 	...p,
 	lines
 });
+/** Lower-case word without punctuation, for matching a word the model typed. */
+const bare = (w) => w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+/**
+* 0-based index of a word in a line from a 1-based word number or the word's text (first match, ignoring case and
+* punctuation). Numbers in range win; a number that is out of range is tried as text ("99 problems").
+*/
+function wordAt(line, ref) {
+	const words = lineWords(line.text);
+	const n = typeof ref === "number" ? ref : /^\s*\d+\s*$/.test(ref) ? Number(ref) : NaN;
+	if (Number.isInteger(n) && n >= 1 && n <= words.length) return n - 1;
+	const k = bare(String(ref));
+	let i = words.findIndex((w) => bare(w) === k);
+	if (i < 0 && k.length > 2) i = words.findIndex((w) => bare(w).length > 2 && (bare(w).startsWith(k) || k.startsWith(bare(w))));
+	if (i < 0) throw new Error(`no word "${ref}" in "${line.text}" (words 1-${words.length}: ${words.join(" ")})`);
+	return i;
+}
+// ../src/lib/tools/lines.ts
+init_project();
 const lineTools = [
 	defineTool({
 		name: "add_line",
@@ -28635,11 +28822,6 @@ const sceneTools = [defineTool({
 	})
 })];
 // ../src/lib/aligner.ts
-const DEFAULT_ALIGNER_URL = "http://127.0.0.1:8765";
-const ALIGNER_HELP = "Could not reach the Cutir backend. Start it with: pip install -r backend/requirements.txt, then python backend/run.py";
-/** Section tags such as [Verse 1] or [Chorus] (Suno adds these); they are not sung. */
-const isTagLine = (t) => /^\s*\[[^\]]*\]\s*$/.test(t);
-const base = (u) => u.trim().replace(/\/+$/, "") || "http://127.0.0.1:8765";
 /**
 * Align the sung lines to the song. Tag lines ([Chorus]...) are skipped and dropped from the result.
 * Returns lines with start/end and, when the word counts agree, per-word timings.
@@ -28663,7 +28845,7 @@ async function alignLines(url, audio, lines, opts, signal, onProgress) {
 	form.append("separate", String(opts.separate));
 	let res;
 	try {
-		res = await fetch(`${base(url)}/api/align_stream`, {
+		res = await fetch(`${base$1(url)}/api/align_stream`, {
 			method: "POST",
 			body: form,
 			signal
@@ -28726,21 +28908,14 @@ async function alignLines(url, audio, lines, opts, signal, onProgress) {
 		skippedTags: lines.length - sung.length
 	};
 }
-// ../src/lib/autosync.ts
-const useSyncJob = create(() => ({
-	phase: "idle",
-	stage: "uploading",
-	pct: void 0,
-	separate: false
+var DEFAULT_ALIGNER_URL, ALIGNER_HELP, isTagLine, base$1;
+var init_aligner = __esmMin((() => {
+	DEFAULT_ALIGNER_URL = "http://127.0.0.1:8765";
+	ALIGNER_HELP = "Could not reach the Cutir backend. Start it with: pip install -r backend/requirements.txt, then python backend/run.py";
+	isTagLine = (t) => /^\s*\[[^\]]*\]\s*$/.test(t);
+	base$1 = (u) => u.trim().replace(/\/+$/, "") || "http://127.0.0.1:8765";
 }));
-let abortCtl = null;
-const read = (k, d) => {
-	try {
-		return localStorage.getItem(k) ?? d;
-	} catch {
-		return d;
-	}
-};
+// ../src/lib/autosync.ts
 /** Settings come from the Auto-sync options in the left panel (stored in localStorage). */
 function getAlignSettings() {
 	return {
@@ -28793,7 +28968,29 @@ async function runAlignment(over = {}) {
 		abortCtl = null;
 	}
 }
+var useSyncJob, abortCtl, read;
+var init_autosync = __esmMin((() => {
+	init_esm();
+	init_project();
+	init_aligner();
+	useSyncJob = create(() => ({
+		phase: "idle",
+		stage: "uploading",
+		pct: void 0,
+		separate: false
+	}));
+	abortCtl = null;
+	read = (k, d) => {
+		try {
+			return localStorage.getItem(k) ?? d;
+		} catch {
+			return d;
+		}
+	};
+}));
 // ../src/lib/tools/sync.ts
+init_autosync();
+init_project();
 let pending$2 = null;
 const syncTools = [defineTool({
 	name: "auto_sync",
@@ -28834,7 +29031,7 @@ const syncTools = [defineTool({
 	}
 })];
 // ../src/lib/tools/layers.ts
-const layerRef = union([string(), number$1()]).describe("layer name or number");
+const layerRef$1 = union([string(), number$1()]).describe("layer name or number");
 function need(p, ref) {
 	const layer = findLayer(p, ref);
 	if (!layer) throw new Error(`layer "${ref}" does not exist (layers: ${p.layers.map((l, i) => `${i + 1} ${l.name}`).join(", ")})`);
@@ -28875,7 +29072,7 @@ const layerTools = [
 		group: "layers",
 		description: "Change a layer: rename it, show/hide, lock, or set its position, fontSize and color.",
 		params: object({
-			layer: layerRef,
+			layer: layerRef$1,
 			name: string().min(1).optional(),
 			visible: boolean().optional(),
 			locked: boolean().optional(),
@@ -28900,7 +29097,7 @@ const layerTools = [
 		name: "delete_layer",
 		group: "layers",
 		description: "Delete a layer and the lines on it.",
-		params: object({ layer: layerRef }),
+		params: object({ layer: layerRef$1 }),
 		apply: (p, a) => {
 			const layer = need(p, a.layer);
 			return {
@@ -28915,7 +29112,7 @@ const layerTools = [
 		description: "Move a line (1-based index) to another layer.",
 		params: object({
 			index: idx,
-			layer: layerRef
+			layer: layerRef$1
 		}),
 		apply: (p, a) => {
 			const line = lineAt(p, a.index);
@@ -28927,7 +29124,11 @@ const layerTools = [
 		}
 	})
 ];
+// ../src/lib/renderer.ts
+init_project();
 // ../src/lib/styleEdit.ts
+init_esm();
+init_project();
 const getIn$1 = (o, path) => path.split(".").reduce((a, k) => a == null ? void 0 : a[k], o);
 function setIn(o, path, value) {
 	const [head, ...rest] = path.split(".");
@@ -28987,13 +29188,6 @@ create((set) => ({
 	set: (snapshot) => set({ snapshot })
 }));
 // ../src/lib/assetdb.ts
-/**
-* Per-project file storage (audio, background image/video) in IndexedDB, so a project reopened from the
-* Home screen gets its song and background back. Keys look like "<projectId>/audio".
-* Every call is best-effort: if IndexedDB is unavailable the app still works, files just are not remembered.
-*/
-const DB = "cutir-assets";
-const STORE = "files";
 function open() {
 	return new Promise((resolve, reject) => {
 		const req = indexedDB.open(DB, 1);
@@ -29021,13 +29215,20 @@ async function tx(mode, run) {
 		return;
 	}
 }
-const saveFile = (key, blob, name) => tx("readwrite", (s) => s.put({
-	blob,
-	name
-}, key)).then(() => void 0);
-const loadFile = (key) => tx("readonly", (s) => s.get(key));
-const deleteFile = (key) => tx("readwrite", (s) => s.delete(key)).then(() => void 0);
+var DB, STORE, saveFile, loadFile, deleteFile;
+var init_assetdb = __esmMin((() => {
+	DB = "cutir-assets";
+	STORE = "files";
+	saveFile = (key, blob, name) => tx("readwrite", (s) => s.put({
+		blob,
+		name
+	}, key)).then(() => void 0);
+	loadFile = (key) => tx("readonly", (s) => s.get(key));
+	deleteFile = (key) => tx("readwrite", (s) => s.delete(key)).then(() => void 0);
+}));
 // ../src/lib/templates.ts
+init_esm();
+init_project();
 const BUILTIN_TEMPLATES = [
 	{
 		id: "karaoke",
@@ -29300,7 +29501,7 @@ const target = (p, index) => index ? {
 const who = (index) => index ? `line ${index}` : "all lines";
 const optIndex = idx.optional().describe("1-based line number; leave out for all lines");
 /** Lenient object args: lower-case keys and turn "line" / "line_index" into index. */
-function tidy$1(args, renames = {}) {
+function tidy$2(args, renames = {}) {
 	if (!args || typeof args !== "object" || Array.isArray(args)) return args;
 	const out = {};
 	for (const [k, v] of Object.entries(args)) {
@@ -29359,7 +29560,7 @@ const moveText = defineTool({
 		y: num(0, 100).optional().describe("percent from the top")
 	}),
 	normalize: (a) => {
-		const o = tidy$1(a, {
+		const o = tidy$2(a, {
 			position: "place",
 			location: "place",
 			where: "place",
@@ -29392,7 +29593,7 @@ const scaleText = defineTool({
 		scale: num(.1, 8)
 	}),
 	normalize: (a) => {
-		const o = tidy$1(a, {
+		const o = tidy$2(a, {
 			size: "scale",
 			factor: "scale",
 			percent: "scale"
@@ -29416,7 +29617,7 @@ const rotateText = defineTool({
 		index: optIndex,
 		degrees: num(-360, 360)
 	}),
-	normalize: (a) => tidy$1(a, {
+	normalize: (a) => tidy$2(a, {
 		angle: "degrees",
 		deg: "degrees",
 		rotation: "degrees"
@@ -29462,26 +29663,26 @@ const EFFECT_WORDS = {
 	nothing: "none",
 	cut: "none"
 };
-const EFFECT_NAMES = Object.keys(EFFECTS);
-function toEffect(v) {
+const EFFECT_NAMES$1 = Object.keys(EFFECTS);
+function toEffect$1(v) {
 	if (typeof v !== "string") return v;
 	const k = v.trim().toLowerCase().replace(/[\s_]+/g, "-");
-	if (EFFECT_NAMES.includes(k)) return k;
+	if (EFFECT_NAMES$1.includes(k)) return k;
 	return EFFECT_WORDS[k] ?? EFFECT_WORDS[k.replace(/-/g, "")] ?? k;
 }
 const slotTool = (slot) => defineTool({
 	name: `set_animation_${slot}`,
 	group: "style",
 	description: slot === "in" ? "How text appears (its entrance). spin = rotate, typing = typewriter, karaoke = word-highlight." : "How text leaves (its exit).",
-	hint: `effect one of ${EFFECT_NAMES.filter((n) => slot === "in" || EFFECTS[n].out).join(",")}; durationMs; easing linear|ease-in|ease-out|ease-in-out|back|elastic`,
+	hint: `effect one of ${EFFECT_NAMES$1.filter((n) => slot === "in" || EFFECTS[n].out).join(",")}; durationMs; easing linear|ease-in|ease-out|ease-in-out|back|elastic`,
 	params: object({
 		index: optIndex,
-		effect: _enum(EFFECT_NAMES),
+		effect: _enum(EFFECT_NAMES$1),
 		durationMs: num(0, 3e3).optional(),
 		easing: EasingName.optional()
 	}),
 	normalize: (a) => {
-		const o = tidy$1(a, {
+		const o = tidy$2(a, {
 			name: "effect",
 			animation: "effect",
 			type: "effect",
@@ -29489,7 +29690,7 @@ const slotTool = (slot) => defineTool({
 			duration: "durationMs",
 			durationms: "durationMs"
 		});
-		if (o && typeof o === "object") o.effect = toEffect(o.effect);
+		if (o && typeof o === "object") o.effect = toEffect$1(o.effect);
 		return o;
 	},
 	apply: (p, a) => {
@@ -29515,7 +29716,7 @@ const setAnimationLoop = defineTool({
 		speed: num(.25, 4).optional()
 	}),
 	normalize: (a) => {
-		const o = tidy$1(a, {
+		const o = tidy$2(a, {
 			name: "effect",
 			animation: "effect",
 			loop: "effect"
@@ -29551,7 +29752,7 @@ const addKeyframe = defineTool({
 		easing: EasingName.optional()
 	}),
 	normalize: (a) => {
-		const o = tidy$1(a, {
+		const o = tidy$2(a, {
 			at: "time",
 			t: "time",
 			seconds: "time",
@@ -29594,7 +29795,7 @@ const clearKeyframes = defineTool({
 	group: "motion",
 	description: "Remove all keyframes from a line (or from every line).",
 	params: object({ index: optIndex }),
-	normalize: (a) => tidy$1(a),
+	normalize: (a) => tidy$2(a),
 	apply: (p, a) => {
 		const id = a.index ? lineAt(p, a.index).id : null;
 		const lines = p.lines.map((l) => {
@@ -29627,7 +29828,7 @@ const setTransition = defineTool({
 		ms: num(50, 3e3).optional()
 	}),
 	normalize: (a) => {
-		const o = tidy$1(a, {
+		const o = tidy$2(a, {
 			gap: "gap_index",
 			gapindex: "gap_index",
 			transition: "type",
@@ -29691,7 +29892,7 @@ const applyTemplateTool = defineTool({
 		name: string().min(1),
 		index: optIndex
 	}),
-	normalize: (a) => tidy$1(a, {
+	normalize: (a) => tidy$2(a, {
 		template: "name",
 		preset: "name",
 		style: "name",
@@ -29727,9 +29928,10 @@ const motionTools = [
 	applyTemplateTool
 ];
 // ../src/timeline/engine.ts
-const EPS = 1e-6;
+init_convert();
+const EPS$1 = 1e-6;
 const clipEnd = (c) => c.start + c.duration;
-const tidy = (n) => Math.round(n * 1e6) / 1e6;
+const tidy$1 = (n) => Math.round(n * 1e6) / 1e6;
 const frameLen = (ctx) => 1 / ctx.fps;
 let seq = 0;
 /** New ids for clips, tracks and markers created by edits. */
@@ -29817,14 +30019,14 @@ function targetTrack(tl, kind) {
 function splitAt(c, t) {
 	return [{
 		...c,
-		duration: tidy(t - c.start),
-		sourceOut: tidy(c.sourceIn + (t - c.start) * c.speed)
+		duration: tidy$1(t - c.start),
+		sourceOut: tidy$1(c.sourceIn + (t - c.start) * c.speed)
 	}, {
 		...c,
 		id: newId("c"),
-		start: tidy(t),
-		duration: tidy(clipEnd(c) - t),
-		sourceIn: tidy(c.sourceIn + (t - c.start) * c.speed)
+		start: tidy$1(t),
+		duration: tidy$1(clipEnd(c) - t),
+		sourceIn: tidy$1(c.sourceIn + (t - c.start) * c.speed)
 	}];
 }
 /**
@@ -29832,16 +30034,16 @@ function splitAt(c, t) {
 * range is split around it. Clips in `except` are left alone. Used by overwrite, move and lift.
 */
 function clearRange(tl, trackId, a, b, except = /* @__PURE__ */ new Set()) {
-	if (b - a <= EPS || isLocked(tl, trackId)) return tl;
+	if (b - a <= EPS$1 || isLocked(tl, trackId)) return tl;
 	const out = [];
 	let changed = false;
 	for (const c of tl.clips) {
-		if (c.trackId !== trackId || !editable(c) || except.has(c.id) || clipEnd(c) <= a + EPS || c.start >= b - EPS) {
+		if (c.trackId !== trackId || !editable(c) || except.has(c.id) || clipEnd(c) <= a + EPS$1 || c.start >= b - EPS$1) {
 			out.push(c);
 			continue;
 		}
 		changed = true;
-		if (c.start >= a - EPS && clipEnd(c) <= b + EPS) continue;
+		if (c.start >= a - EPS$1 && clipEnd(c) <= b + EPS$1) continue;
 		if (c.start < a && clipEnd(c) > b) {
 			const [left, rest] = splitAt(c, a);
 			const [, right] = splitAt(rest, b);
@@ -29883,21 +30085,21 @@ function moveClips$1(tl, ids, dt, trackShift = 0, shiftKind) {
 		if (!target || target.locked) return tl;
 		dest.set(c.id, target.id);
 	}
-	if (Math.abs(d) < EPS && group.every((c) => dest.get(c.id) === c.trackId)) return tl;
+	if (Math.abs(d) < EPS$1 && group.every((c) => dest.get(c.id) === c.trackId)) return tl;
 	const moving = new Set(group.map((c) => c.id));
 	let next = {
 		...tl,
 		clips: tl.clips.filter((c) => !moving.has(c.id))
 	};
 	for (const c of group) {
-		const start = tidy(c.start + d);
+		const start = tidy$1(c.start + d);
 		next = clearRange(next, dest.get(c.id), start, start + c.duration);
 	}
 	return {
 		...next,
 		clips: [...next.clips, ...group.map((c) => ({
 			...c,
-			start: tidy(c.start + d),
+			start: tidy$1(c.start + d),
 			trackId: dest.get(c.id)
 		}))]
 	};
@@ -29926,10 +30128,10 @@ function rippleDelete(tl, ids) {
 		clips: tl.clips.filter((c) => !gone.has(c.id)).map((c) => {
 			const removed = byTrack.get(c.trackId);
 			if (!removed || !editable(c)) return c;
-			const shift = removed.filter((r) => clipEnd(r) <= c.start + EPS).reduce((s, r) => s + r.duration, 0);
+			const shift = removed.filter((r) => clipEnd(r) <= c.start + EPS$1).reduce((s, r) => s + r.duration, 0);
 			return shift ? {
 				...c,
-				start: tidy(c.start - shift)
+				start: tidy$1(c.start - shift)
 			} : c;
 		})
 	};
@@ -29944,7 +30146,7 @@ function blade(tl, t, ids) {
 	const out = [];
 	let changed = false;
 	for (const c of tl.clips) {
-		if (!(editable(c) && !c.text && !isLocked(tl, c.trackId) && (!only || only.has(c.id)) && t > c.start + EPS && t < clipEnd(c) - EPS)) {
+		if (!(editable(c) && !c.text && !isLocked(tl, c.trackId) && (!only || only.has(c.id)) && t > c.start + EPS$1 && t < clipEnd(c) - EPS$1)) {
 			out.push(c);
 			continue;
 		}
@@ -29991,8 +30193,8 @@ function trimEdge(tl, id, edge, dt, ripple, ctx) {
 		lo = Math.max(lo, a);
 		hi = Math.min(hi, b);
 	}
-	const d = tidy(Math.min(hi, Math.max(lo, dt)));
-	if (Math.abs(d) < EPS || lo > hi) return tl;
+	const d = tidy$1(Math.min(hi, Math.max(lo, dt)));
+	if (Math.abs(d) < EPS$1 || lo > hi) return tl;
 	const touched = new Set(group.map((c) => c.id));
 	const tracks = new Set(group.map((c) => c.trackId));
 	const shift = edge === "end" ? d : -d;
@@ -30002,26 +30204,26 @@ function trimEdge(tl, id, edge, dt, ripple, ctx) {
 			if (touched.has(c.id)) {
 				if (edge === "end") return {
 					...c,
-					duration: tidy(c.duration + d),
-					sourceOut: tidy(c.sourceOut + d * c.speed)
+					duration: tidy$1(c.duration + d),
+					sourceOut: tidy$1(c.sourceOut + d * c.speed)
 				};
 				if (ripple) return {
 					...c,
-					duration: tidy(c.duration - d),
-					sourceIn: tidy(c.sourceIn + d * c.speed)
+					duration: tidy$1(c.duration - d),
+					sourceIn: tidy$1(c.sourceIn + d * c.speed)
 				};
 				return {
 					...c,
-					start: tidy(c.start + d),
-					duration: tidy(c.duration - d),
-					sourceIn: tidy(c.sourceIn + d * c.speed)
+					start: tidy$1(c.start + d),
+					duration: tidy$1(c.duration - d),
+					sourceIn: tidy$1(c.sourceIn + d * c.speed)
 				};
 			}
 			if (ripple && tracks.has(c.trackId) && editable(c)) {
 				const ref = group.find((g) => g.trackId === c.trackId);
-				if (c.start >= clipEnd(ref) - EPS) return {
+				if (c.start >= clipEnd(ref) - EPS$1) return {
 					...c,
-					start: tidy(c.start + shift)
+					start: tidy$1(c.start + shift)
 				};
 			}
 			return c;
@@ -30030,9 +30232,9 @@ function trimEdge(tl, id, edge, dt, ripple, ctx) {
 }
 /** The clip(s) a source makes at `at` (video + linked audio when the source has sound). */
 function sourceClips(src, at, targets, speed = 1) {
-	const len = tidy((src.out - src.in) / speed);
+	const len = tidy$1((src.out - src.in) / speed);
 	const base = {
-		start: tidy(at),
+		start: tidy$1(at),
 		duration: len,
 		sourceIn: src.in,
 		sourceOut: src.out,
@@ -30096,9 +30298,9 @@ function insertEdit(tl, src, at, targets) {
 	let next = blade(tl, at);
 	next = {
 		...next,
-		clips: next.clips.map((c) => editable(c) && !isLocked(next, c.trackId) && c.start >= at - EPS ? {
+		clips: next.clips.map((c) => editable(c) && !isLocked(next, c.trackId) && c.start >= at - EPS$1 ? {
 			...c,
-			start: tidy(c.start + len)
+			start: tidy$1(c.start + len)
 		} : c)
 	};
 	return {
@@ -30115,7 +30317,7 @@ function placeOnTop(tl, src, at, targets) {
 	const len = src.out - src.in;
 	const of = tl.tracks.filter((t) => t.kind === kind);
 	const from = Math.max(0, of.findIndex((t) => t.id === (kind === "video" ? targets.video : targets.audio)));
-	const free = of.slice(from).find((t) => !t.locked && !tl.clips.some((c) => c.trackId === t.id && editable(c) && c.start < at + len - EPS && clipEnd(c) > at + EPS));
+	const free = of.slice(from).find((t) => !t.locked && !tl.clips.some((c) => c.trackId === t.id && editable(c) && c.start < at + len - EPS$1 && clipEnd(c) > at + EPS$1));
 	let next = tl;
 	let trackId = free?.id;
 	if (!trackId) {
@@ -30136,7 +30338,7 @@ function appendEdit(tl, src, targets) {
 function addMarker(tl, time, m = {}) {
 	const marker = {
 		id: newId("mk"),
-		time: tidy(Math.max(0, time)),
+		time: tidy$1(Math.max(0, time)),
 		name: m.name ?? "",
 		color: m.color ?? "#5b9dff",
 		...m.note ? { note: m.note } : {},
@@ -30153,8 +30355,8 @@ function addMarker(tl, time, m = {}) {
 /** Set or clear the timeline in and out points (null clears). Keeps in before out. */
 function setRange(tl, inPoint, outPoint) {
 	const next = { ...tl };
-	if (inPoint !== void 0) inPoint === null ? delete next.inPoint : next.inPoint = tidy(Math.max(0, inPoint));
-	if (outPoint !== void 0) outPoint === null ? delete next.outPoint : next.outPoint = tidy(Math.max(0, outPoint));
+	if (inPoint !== void 0) inPoint === null ? delete next.inPoint : next.inPoint = tidy$1(Math.max(0, inPoint));
+	if (outPoint !== void 0) outPoint === null ? delete next.outPoint : next.outPoint = tidy$1(Math.max(0, outPoint));
 	if (next.inPoint !== void 0 && next.outPoint !== void 0 && next.outPoint < next.inPoint) [next.inPoint, next.outPoint] = [next.outPoint, next.inPoint];
 	return next;
 }
@@ -30171,9 +30373,14 @@ function onActive(doc, fn) {
 		timelines
 	};
 }
+// ../src/timeline/ui.ts
+init_esm();
+init_project();
+init_convert();
 create(() => ({
 	tool: "select",
 	snapping: true,
+	beatSnap: true,
 	selected: [],
 	sourceId: null,
 	guide: null,
@@ -30221,7 +30428,6 @@ function sourceOf(item) {
 	};
 }
 // ../src/lib/filestore.ts
-const hasOpfs = () => typeof navigator !== "undefined" && !!navigator.storage?.getDirectory;
 async function dirOf(parts, create) {
 	try {
 		let dir = await navigator.storage.getDirectory();
@@ -30231,13 +30437,6 @@ async function dirOf(parts, create) {
 		return null;
 	}
 }
-const split = (key) => {
-	const parts = key.split("/").filter(Boolean);
-	return {
-		dirs: ["cutir", ...parts.slice(0, -1)],
-		name: parts[parts.length - 1]
-	};
-};
 /** Store a file under `key`. Large files are streamed to disk, never read into memory. */
 async function putFile(key, blob, name = "file") {
 	if (hasOpfs()) {
@@ -30284,8 +30483,6 @@ async function removeFile(key) {
 	}
 	await deleteFile(key);
 }
-const canLink = () => typeof window !== "undefined" && "showOpenFilePicker" in window;
-const HDB = "cutir-handles";
 function handleDb() {
 	return new Promise((resolve, reject) => {
 		const req = indexedDB.open(HDB, 1);
@@ -30307,9 +30504,6 @@ async function handleTx(mode, run) {
 		return;
 	}
 }
-const saveHandle = (key, h) => handleTx("readwrite", (s) => s.put(h, key)).then(() => void 0);
-const forgetHandle = (key) => handleTx("readwrite", (s) => s.delete(key)).then(() => void 0);
-const loadHandle = (key) => handleTx("readonly", (s) => s.get(key));
 /** Read a linked original. `ask` prompts for permission (needs a click); without it a missing permission returns "permission". */
 async function readLinked(key, ask = false) {
 	const h = await loadHandle(key);
@@ -30338,10 +30532,24 @@ async function pickLinkedFiles(accept) {
 		return [];
 	}
 }
+var hasOpfs, split, canLink, HDB, saveHandle, forgetHandle, loadHandle;
+var init_filestore = __esmMin((() => {
+	init_assetdb();
+	hasOpfs = () => typeof navigator !== "undefined" && !!navigator.storage?.getDirectory;
+	split = (key) => {
+		const parts = key.split("/").filter(Boolean);
+		return {
+			dirs: ["cutir", ...parts.slice(0, -1)],
+			name: parts[parts.length - 1]
+		};
+	};
+	canLink = () => typeof window !== "undefined" && "showOpenFilePicker" in window;
+	HDB = "cutir-handles";
+	saveHandle = (key, h) => handleTx("readwrite", (s) => s.put(h, key)).then(() => void 0);
+	forgetHandle = (key) => handleTx("readwrite", (s) => s.delete(key)).then(() => void 0);
+	loadHandle = (key) => handleTx("readonly", (s) => s.get(key));
+}));
 // ../src/lib/probe.ts
-let worker = null;
-let next = 1;
-const pending$1 = /* @__PURE__ */ new Map();
 function getWorker() {
 	if (worker) return worker;
 	worker = new Worker(new URL("./probe.worker.ts", import.meta.url), { type: "module" });
@@ -30401,16 +30609,372 @@ function playbackNote(info, kind) {
 	if (info.hasAudio && info.canDecodeAudio === false) return `The ${info.audioCodec ?? "audio"} codec cannot be decoded in this browser. Convert the sound to AAC, Opus or MP3.`;
 	return "";
 }
+var worker, next, pending$1;
+var init_probe = __esmMin((() => {
+	worker = null;
+	next = 1;
+	pending$1 = /* @__PURE__ */ new Map();
+}));
+// ../src/lib/energy.ts
+var ANALYSIS_RATE;
+var init_energy = __esmMin((() => {
+	ANALYSIS_RATE = 22050;
+}));
+// ../src/lib/beats.ts
+var beats_exports = /* @__PURE__ */ __exportAll({
+	BEAT_COLOR: () => BEAT_COLOR,
+	analyzeBeats: () => analyzeBeats,
+	applyBeatResult: () => applyBeatResult,
+	autoDetectPoolItem: () => autoDetectPoolItem,
+	cancelBeats: () => cancelBeats,
+	detectBeatsFor: () => detectBeatsFor,
+	manualBeats: () => manualBeats,
+	queueDetect: () => queueDetect,
+	sourceToTimeline: () => sourceToTimeline,
+	storeBeatResult: () => storeBeatResult,
+	useBeatJobs: () => useBeatJobs,
+	watchSongs: () => watchSongs
+});
+/** The backend URL when it is up and has librosa, else null. */
+async function backendFor(signal) {
+	if (Date.now() - backendDown < 3e4) return null;
+	const url = base(getAlignSettings().url);
+	if (!url) return null;
+	const ctl = new AbortController();
+	const timer = setTimeout(() => ctl.abort(), 1500);
+	const stop = () => ctl.abort();
+	signal?.addEventListener("abort", stop);
+	try {
+		const res = await fetch(`${url}/api/health`, { signal: ctl.signal });
+		if ((res.ok ? await res.json() : null)?.beats?.librosa) return url;
+	} catch {} finally {
+		clearTimeout(timer);
+		signal?.removeEventListener("abort", stop);
+	}
+	if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+	backendDown = Date.now();
+	return null;
+}
+async function analyzeOnBackend(url, audio, opts) {
+	const form = new FormData();
+	form.append("audio", audio instanceof File ? audio : new File([audio], "song"));
+	opts.onProgress?.(.1);
+	const res = await fetch(`${url}/api/beats`, {
+		method: "POST",
+		body: form,
+		signal: opts.signal
+	});
+	if (!res.ok) {
+		let msg = `The backend answered ${res.status}`;
+		try {
+			const j = await res.json();
+			if (typeof j?.detail === "string") msg = j.detail;
+		} catch {}
+		throw new Error(msg);
+	}
+	const r = await res.json();
+	opts.onProgress?.(1);
+	return toResult(r, "backend");
+}
+/** Decode to mono samples at ANALYSIS_RATE (on the main thread: workers have no AudioContext). */
+async function decodeMono(audio) {
+	const buf = await new OfflineAudioContext(1, 1, ANALYSIS_RATE).decodeAudioData(await audio.arrayBuffer());
+	const out = new Float32Array(buf.length);
+	for (let c = 0; c < buf.numberOfChannels; c++) {
+		const ch = buf.getChannelData(c);
+		for (let i = 0; i < ch.length; i++) out[i] += ch[i] / buf.numberOfChannels;
+	}
+	return out;
+}
+function analyzeInBrowser(audio, opts) {
+	return (async () => {
+		opts.onProgress?.(0);
+		const samples = await decodeMono(audio);
+		if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+		opts.onProgress?.(.1);
+		const worker = new Worker(new URL("./beats.worker.ts", import.meta.url), { type: "module" });
+		return new Promise((resolve, reject) => {
+			const stop = () => (worker.terminate(), reject(new DOMException("Aborted", "AbortError")));
+			opts.signal?.addEventListener("abort", stop, { once: true });
+			const end = () => (worker.terminate(), opts.signal?.removeEventListener("abort", stop));
+			worker.onmessage = (e) => {
+				const m = e.data;
+				if (m.type === "progress") opts.onProgress?.(.1 + .9 * m.pct);
+				else if (m.type === "result") end(), resolve(toResult(m.result, "browser"));
+				else end(), reject(new Error(m.message));
+			};
+			worker.onerror = (e) => (end(), reject(new Error(e.message || "Beat analysis failed")));
+			worker.postMessage({
+				samples,
+				sampleRate: ANALYSIS_RATE
+			}, [samples.buffer]);
+		});
+	})();
+}
+/** Analyse audio (backend when reachable, else Web Audio in a worker). */
+async function analyzeBeats(audio, opts = {}) {
+	const url = await backendFor(opts.signal);
+	if (url) try {
+		return await analyzeOnBackend(url, audio, opts);
+	} catch (e) {
+		if (e.name === "AbortError") throw e;
+		console.warn("Backend beat detection failed, using the browser:", e);
+	}
+	return analyzeInBrowser(audio, opts);
+}
+/** Beats on a steady grid from a typed tempo and first-downbeat offset (for songs the detector gets wrong). */
+function manualBeats(tempo, firstDownbeat, duration, beatsPerBar = 4) {
+	const bpb = Math.max(1, Math.round(beatsPerBar));
+	const analysis = {
+		tempo,
+		firstDownbeat: Math.max(0, firstDownbeat),
+		beatsPerBar: bpb,
+		source: "manual"
+	};
+	if (!(tempo > 0) || !(duration > 0)) return {
+		analysis,
+		beats: []
+	};
+	const period = 60 / tempo;
+	const first = Math.max(0, firstDownbeat);
+	const k0 = -Math.floor(first / period + 1e-9);
+	const beats = [];
+	for (let k = k0;; k++) {
+		const time = Math.round((first + k * period) * 1e6) / 1e6;
+		if (time > duration + 1e-9) break;
+		if (time < 0) continue;
+		const downbeat = (k % bpb + bpb) % bpb === 0;
+		beats.push({
+			time,
+			downbeat,
+			strength: downbeat ? 1 : .6
+		});
+	}
+	return {
+		analysis,
+		beats
+	};
+}
+/** Source seconds -> timeline seconds for a clip, or null when that moment is not part of the clip. */
+function sourceToTimeline(c, src) {
+	const speed = c.speed > 0 ? c.speed : 1;
+	if (src < c.sourceIn - 1e-6) return null;
+	if (!c.fill) {
+		if (c.sourceOut > c.sourceIn && src >= c.sourceOut - 1e-6) return null;
+		const t = c.start + (src - c.sourceIn) / speed;
+		if (t >= c.start + c.duration - 1e-6) return null;
+		return Math.round(t * 1e6) / 1e6;
+	}
+	return Math.round((c.start + (src - c.sourceIn) / speed) * 1e6) / 1e6;
+}
+function beatMarkers(c, mediaId, result) {
+	const out = [];
+	let bar = 0;
+	result.beats.forEach((b, i) => {
+		if (b.downbeat) bar++;
+		const time = sourceToTimeline(c, b.time);
+		if (time === null) return;
+		out.push({
+			id: `beat-${c.id}-${i}`,
+			time,
+			name: b.downbeat ? `Bar ${bar}` : "Beat",
+			color: BEAT_COLOR,
+			kind: "beat",
+			downbeat: b.downbeat,
+			strength: b.strength,
+			sourceMediaId: mediaId
+		});
+	});
+	return out;
+}
+/**
+* Pure: store a result on the document. Sets `analysis` on the media item and replaces the beat markers of every
+* timeline whose clips use that media (mapped from source time to timeline time per clip). `mediaId` may be a
+* document media id or a media-pool item id (then every document entry of that pool item is updated, the lyric
+* project's song included). Returns `doc` itself when no media matches.
+*/
+function applyBeatResult(doc, mediaId, result) {
+	const targets = mediaMatching(doc, mediaId);
+	if (!targets.length) return doc;
+	const ids = new Set(targets.map((m) => m.id));
+	const media = doc.media.map((m) => ids.has(m.id) ? {
+		...m,
+		analysis: result.analysis
+	} : m);
+	const timelines = doc.timelines.map((tl) => {
+		const uses = tl.clips.filter((c) => c.mediaId && ids.has(c.mediaId));
+		const hadOwn = tl.markers.some((m) => m.kind === "beat" && m.sourceMediaId && ids.has(m.sourceMediaId));
+		if (!uses.length && !hadOwn) return tl;
+		const kept = tl.markers.filter((m) => !(m.kind === "beat" && m.sourceMediaId && ids.has(m.sourceMediaId)));
+		const added = uses.flatMap((c) => beatMarkers(c, c.mediaId, result));
+		const markers = [...kept, ...added].sort((a, b) => a.time - b.time);
+		return {
+			...tl,
+			markers
+		};
+	});
+	return {
+		...doc,
+		media,
+		timelines
+	};
+}
+/** The audio of a pool item or document media entry. */
+async function blobFor(id) {
+	const pool = useMedia.getState();
+	if (pool.items.some((i) => i.id === id)) return pool.fileOf(id);
+	const m = useProject.getState().doc.media.find((x) => x.id === id);
+	if (!m) return null;
+	if (m.poolId && pool.items.some((i) => i.id === m.poolId)) return pool.fileOf(m.poolId);
+	if (m.url) try {
+		return await (await fetch(m.url)).blob();
+	} catch {
+		return null;
+	}
+	return null;
+}
+/** Save a result: on the pool item (cache) and in the document with one undoable edit. */
+function storeBeatResult(id, result) {
+	const poolId = poolIdOf(id);
+	if (poolId) useMedia.getState().updateItem(poolId, { beatResult: result });
+	useProject.getState().editDoc((doc) => applyBeatResult(doc, poolId ?? id, result));
+}
+/** Detect beats for a media item and apply the result with one undoable editDoc. */
+async function detectBeatsFor(mediaId, opts = {}) {
+	controllers.get(mediaId)?.abort();
+	const ctl = new AbortController();
+	controllers.set(mediaId, ctl);
+	const stop = () => ctl.abort();
+	opts.signal?.addEventListener("abort", stop, { once: true });
+	setJob(mediaId, { progress: 0 });
+	try {
+		const blob = await blobFor(mediaId);
+		if (!blob) throw new Error("Could not read the song's file.");
+		let last = 0;
+		const result = await analyzeBeats(blob, {
+			signal: ctl.signal,
+			onProgress: (p) => {
+				opts.onProgress?.(p);
+				if (p - last >= .02 || p >= 1) last = p, setJob(mediaId, { progress: p });
+			}
+		});
+		if (ctl.signal.aborted) throw new DOMException("Aborted", "AbortError");
+		storeBeatResult(mediaId, result);
+		setJob(mediaId, null);
+	} catch (e) {
+		if (e.name === "AbortError") setJob(mediaId, null);
+		else setJob(mediaId, {
+			progress: 0,
+			error: e.message || "Beat detection failed"
+		});
+		throw e;
+	} finally {
+		opts.signal?.removeEventListener("abort", stop);
+		if (controllers.get(mediaId) === ctl) controllers.delete(mediaId);
+	}
+}
+/** Detect in the background, one song at a time; failures show on the job, never as an exception. */
+function queueDetect(id) {
+	if (queued.has(id) || controllers.has(id)) return;
+	queued.add(id);
+	setJob(id, { progress: 0 });
+	queue = queue.then(() => {
+		queued.delete(id);
+		return detectBeatsFor(id).catch(() => void 0);
+	});
+}
+/** A newly imported pool item: analyse it if it is a song without a result. */
+function autoDetectPoolItem(poolId) {
+	const it = useMedia.getState().items.find((i) => i.id === poolId);
+	if (it?.kind === "audio" && !it.beatResult) queueDetect(poolId);
+}
+/**
+* Keep songs on the document analysed: an audio media entry (the lyric project's song included) without analysis
+* gets the pool item's stored result, or is analysed once. Each entry is looked at once per session, so undoing the
+* result does not bring it straight back.
+*/
+function watchSongs() {
+	if (watching) return;
+	watching = true;
+	const scan = () => {
+		const { doc } = useProject.getState();
+		const { items, projectId } = useMedia.getState();
+		const poolOf = (m) => m.poolId ? items.find((i) => i.id === m.poolId) : void 0;
+		for (const m of doc.media) {
+			if (m.kind !== "audio") continue;
+			const pool = poolOf(m);
+			if (m.poolId && !pool) continue;
+			const key = `${projectId}|${m.id}|${m.poolId ?? m.name}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			if (pool?.beatResult) {
+				if (!sameAnalysis(m.analysis, pool.beatResult.analysis)) {
+					const r = pool.beatResult;
+					useProject.getState().editDoc((d) => applyBeatResult(d, m.id, r));
+				}
+			} else if (pool || !m.analysis) queueDetect(m.poolId ?? m.id);
+		}
+		for (const tl of doc.timelines) for (const c of tl.clips) {
+			const m = c.mediaId ? doc.media.find((x) => x.id === c.mediaId) : void 0;
+			const r = m && poolOf(m)?.beatResult;
+			if (!m || m.kind !== "audio" || !r) continue;
+			const key = `${projectId}|${tl.id}|${c.id}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			if (!r.beats.length || tl.markers.some((k) => k.kind === "beat" && k.id.startsWith(`beat-${c.id}-`))) continue;
+			useProject.getState().editDoc((d) => applyBeatResult(d, m.id, r));
+		}
+	};
+	let timer;
+	const later = () => {
+		clearTimeout(timer);
+		timer = setTimeout(scan, 50);
+	};
+	useProject.subscribe((s, p) => s.doc !== p.doc && (s.doc.media !== p.doc.media || s.doc.timelines !== p.doc.timelines) && later());
+	useMedia.subscribe((s, p) => (s.items !== p.items || s.projectId !== p.projectId) && later());
+	later();
+}
+var base, backendDown, toResult, BEAT_COLOR, mediaMatching, useBeatJobs, setJob, poolIdOf, controllers, cancelBeats, queue, queued, sameAnalysis, seen, watching;
+var init_beats = __esmMin((() => {
+	init_esm();
+	init_project();
+	init_media();
+	init_autosync();
+	init_energy();
+	base = (u) => u.trim().replace(/\/+$/, "");
+	backendDown = 0;
+	toResult = (r, source) => ({
+		analysis: {
+			tempo: r.tempo,
+			firstDownbeat: r.firstDownbeat,
+			beatsPerBar: r.beatsPerBar,
+			source,
+			energy: r.energy
+		},
+		beats: r.beats
+	});
+	BEAT_COLOR = "#f5a623";
+	mediaMatching = (doc, id) => doc.media.filter((m) => m.id === id || m.poolId === id);
+	useBeatJobs = create(() => ({ jobs: {} }));
+	setJob = (id, j) => useBeatJobs.setState((s) => {
+		const jobs = { ...s.jobs };
+		if (j) jobs[id] = j;
+		else delete jobs[id];
+		return { jobs };
+	});
+	poolIdOf = (id) => {
+		if (useMedia.getState().items.some((i) => i.id === id)) return id;
+		return useProject.getState().doc.media.find((m) => m.id === id)?.poolId;
+	};
+	controllers = /* @__PURE__ */ new Map();
+	cancelBeats = (id) => controllers.get(id)?.abort();
+	queue = Promise.resolve();
+	queued = /* @__PURE__ */ new Set();
+	sameAnalysis = (a, b) => !!a && !!b && a.tempo === b.tempo && a.firstDownbeat === b.firstDownbeat && a.beatsPerBar === b.beatsPerBar && a.source === b.source;
+	seen = /* @__PURE__ */ new Set();
+	watching = false;
+}));
 // ../src/store/media.ts
-const metaKey = (pid) => `cutir:media:${pid}`;
-const binKey = (pid) => `cutir:bins:${pid}`;
-const fileKey = (pid, id) => `${pid}/m/${id}`;
-const thumbKey = (pid, id) => `${pid}/thumb/${id}`;
-const AUDIO = /\.(mp3|wav|m4a|aac|ogg|oga|flac|opus)$/i;
-const VIDEO = /\.(mp4|m4v|mov|webm|mkv|ogv)$/i;
-const IMAGE = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
-const SUBTITLE = /\.(srt|vtt|lrc|ass|ssa)$/i;
-const FONT = /\.(ttf|otf|woff2?)$/i;
 function kindOf(f) {
 	if (SUBTITLE.test(f.name)) return "subtitle";
 	if (FONT.test(f.name) || f.type.startsWith("font/")) return "font";
@@ -30419,7 +30983,6 @@ function kindOf(f) {
 	if (f.type.startsWith("image/") || IMAGE.test(f.name)) return "image";
 	return null;
 }
-const sameFile = (a, f) => a.name === f.name && a.size === f.size;
 function readJson(key, fallback) {
 	try {
 		const raw = localStorage.getItem(key);
@@ -30466,350 +31029,374 @@ function videoThumb(url) {
 		v.src = url;
 	});
 }
-const fromProbe = (info, kind) => ({
-	duration: info.duration,
-	width: info.width,
-	height: info.height,
-	fps: info.fps,
-	container: info.container,
-	videoCodec: info.videoCodec,
-	audioCodec: info.audioCodec,
-	channels: info.channels,
-	hasAudio: info.hasAudio,
-	note: playbackNote(info, kind)
-});
-const useMedia = create((set, get) => {
-	const revoke = () => [...Object.values(get().urls), ...Object.values(get().thumbs)].forEach((u) => URL.revokeObjectURL(u));
-	const saveItems = () => {
-		const pid = get().projectId;
-		if (pid) writeJson(metaKey(pid), get().items);
-	};
-	const saveBins = () => {
-		const pid = get().projectId;
-		if (pid) writeJson(binKey(pid), get().bins);
-	};
-	const patch = (id, p) => {
-		set((s) => ({ items: s.items.map((i) => i.id === id ? {
-			...i,
-			...p
-		} : i) }));
-		saveItems();
-	};
-	const setUrl = (id, url) => set((s) => {
-		if (s.urls[id]) URL.revokeObjectURL(s.urls[id]);
-		const urls = { ...s.urls };
-		if (url) urls[id] = url;
-		else delete urls[id];
-		return { urls };
+var beatsLib, metaKey, binKey, fileKey, thumbKey, AUDIO, VIDEO, IMAGE, SUBTITLE, FONT, sameFile, fromProbe, useMedia;
+var init_media = __esmMin((() => {
+	init_esm();
+	init_project();
+	init_filestore();
+	init_probe();
+	beatsLib = () => Promise.resolve().then(() => (init_beats(), beats_exports));
+	metaKey = (pid) => `cutir:media:${pid}`;
+	binKey = (pid) => `cutir:bins:${pid}`;
+	fileKey = (pid, id) => `${pid}/m/${id}`;
+	thumbKey = (pid, id) => `${pid}/thumb/${id}`;
+	AUDIO = /\.(mp3|wav|m4a|aac|ogg|oga|flac|opus)$/i;
+	VIDEO = /\.(mp4|m4v|mov|webm|mkv|ogv)$/i;
+	IMAGE = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
+	SUBTITLE = /\.(srt|vtt|lrc|ass|ssa)$/i;
+	FONT = /\.(ttf|otf|woff2?)$/i;
+	sameFile = (a, f) => a.name === f.name && a.size === f.size;
+	fromProbe = (info, kind) => ({
+		duration: info.duration,
+		width: info.width,
+		height: info.height,
+		fps: info.fps,
+		container: info.container,
+		videoCodec: info.videoCodec,
+		audioCodec: info.audioCodec,
+		channels: info.channels,
+		hasAudio: info.hasAudio,
+		note: playbackNote(info, kind)
 	});
-	const setStatus = (id, st) => set((s) => ({ status: {
-		...s.status,
-		[id]: st
-	} }));
-	/** Probe and make a poster frame; runs after the file is stored so imports never wait on it. */
-	const enrich = async (pid, item, file) => {
-		try {
-			if (item.kind === "audio" || item.kind === "video") {
-				const info = await probeMedia(file);
-				if (get().projectId !== pid) return;
-				patch(item.id, fromProbe(info, item.kind));
-			} else if (item.kind === "image") {
-				const size = await probeImage(file);
-				if (size && get().projectId === pid) patch(item.id, size);
-			}
-		} catch (e) {
-			if (get().projectId === pid) patch(item.id, { note: `Could not read this file: ${e.message}.` });
-		}
-		if (item.kind === "video" && get().projectId === pid) {
-			const url = get().urls[item.id];
-			const blob = url ? await videoThumb(url) : void 0;
-			if (blob && get().projectId === pid) {
-				putFile(thumbKey(pid, item.id), blob, "thumb.jpg");
-				set((s) => ({ thumbs: {
-					...s.thumbs,
-					[item.id]: URL.createObjectURL(blob)
-				} }));
-			}
-		}
-	};
-	/** Open the file of an item for this session (URL, status, poster). */
-	const open = async (pid, it) => {
-		let file = null;
-		if (it.storage === "link") {
-			const r = await readLinked(fileKey(pid, it.id));
-			if (r === "permission") {
-				setStatus(it.id, "needs-permission");
-				return null;
-			}
-			file = r;
-		} else file = await getFile(fileKey(pid, it.id), it.name, it.mime);
-		if (get().projectId !== pid) return null;
-		if (!file) {
-			setStatus(it.id, "missing");
-			return null;
-		}
-		setStatus(it.id, "ok");
-		setUrl(it.id, URL.createObjectURL(file));
-		return file;
-	};
-	const importOne = async (pid, f, binId, link) => {
-		const existing = get().items.find((i) => sameFile(i, f));
-		if (existing) return existing;
-		const kind = kindOf(f);
-		if (!kind) return "skip";
-		const item = {
-			id: uid(),
-			name: f.name,
-			kind,
-			mime: f.type,
-			size: f.size,
-			lastModified: f.lastModified,
-			addedAt: Date.now(),
-			storage: link ? "link" : "copy",
-			binId
+	useMedia = create((set, get) => {
+		const revoke = () => [...Object.values(get().urls), ...Object.values(get().thumbs)].forEach((u) => URL.revokeObjectURL(u));
+		const saveItems = () => {
+			const pid = get().projectId;
+			if (pid) writeJson(metaKey(pid), get().items);
 		};
-		if (link) await saveHandle(fileKey(pid, item.id), link);
-		else await putFile(fileKey(pid, item.id), f, f.name);
-		if (get().projectId !== pid) return item;
-		set((s) => ({
-			items: [...s.items, item],
-			status: {
-				...s.status,
-				[item.id]: "ok"
-			}
-		}));
-		setUrl(item.id, URL.createObjectURL(f));
-		saveItems();
-		enrich(pid, item, f);
-		return item;
-	};
-	const importMany = async (entries, binId) => {
-		const pid = get().projectId;
-		if (!pid || !entries.length) return [];
-		const result = [];
-		const skipped = [];
-		set({ progress: {
-			done: 0,
-			total: entries.length,
-			current: entries[0].file.name
-		} });
-		for (let i = 0; i < entries.length; i++) {
-			const { file, link } = entries[i];
-			set({ progress: {
-				done: i,
-				total: entries.length,
-				current: file.name
-			} });
-			const r = await importOne(pid, file, binId, link);
-			if (r === "skip") skipped.push(file.name);
-			else result.push(r);
-			await new Promise((r) => setTimeout(r, 0));
-		}
-		set({
-			progress: null,
-			notice: skipped.length ? `Skipped ${skipped.length} unsupported file${skipped.length === 1 ? "" : "s"}: ${skipped.slice(0, 3).join(", ")}${skipped.length > 3 ? ", ..." : ""}` : ""
+		const saveBins = () => {
+			const pid = get().projectId;
+			if (pid) writeJson(binKey(pid), get().bins);
+		};
+		const patch = (id, p) => {
+			set((s) => ({ items: s.items.map((i) => i.id === id ? {
+				...i,
+				...p
+			} : i) }));
+			saveItems();
+		};
+		const setUrl = (id, url) => set((s) => {
+			if (s.urls[id]) URL.revokeObjectURL(s.urls[id]);
+			const urls = { ...s.urls };
+			if (url) urls[id] = url;
+			else delete urls[id];
+			return { urls };
 		});
-		return result;
-	};
-	return {
-		projectId: null,
-		items: [],
-		bins: [],
-		status: {},
-		urls: {},
-		thumbs: {},
-		progress: null,
-		notice: "",
-		load: async (pid) => {
-			revoke();
-			set({
-				projectId: pid,
-				items: [],
-				bins: [],
-				status: {},
-				urls: {},
-				thumbs: {},
-				notice: "",
-				progress: null
-			});
-			if (!pid) return;
-			const items = readJson(metaKey(pid), []);
-			set({
-				items,
-				bins: readJson(binKey(pid), [])
-			});
-			for (const it of items) {
-				await open(pid, it);
-				if (get().projectId !== pid) return;
-				if (it.kind === "video") {
-					const t = await getFile(thumbKey(pid, it.id), "thumb.jpg", "image/jpeg");
-					if (t && get().projectId === pid) set((s) => ({ thumbs: {
+		const setStatus = (id, st) => set((s) => ({ status: {
+			...s.status,
+			[id]: st
+		} }));
+		/** Probe and make a poster frame; runs after the file is stored so imports never wait on it. */
+		const enrich = async (pid, item, file) => {
+			try {
+				if (item.kind === "audio" || item.kind === "video") {
+					const info = await probeMedia(file);
+					if (get().projectId !== pid) return;
+					patch(item.id, fromProbe(info, item.kind));
+				} else if (item.kind === "image") {
+					const size = await probeImage(file);
+					if (size && get().projectId === pid) patch(item.id, size);
+				}
+			} catch (e) {
+				if (get().projectId === pid) patch(item.id, { note: `Could not read this file: ${e.message}.` });
+			}
+			if (item.kind === "video" && get().projectId === pid) {
+				const url = get().urls[item.id];
+				const blob = url ? await videoThumb(url) : void 0;
+				if (blob && get().projectId === pid) {
+					putFile(thumbKey(pid, item.id), blob, "thumb.jpg");
+					set((s) => ({ thumbs: {
 						...s.thumbs,
-						[it.id]: URL.createObjectURL(t)
+						[item.id]: URL.createObjectURL(blob)
 					} }));
 				}
 			}
-			for (const it of get().items) {
-				if (get().projectId !== pid) return;
-				if ((it.kind === "video" && (!get().thumbs[it.id] || it.width === void 0) || it.kind === "audio" && it.channels === void 0) && get().status[it.id] === "ok") {
-					const f = await get().fileOf(it.id);
-					if (f) await enrich(pid, it, f);
+		};
+		/** Open the file of an item for this session (URL, status, poster). */
+		const open = async (pid, it) => {
+			let file = null;
+			if (it.storage === "link") {
+				const r = await readLinked(fileKey(pid, it.id));
+				if (r === "permission") {
+					setStatus(it.id, "needs-permission");
+					return null;
 				}
+				file = r;
+			} else file = await getFile(fileKey(pid, it.id), it.name, it.mime);
+			if (get().projectId !== pid) return null;
+			if (!file) {
+				setStatus(it.id, "missing");
+				return null;
 			}
-		},
-		addFiles: (files, binId) => importMany(files.map((file) => ({ file })), binId),
-		linkFiles: async (binId) => {
-			if (!canLink()) return [];
-			const handles = await pickLinkedFiles({
-				"video/*": [
-					".mp4",
-					".mov",
-					".webm",
-					".mkv",
-					".m4v"
-				],
-				"audio/*": [
-					".mp3",
-					".wav",
-					".m4a",
-					".ogg",
-					".flac",
-					".opus"
-				],
-				"image/*": [
-					".png",
-					".jpg",
-					".jpeg",
-					".webp",
-					".gif"
-				]
-			});
-			const entries = await Promise.all(handles.map(async (h) => ({
-				file: await h.getFile(),
-				link: h
-			})));
-			return importMany(entries, binId);
-		},
-		remove: (id) => {
-			const pid = get().projectId;
-			if (!pid) return;
-			const item = get().items.find((i) => i.id === id);
-			setUrl(id, void 0);
-			if (item?.storage === "link") forgetHandle(fileKey(pid, id));
-			else removeFile(fileKey(pid, id));
-			removeFile(thumbKey(pid, id));
-			set((s) => {
-				const { [id]: _t, ...thumbs } = s.thumbs;
-				const { [id]: _s, ...status } = s.status;
-				if (_t) URL.revokeObjectURL(_t);
-				return {
-					items: s.items.filter((i) => i.id !== id),
-					thumbs,
-					status
-				};
-			});
-			saveItems();
-		},
-		rename: (id, name) => {
-			const n = name.trim();
-			if (n) patch(id, { name: n });
-		},
-		moveToBin: (ids, binId) => {
-			const set_ = new Set(ids);
-			set((s) => ({ items: s.items.map((i) => set_.has(i.id) ? {
-				...i,
-				binId
-			} : i) }));
-			saveItems();
-		},
-		updateItem: (id, p) => patch(id, p),
-		setMarks: (id, m) => {
-			const it = get().items.find((i) => i.id === id);
-			if (!it) return;
-			const next = { ...it };
-			if (m.markIn !== void 0) next.markIn = m.markIn ?? void 0;
-			if (m.markOut !== void 0) next.markOut = m.markOut ?? void 0;
-			patch(id, {
-				markIn: next.markIn,
-				markOut: next.markOut
-			});
-		},
-		relink: async (id, file) => {
-			const pid = get().projectId;
-			const it = get().items.find((i) => i.id === id);
-			if (!pid || !it) return;
-			if (it.storage === "link") await forgetHandle(fileKey(pid, id));
-			await putFile(fileKey(pid, id), file, file.name);
-			patch(id, {
-				storage: "copy",
-				size: file.size,
-				mime: file.type,
-				lastModified: file.lastModified,
-				note: ""
-			});
-			setStatus(id, "ok");
-			setUrl(id, URL.createObjectURL(file));
-			const fresh = get().items.find((i) => i.id === id);
-			enrich(pid, fresh, file);
-		},
-		grantAccess: async (id) => {
-			const pid = get().projectId;
-			if (!pid) return;
-			const r = await readLinked(fileKey(pid, id), true);
-			if (r && r !== "permission") {
-				setStatus(id, "ok");
-				setUrl(id, URL.createObjectURL(r));
-			} else setStatus(id, r === "permission" ? "needs-permission" : "missing");
-		},
-		addBin: (name, parentId) => {
-			const bin = {
+			setStatus(it.id, "ok");
+			setUrl(it.id, URL.createObjectURL(file));
+			return file;
+		};
+		const importOne = async (pid, f, binId, link) => {
+			const existing = get().items.find((i) => sameFile(i, f));
+			if (existing) return existing;
+			const kind = kindOf(f);
+			if (!kind) return "skip";
+			const item = {
 				id: uid(),
-				name: name.trim() || "New bin",
-				parentId
+				name: f.name,
+				kind,
+				mime: f.type,
+				size: f.size,
+				lastModified: f.lastModified,
+				addedAt: Date.now(),
+				storage: link ? "link" : "copy",
+				binId
 			};
-			set((s) => ({ bins: [...s.bins, bin] }));
-			saveBins();
-			return bin.id;
-		},
-		renameBin: (id, name) => {
-			const n = name.trim();
-			if (!n) return;
-			set((s) => ({ bins: s.bins.map((b) => b.id === id ? {
-				...b,
-				name: n
-			} : b) }));
-			saveBins();
-		},
-		deleteBin: (id) => {
-			const bin = get().bins.find((b) => b.id === id);
-			if (!bin) return;
+			if (link) await saveHandle(fileKey(pid, item.id), link);
+			else await putFile(fileKey(pid, item.id), f, f.name);
+			if (get().projectId !== pid) return item;
 			set((s) => ({
-				bins: s.bins.filter((b) => b.id !== id).map((b) => b.parentId === id ? {
-					...b,
-					parentId: bin.parentId
-				} : b),
-				items: s.items.map((i) => i.binId === id ? {
-					...i,
-					binId: bin.parentId
-				} : i)
+				items: [...s.items, item],
+				status: {
+					...s.status,
+					[item.id]: "ok"
+				}
 			}));
-			saveBins();
+			setUrl(item.id, URL.createObjectURL(f));
 			saveItems();
-		},
-		fileOf: async (id) => {
+			enrich(pid, item, f);
+			if (kind === "audio") beatsLib().then((b) => b.autoDetectPoolItem(item.id));
+			return item;
+		};
+		const importMany = async (entries, binId) => {
 			const pid = get().projectId;
-			const item = get().items.find((i) => i.id === id);
-			if (!pid || !item) return null;
-			if (item.storage === "link") {
-				const r = await readLinked(fileKey(pid, id));
-				return r && r !== "permission" ? r : null;
+			if (!pid || !entries.length) return [];
+			const result = [];
+			const skipped = [];
+			set({ progress: {
+				done: 0,
+				total: entries.length,
+				current: entries[0].file.name
+			} });
+			for (let i = 0; i < entries.length; i++) {
+				const { file, link } = entries[i];
+				set({ progress: {
+					done: i,
+					total: entries.length,
+					current: file.name
+				} });
+				const r = await importOne(pid, file, binId, link);
+				if (r === "skip") skipped.push(file.name);
+				else result.push(r);
+				await new Promise((r) => setTimeout(r, 0));
 			}
-			return getFile(fileKey(pid, id), item.name, item.mime);
-		},
-		dismissNotice: () => set({ notice: "" })
-	};
-});
+			set({
+				progress: null,
+				notice: skipped.length ? `Skipped ${skipped.length} unsupported file${skipped.length === 1 ? "" : "s"}: ${skipped.slice(0, 3).join(", ")}${skipped.length > 3 ? ", ..." : ""}` : ""
+			});
+			return result;
+		};
+		return {
+			projectId: null,
+			items: [],
+			bins: [],
+			status: {},
+			urls: {},
+			thumbs: {},
+			progress: null,
+			notice: "",
+			load: async (pid) => {
+				revoke();
+				set({
+					projectId: pid,
+					items: [],
+					bins: [],
+					status: {},
+					urls: {},
+					thumbs: {},
+					notice: "",
+					progress: null
+				});
+				if (!pid) return;
+				beatsLib().then((b) => b.watchSongs());
+				const items = readJson(metaKey(pid), []);
+				set({
+					items,
+					bins: readJson(binKey(pid), [])
+				});
+				for (const it of items) {
+					await open(pid, it);
+					if (get().projectId !== pid) return;
+					if (it.kind === "video") {
+						const t = await getFile(thumbKey(pid, it.id), "thumb.jpg", "image/jpeg");
+						if (t && get().projectId === pid) set((s) => ({ thumbs: {
+							...s.thumbs,
+							[it.id]: URL.createObjectURL(t)
+						} }));
+					}
+				}
+				for (const it of get().items) {
+					if (get().projectId !== pid) return;
+					if ((it.kind === "video" && (!get().thumbs[it.id] || it.width === void 0) || it.kind === "audio" && it.channels === void 0) && get().status[it.id] === "ok") {
+						const f = await get().fileOf(it.id);
+						if (f) await enrich(pid, it, f);
+					}
+				}
+			},
+			addFiles: (files, binId) => importMany(files.map((file) => ({ file })), binId),
+			linkFiles: async (binId) => {
+				if (!canLink()) return [];
+				const handles = await pickLinkedFiles({
+					"video/*": [
+						".mp4",
+						".mov",
+						".webm",
+						".mkv",
+						".m4v"
+					],
+					"audio/*": [
+						".mp3",
+						".wav",
+						".m4a",
+						".ogg",
+						".flac",
+						".opus"
+					],
+					"image/*": [
+						".png",
+						".jpg",
+						".jpeg",
+						".webp",
+						".gif"
+					]
+				});
+				const entries = await Promise.all(handles.map(async (h) => ({
+					file: await h.getFile(),
+					link: h
+				})));
+				return importMany(entries, binId);
+			},
+			remove: (id) => {
+				const pid = get().projectId;
+				if (!pid) return;
+				const item = get().items.find((i) => i.id === id);
+				setUrl(id, void 0);
+				if (item?.storage === "link") forgetHandle(fileKey(pid, id));
+				else removeFile(fileKey(pid, id));
+				removeFile(thumbKey(pid, id));
+				set((s) => {
+					const { [id]: _t, ...thumbs } = s.thumbs;
+					const { [id]: _s, ...status } = s.status;
+					if (_t) URL.revokeObjectURL(_t);
+					return {
+						items: s.items.filter((i) => i.id !== id),
+						thumbs,
+						status
+					};
+				});
+				saveItems();
+			},
+			rename: (id, name) => {
+				const n = name.trim();
+				if (n) patch(id, { name: n });
+			},
+			moveToBin: (ids, binId) => {
+				const set_ = new Set(ids);
+				set((s) => ({ items: s.items.map((i) => set_.has(i.id) ? {
+					...i,
+					binId
+				} : i) }));
+				saveItems();
+			},
+			updateItem: (id, p) => patch(id, p),
+			setMarks: (id, m) => {
+				const it = get().items.find((i) => i.id === id);
+				if (!it) return;
+				const next = { ...it };
+				if (m.markIn !== void 0) next.markIn = m.markIn ?? void 0;
+				if (m.markOut !== void 0) next.markOut = m.markOut ?? void 0;
+				patch(id, {
+					markIn: next.markIn,
+					markOut: next.markOut
+				});
+			},
+			relink: async (id, file) => {
+				const pid = get().projectId;
+				const it = get().items.find((i) => i.id === id);
+				if (!pid || !it) return;
+				if (it.storage === "link") await forgetHandle(fileKey(pid, id));
+				await putFile(fileKey(pid, id), file, file.name);
+				patch(id, {
+					storage: "copy",
+					size: file.size,
+					mime: file.type,
+					lastModified: file.lastModified,
+					note: "",
+					beatResult: void 0
+				});
+				setStatus(id, "ok");
+				setUrl(id, URL.createObjectURL(file));
+				const fresh = get().items.find((i) => i.id === id);
+				enrich(pid, fresh, file);
+				if (fresh.kind === "audio") beatsLib().then((b) => b.autoDetectPoolItem(id));
+			},
+			grantAccess: async (id) => {
+				const pid = get().projectId;
+				if (!pid) return;
+				const r = await readLinked(fileKey(pid, id), true);
+				if (r && r !== "permission") {
+					setStatus(id, "ok");
+					setUrl(id, URL.createObjectURL(r));
+				} else setStatus(id, r === "permission" ? "needs-permission" : "missing");
+			},
+			addBin: (name, parentId) => {
+				const bin = {
+					id: uid(),
+					name: name.trim() || "New bin",
+					parentId
+				};
+				set((s) => ({ bins: [...s.bins, bin] }));
+				saveBins();
+				return bin.id;
+			},
+			renameBin: (id, name) => {
+				const n = name.trim();
+				if (!n) return;
+				set((s) => ({ bins: s.bins.map((b) => b.id === id ? {
+					...b,
+					name: n
+				} : b) }));
+				saveBins();
+			},
+			deleteBin: (id) => {
+				const bin = get().bins.find((b) => b.id === id);
+				if (!bin) return;
+				set((s) => ({
+					bins: s.bins.filter((b) => b.id !== id).map((b) => b.parentId === id ? {
+						...b,
+						parentId: bin.parentId
+					} : b),
+					items: s.items.map((i) => i.binId === id ? {
+						...i,
+						binId: bin.parentId
+					} : i)
+				}));
+				saveBins();
+				saveItems();
+			},
+			fileOf: async (id) => {
+				const pid = get().projectId;
+				const item = get().items.find((i) => i.id === id);
+				if (!pid || !item) return null;
+				if (item.storage === "link") {
+					const r = await readLinked(fileKey(pid, id));
+					return r && r !== "permission" ? r : null;
+				}
+				return getFile(fileKey(pid, id), item.name, item.mime);
+			},
+			dismissNotice: () => set({ notice: "" })
+		};
+	});
+}));
 // ../src/lib/tools/timeline.ts
+init_convert();
+init_media();
 /**
 * Timeline tools (phases 13 to 15): clips on video and audio tracks, tracks, markers and the in/out range.
 * They work on the whole document (`applyDoc`), apply as one undo step like every tool, and never change locked
@@ -31127,7 +31714,629 @@ const timelineTools = [
 		})
 	})
 ];
+// ../src/lib/emphasis.ts
+init_project();
+/**
+* Automatic emphasis (phase 16.5): picks the key words of each line and gives them emphasis levels 1..3 in
+* `line.wordOverrides[i].emphasis`. Rules only (no model): long sung duration, word length, not a stop word,
+* hook words that recur across the song, and a small bonus for the last content word of a line.
+*
+* Vocal loudness at the word is not known yet (the energy curve is song-wide, not vocal). `EmphasisOptions.loudness`
+* is the hook for it: pass a 0..1 level per word index and it is scored like duration.
+*/
+/** Common English words that never carry a line (compared lower-case with punctuation removed, so "don't" = "dont"). */
+const STOP = new Set("a an the and or but nor so yet if then than as at by for from in into of off on onto out over to up upon with within without about above after again against all am are aren arent be because been before being below between both can cant cannot could couldnt did didnt do does doesnt doing dont down during each few further had hadnt has hasnt have havent having he hed hes her here heres hers herself him himself his how hows i id ill im ive is isnt it its itll itself just lets me more most my myself no not now of once only other ought our ours ourselves own same shall she shed shell shes should shouldnt some such that thats their theirs them themselves there theres these they theyd theyll theyre theyve this those through too under until very was wasnt we wed well were weve werent what whats when whens where wheres which while who whos whom why whys will wont would wouldnt you youd youll youre youve your yours yourself yourselves oh ooh ah uh yeah yea ya ye na la da hey mm mmm whoa gonna wanna gotta got get gets cause cuz til till ever every thing things one also like really still even way much many any anything nothing something let".split(" "));
+/** Lower-case word with punctuation removed (letters and digits only). */
+const cleanWord = (w) => w.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]/gu, "");
+/** How many lines of the project contain each content word (cached per lines array). */
+const hookCache = /* @__PURE__ */ new WeakMap();
+function hookCounts(lines) {
+	let m = hookCache.get(lines);
+	if (!m) {
+		m = /* @__PURE__ */ new Map();
+		for (const l of lines) {
+			const seen = new Set(lineWords(l.text).map(cleanWord).filter((c) => c && !STOP.has(c)));
+			for (const c of seen) m.set(c, (m.get(c) ?? 0) + 1);
+		}
+		hookCache.set(lines, m);
+	}
+	return m;
+}
+/** Score of each word (0 for stop words and punctuation-only words). Exported for tests and the properties panel. */
+function scoreWords(line, project, opts = {}) {
+	const words = lineWords(line.text);
+	const n = words.length;
+	if (!n) return [];
+	const timed = line.words && line.words.length === n;
+	const dur = words.map((_, i) => timed ? Math.max(0, line.words[i].end - line.words[i].start) : (line.end - line.start) / n);
+	const mean = dur.reduce((a, b) => a + b, 0) / n || 1;
+	const hooks = hookCounts(project.lines);
+	const clean = words.map(cleanWord);
+	const content = clean.map((c) => !!c && !STOP.has(c));
+	const lastContent = content.lastIndexOf(true);
+	return words.map((_, i) => {
+		if (!content[i]) return 0;
+		let s = 1;
+		s += 1.5 * Math.max(-.5, Math.min(2, dur[i] / mean - 1));
+		s += Math.min(clean[i].length, 10) / 10;
+		const count = hooks.get(clean[i]) ?? 0;
+		if (count >= 2) s += .4 * Math.min(count - 1, 4);
+		if (i === lastContent) s += .3;
+		const loud = opts.loudness?.[i];
+		if (loud !== void 0) s += 1.5 * Math.max(-.5, Math.min(1, loud * 2 - 1));
+		return Math.max(.01, s);
+	});
+}
+/** Suggested emphasis level per word index (only words that get a level are present). Pure and deterministic. */
+function suggestEmphasis(line, project, opts = {}) {
+	const scores = scoreWords(line, project, opts);
+	const n = scores.length;
+	if (n < 2) return {};
+	const max = n <= 2 ? 1 : Math.max(1, Math.floor(n / 3));
+	const ranked = scores.map((s, i) => ({
+		s,
+		i
+	})).filter((x) => x.s > 0).sort((a, b) => b.s - a.s || a.i - b.i);
+	if (!ranked.length) return {};
+	const top = ranked[0];
+	const second = ranked[1]?.s ?? 0;
+	const out = {};
+	out[top.i] = top.s >= 2.2 && top.s >= second * 1.35 ? 3 : 2;
+	for (const r of ranked.slice(1, max)) {
+		if (r.s < top.s * .6) break;
+		out[r.i] = r.s >= top.s * .85 ? 2 : 1;
+	}
+	return out;
+}
+/**
+* Project with suggested emphasis written into the given lines (all lines when `lineIds` is missing). Pure.
+* Earlier emphasis levels on those lines are cleared first (there is no separate "manual" level); every other word
+* override field (style, transform, keyframes) is kept.
+*/
+function applyAutoEmphasis(project, lineIds) {
+	const want = lineIds ? new Set(lineIds) : null;
+	const lines = project.lines.map((l) => {
+		if (want && !want.has(l.id)) return l;
+		let next = l;
+		for (const k of Object.keys(l.wordOverrides ?? {})) if (l.wordOverrides[Number(k)].emphasis) next = setWordOverride(next, Number(k), { emphasis: void 0 });
+		for (const [i, level] of Object.entries(suggestEmphasis(l, project))) next = setWordOverride(next, Number(i), { emphasis: level });
+		return next;
+	});
+	return {
+		...project,
+		lines
+	};
+}
+// ../src/lib/tools/kinetic.ts
+init_beats();
+init_project();
+init_convert();
+init_media();
+/**
+* Kinetic tools (phase 16.5): single words as objects, emphasis levels, beat reactions, energy and beats.
+* Lines are 1-based like every line tool; words are 1-based within a line, or given as the word's text.
+*/
+/** Lower-case keys, rename aliases, drop null / empty values; "all" for lines means every line. */
+function tidy(args, renames = {}) {
+	if (!args || typeof args !== "object" || Array.isArray(args)) return args ?? {};
+	const out = {};
+	for (const [k, v] of Object.entries(args)) {
+		const key = k.toLowerCase().replace(/[\s-]+/g, "_");
+		const to = renames[key] ?? key;
+		if (v !== null && v !== "") out[to] = v;
+	}
+	for (const k of [
+		"lines",
+		"index",
+		"layer"
+	]) if (typeof out[k] === "string" && /^(all|every|\*|project)/i.test(out[k])) delete out[k];
+	return out;
+}
+const LINE_KEYS = {
+	line: "index",
+	line_index: "index",
+	lineindex: "index",
+	line_number: "index",
+	n: "index"
+};
+/** "1,3" / 2 / [1, "3"] -> [1, 3] */
+const lineList = union([
+	array(union([number$1(), string()])),
+	number$1(),
+	string()
+]).transform((v) => (Array.isArray(v) ? v : typeof v === "string" ? v.split(/[\s,]+/).filter(Boolean) : [v]).map(Number)).pipe(array(number$1().int().min(1)).min(1)).describe("1-based line numbers; leave out for all lines");
+const layerRef = union([string(), number$1()]).describe("layer name or number");
+/** Where a style change goes: given lines, a layer, or the project (every line). */
+function scopeOf(p, a) {
+	if (a.lines?.length) return {
+		target: {
+			scope: "line",
+			ids: a.lines.map((n) => lineAt(p, n).id)
+		},
+		who: `line${a.lines.length > 1 ? "s" : ""} ${a.lines.join(", ")}`
+	};
+	if (a.layer !== void 0) {
+		const layer = findLayer(p, a.layer);
+		if (!layer) throw new Error(`layer "${a.layer}" does not exist (layers: ${p.layers.map((l, i) => `${i + 1} ${l.name}`).join(", ")})`);
+		return {
+			target: {
+				scope: "layer",
+				layerId: layer.id
+			},
+			who: `layer ${layer.name}`
+		};
+	}
+	return {
+		target: { scope: "project" },
+		who: "all lines"
+	};
+}
+const replaceLine = (p, line) => ({
+	...p,
+	lines: p.lines.map((l) => l.id === line.id ? line : l)
+});
+const wordRef = union([number$1(), string().min(1)]).describe("1-based word number in the line, or the word itself");
+const EFFECT_NAMES = Object.keys(EFFECTS);
+function toEffect(v) {
+	if (typeof v !== "string") return v;
+	const k = v.trim().toLowerCase().replace(/[\s_]+/g, "-");
+	if (EFFECT_NAMES.includes(k)) return k;
+	return {
+		spin: "rotate",
+		bounce: "pop",
+		grow: "zoom",
+		slide: "slide-up",
+		rise: "slide-up",
+		drop: "slide-down",
+		appear: "fade",
+		typing: "typewriter",
+		off: "none",
+		cut: "none"
+	}[k] ?? k;
+}
+const Effect = _enum(EFFECT_NAMES);
+const setWordStyle = defineTool({
+	name: "set_word_style",
+	group: "kinetic",
+	description: "Style ONE word of a line on its own: colour, emphasis level, size, nudge, tilt, font and its own entrance/exit. Everything not given keeps following the line. reset=true puts the word back to the line's look.",
+	hint: "word = 1-based word number or the word text; scale 1 = normal; x,y = nudge in percent of the frame; rotation in degrees; emphasis 0-3; in/out = effect names like the animation tools",
+	params: object({
+		index: idx.describe("1-based line number"),
+		word: wordRef,
+		color: color.optional(),
+		emphasis: number().int().min(0).max(3).optional(),
+		scale: num(.1, 8).optional(),
+		x: num(-100, 100).optional().describe("nudge across, percent of width"),
+		y: num(-100, 100).optional().describe("nudge down, percent of height"),
+		rotation: num(-360, 360).optional(),
+		font: string().min(1).optional(),
+		in: Effect.optional(),
+		out: Effect.optional(),
+		reset: bool.optional()
+	}),
+	normalize: (a) => {
+		const o = tidy(a, {
+			...LINE_KEYS,
+			word_index: "word",
+			text: "word",
+			colour: "color",
+			size: "scale",
+			angle: "rotation",
+			degrees: "rotation",
+			font_family: "font",
+			fontfamily: "font",
+			level: "emphasis",
+			animation_in: "in",
+			animation_out: "out",
+			entrance: "in",
+			exit: "out"
+		});
+		if ("in" in o) o.in = toEffect(o.in);
+		if ("out" in o) o.out = toEffect(o.out);
+		if (typeof o.scale === "string" && /%$/.test(o.scale)) o.scale = parseFloat(o.scale) / 100;
+		if (typeof o.scale === "number" && o.scale > 8) o.scale = o.scale / 100;
+		return o;
+	},
+	prepare: async (a) => {
+		if (a.font) await ensureFont(a.font);
+	},
+	apply: (p, a) => {
+		const line = lineAt(p, a.index);
+		const w = wordAt(line, a.word);
+		const text = lineWords(line.text)[w];
+		if (a.reset) {
+			const wo = { ...line.wordOverrides ?? {} };
+			delete wo[w];
+			const next = {
+				...line,
+				wordOverrides: wo
+			};
+			if (!Object.keys(wo).length) delete next.wordOverrides;
+			return {
+				project: replaceLine(p, next),
+				summary: `line ${a.index}: "${text}" back to the line's look`
+			};
+		}
+		const cur = line.wordOverrides?.[w] ?? {};
+		const patch = {};
+		const changed = [];
+		let style = cur.style;
+		if (a.color) style = {
+			...style,
+			color: a.color
+		}, changed.push(`colour ${a.color}`);
+		if (a.font) style = {
+			...style,
+			fontFamily: titleCaseFont(a.font)
+		}, changed.push(`font ${titleCaseFont(a.font)}`);
+		if (a.in || a.out) {
+			const anim = { ...style?.animation };
+			if (a.in) anim.in = {
+				...anim.in,
+				name: a.in
+			}, changed.push(`in ${a.in}`);
+			if (a.out) {
+				if (!EFFECTS[a.out].out) throw new Error(`${a.out} can only be an entrance`);
+				anim.out = {
+					...anim.out,
+					name: a.out
+				};
+				changed.push(`out ${a.out}`);
+			}
+			style = {
+				...style,
+				animation: anim
+			};
+		}
+		if (style !== cur.style) patch.style = style;
+		if (a.scale !== void 0 || a.x !== void 0 || a.y !== void 0 || a.rotation !== void 0) {
+			const t = { ...cur.transform };
+			if (a.scale !== void 0) t.scale = a.scale, changed.push(`scale ${a.scale}`);
+			if (a.x !== void 0) t.x = a.x / 100, changed.push(`x ${a.x}%`);
+			if (a.y !== void 0) t.y = a.y / 100, changed.push(`y ${a.y}%`);
+			if (a.rotation !== void 0) t.rotation = a.rotation, changed.push(`rotation ${a.rotation}`);
+			patch.transform = t;
+		}
+		if (a.emphasis !== void 0) patch.emphasis = a.emphasis, changed.push(`emphasis ${a.emphasis}`);
+		if (!changed.length) throw new Error("nothing to change: give color, emphasis, scale, x, y, rotation, font, in or out (or reset)");
+		return {
+			project: replaceLine(p, setWordOverride(line, w, patch)),
+			summary: `line ${a.index}, "${text}": ${changed.join(", ")}`
+		};
+	}
+});
+const emphasizeWords = defineTool({
+	name: "emphasize_words",
+	group: "kinetic",
+	description: "Make key words of a line stand out with an emphasis level (1 mild, 2 strong, 3 strongest; 0 = back to normal). Each level's look is shared by every word at that level.",
+	hint: "words = list of word numbers (1-based) or word texts; level 0-3",
+	params: object({
+		index: idx.describe("1-based line number"),
+		words: union([array(wordRef), wordRef]).transform((v) => Array.isArray(v) ? v : [v]),
+		level: number().int().min(0).max(3).default(2)
+	}),
+	normalize: (a) => {
+		const o = tidy(a, {
+			...LINE_KEYS,
+			word: "words",
+			emphasis: "level",
+			strength: "level"
+		});
+		if (typeof o.words === "string" && /,/.test(o.words)) o.words = o.words.split(/\s*,\s*/).filter(Boolean);
+		return o;
+	},
+	apply: (p, a) => {
+		let line = lineAt(p, a.index);
+		const all = lineWords(line.text);
+		const hit = a.words.map((w) => wordAt(line, w));
+		for (const w of hit) line = setWordOverride(line, w, { emphasis: a.level });
+		const names = hit.map((w) => `"${all[w]}"`).join(", ");
+		return {
+			project: replaceLine(p, line),
+			summary: a.level ? `line ${a.index}: ${names} at emphasis ${a.level}` : `line ${a.index}: emphasis cleared on ${names}`
+		};
+	}
+});
+const autoEmphasis = defineTool({
+	name: "auto_emphasis",
+	group: "kinetic",
+	description: "Pick the key words of each line automatically (held notes, long words, hook words; never filler words) and give them emphasis levels. Replaces earlier emphasis on those lines.",
+	params: object({ lines: lineList.optional() }),
+	normalize: (a) => tidy(a, {
+		index: "lines",
+		line: "lines"
+	}),
+	apply: (p, a) => {
+		const ids = a.lines?.map((n) => lineAt(p, n).id);
+		const project = applyAutoEmphasis(p, ids);
+		const n = project.lines.reduce((s, l) => s + Object.values(l.wordOverrides ?? {}).filter((o) => o.emphasis).length, 0);
+		return {
+			project,
+			summary: `auto emphasis on ${a.lines ? `line${a.lines.length > 1 ? "s" : ""} ${a.lines.join(", ")}` : "all lines"} (${n} emphasised word${n === 1 ? "" : "s"} in the project)`
+		};
+	}
+});
+const BEAT_NAMES = [
+	"none",
+	"pulse",
+	"flash",
+	"shake",
+	"nudge",
+	"colour-swap",
+	"jump-cut"
+];
+function toBeatName(v) {
+	if (typeof v !== "string") return v;
+	const k = v.trim().toLowerCase().replace(/[\s_]+/g, "-").replace("color", "colour");
+	if (BEAT_NAMES.includes(k)) return k;
+	if (/^(off|stop|nothing|no)$/.test(k)) return "none";
+	if (/pulse|bounce|thump|punch|pump|throb|beat/.test(k)) return "pulse";
+	if (/flash|strobe|blink|light/.test(k)) return "flash";
+	if (/shake|jitter|rattle|vibrat/.test(k)) return "shake";
+	if (/nudge|bump|kick|push/.test(k)) return "nudge";
+	if (/swap|colou?r/.test(k)) return "colour-swap";
+	if (/cut|jump/.test(k)) return "jump-cut";
+	return k;
+}
+const setBeatReaction = defineTool({
+	name: "set_beat_reaction",
+	group: "kinetic",
+	description: "Make text react on every beat of the song (pulse, flash, shake, nudge, colour-swap, jump-cut; none = off). Big hits react more than soft ones. Needs beats (detect_beats).",
+	hint: "effect one of none,pulse,flash,shake,nudge,colour-swap,jump-cut; strength 0-2 (1 = normal); downbeatsOnly = only the first beat of each bar; lines or layer, leave both out for all lines",
+	params: object({
+		effect: _enum(BEAT_NAMES),
+		strength: num(0, 2).optional(),
+		downbeatsOnly: bool.optional(),
+		lines: lineList.optional(),
+		layer: layerRef.optional()
+	}),
+	normalize: (a) => {
+		const o = tidy(a, {
+			name: "effect",
+			reaction: "effect",
+			type: "effect",
+			beat: "effect",
+			index: "lines",
+			line: "lines",
+			amount: "strength",
+			intensity: "strength",
+			downbeats_only: "downbeatsOnly",
+			downbeatsonly: "downbeatsOnly",
+			downbeats: "downbeatsOnly",
+			on_downbeats: "downbeatsOnly"
+		});
+		if ("effect" in o) o.effect = toBeatName(o.effect);
+		const s = typeof o.strength === "string" ? parseFloat(o.strength) : o.strength;
+		if (typeof s === "number" && s > 2 && s <= 200) o.strength = s / 100;
+		return o;
+	},
+	apply: (p, a) => {
+		const { target, who } = scopeOf(p, a);
+		const first = target.scope === "line" ? p.lines.find((l) => l.id === target.ids[0]) : void 0;
+		const cur = (first ? resolveStyle(p, first).animation.beat : p.style.animation.beat) ?? DEFAULT_BEAT;
+		const slot = {
+			name: a.effect,
+			strength: a.strength ?? cur.strength ?? 1,
+			downbeatsOnly: a.downbeatsOnly ?? cur.downbeatsOnly ?? false
+		};
+		const project = editProjectStyle(p, target, { set: [["animation.beat", slot]] });
+		const warn = a.effect !== "none" && !p.beats?.length ? " (no beats yet: run detect_beats so it has something to react to)" : "";
+		return {
+			project,
+			summary: `${who}: beat ${a.effect}${a.effect !== "none" ? ` x${slot.strength}${slot.downbeatsOnly ? " on downbeats" : ""}` : ""}${warn}`
+		};
+	}
+});
+const setEnergy = defineTool({
+	name: "set_energy",
+	group: "kinetic",
+	description: "How much the song's loudness drives the motion: 0 = steady, 1 = calm in quiet parts and intense in loud choruses.",
+	hint: "amount 0-1 (0.5 = half); lines or layer, leave both out for all lines",
+	params: object({
+		amount: num(0, 1),
+		lines: lineList.optional(),
+		layer: layerRef.optional()
+	}),
+	normalize: (a) => {
+		const o = tidy(a, {
+			energy: "amount",
+			value: "amount",
+			level: "amount",
+			strength: "amount",
+			index: "lines",
+			line: "lines"
+		});
+		const s = typeof o.amount === "string" ? parseFloat(o.amount) : o.amount;
+		if (typeof s === "number" && s > 1 && s <= 100) o.amount = s / 100;
+		return o;
+	},
+	apply: (p, a) => {
+		const { target, who } = scopeOf(p, a);
+		return {
+			project: editProjectStyle(p, target, { set: [["energy", a.amount]] }),
+			summary: `${who}: energy ${Math.round(a.amount * 100)}%`
+		};
+	}
+});
+const EPS = 1e-6;
+/** Nearest beat time to t (binary search over sorted times). */
+function nearest(times, t) {
+	let lo = 0;
+	let hi = times.length - 1;
+	while (hi - lo > 1) {
+		const mid = lo + hi >> 1;
+		if (times[mid] < t) lo = mid;
+		else hi = mid;
+	}
+	return Math.abs(times[lo] - t) <= Math.abs(times[hi] - t) ? times[lo] : times[hi];
+}
+/**
+* Pure: lines with their edges moved to the nearest beat. A line stays at least 0.1 s long and never overlaps the
+* lines next to it on its layer; when snapping an edge would break that, the edge stays where it was.
+*/
+function snapLinesToBeats(p, ids, edges, times) {
+	const next = /* @__PURE__ */ new Map();
+	let moved = 0;
+	for (const layer of p.layers) {
+		const own = p.lines.filter((l) => layerIdOf(p, l) === layer.id).sort((a, b) => a.start - b.start);
+		let prevEnd = -Infinity;
+		own.forEach((l, i) => {
+			if (ids && !ids.has(l.id)) {
+				prevEnd = l.end;
+				return;
+			}
+			const nextStart = own[i + 1] ? own[i + 1].start : Infinity;
+			const s1 = edges !== "end" ? round2(nearest(times, l.start)) : l.start;
+			const e1 = edges !== "start" ? round2(nearest(times, l.end)) : l.end;
+			const ok = (s, e) => e - s >= .099999 && s >= prevEnd - EPS && e <= nextStart + EPS;
+			const [s, e] = [
+				[s1, e1],
+				[s1, l.end],
+				[l.start, e1]
+			].find(([s, e]) => ok(s, e)) ?? [l.start, l.end];
+			if (s !== l.start || e !== l.end) {
+				moved++;
+				next.set(l.id, {
+					...l,
+					start: s,
+					end: e
+				});
+			}
+			prevEnd = e;
+		});
+	}
+	return {
+		project: {
+			...p,
+			lines: p.lines.map((l) => next.get(l.id) ?? l)
+		},
+		moved
+	};
+}
+const snapToBeats = defineTool({
+	name: "snap_to_beats",
+	group: "kinetic",
+	description: "Move line starts and/or ends onto the nearest beat of the song, so lines appear and leave on the beat. Lines never overlap and stay at least 0.1 s long.",
+	hint: "edges start|end|both (default start); downbeatsOnly = snap to the first beat of each bar; lines = 1-based numbers, leave out for all",
+	params: object({
+		lines: lineList.optional(),
+		edges: _enum([
+			"start",
+			"end",
+			"both"
+		]).default("start"),
+		downbeatsOnly: bool.optional()
+	}),
+	normalize: (a) => {
+		const o = tidy(a, {
+			index: "lines",
+			line: "lines",
+			edge: "edges",
+			which: "edges",
+			downbeats_only: "downbeatsOnly",
+			downbeatsonly: "downbeatsOnly",
+			downbeats: "downbeatsOnly"
+		});
+		if (typeof o.edges === "string") {
+			const k = o.edges.toLowerCase();
+			o.edges = /both|all|start.*end|end.*start/.test(k) ? "both" : /end|out|finish/.test(k) ? "end" : /start|begin|in/.test(k) ? "start" : k;
+		}
+		return o;
+	},
+	apply: (p, a) => {
+		const beats = (p.beats ?? []).filter((b) => !a.downbeatsOnly || b.downbeat);
+		if (!p.beats?.length) throw new Error("the project has no beats yet: run detect_beats first");
+		if (!beats.length) throw new Error("no downbeats found: snap to every beat instead (downbeatsOnly false)");
+		const { project, moved } = snapLinesToBeats(p, a.lines ? new Set(a.lines.map((n) => lineAt(p, n).id)) : null, a.edges, beats.map((b) => b.time));
+		return {
+			project,
+			summary: `snapped ${a.edges === "both" ? "starts and ends" : `${a.edges}s`} of ${moved} line${moved === 1 ? "" : "s"} to the ${a.downbeatsOnly ? "downbeats" : "beats"}`
+		};
+	}
+});
+let pendingBeats = null;
+/** The document's song media entry (the lyric view's audio). */
+function songMedia() {
+	const doc = useProject.getState().doc;
+	const id = activeTimeline(doc).clips.find((c) => c.id === IDS.audioClip)?.mediaId ?? IDS.audioMedia;
+	return doc.media.find((m) => m.id === id);
+}
+/** The song's file: from the media library when it came from there, else the session's object URL. */
+async function songBlob(m) {
+	const pool = useMedia.getState();
+	if (m.poolId && pool.items.some((i) => i.id === m.poolId)) {
+		const f = await pool.fileOf(m.poolId);
+		if (f) return f;
+	}
+	const url = m.url ?? useProject.getState().project.audio?.url;
+	if (!url) return null;
+	const res = await fetch(url).catch(() => null);
+	return res && res.ok ? res.blob() : null;
+}
+const kineticTools = [
+	setWordStyle,
+	emphasizeWords,
+	autoEmphasis,
+	setBeatReaction,
+	setEnergy,
+	snapToBeats,
+	defineTool({
+		name: "detect_beats",
+		group: "kinetic",
+		description: "Find the tempo and every beat of the song and put the beats on the timeline (needed for beat reactions and snap_to_beats). Give tempo (and firstDownbeat) to set them by hand when detection gets a song wrong.",
+		hint: "no arguments to detect; or tempo in BPM and firstDownbeat in seconds for a steady grid",
+		params: object({
+			tempo: num(30, 300).optional().describe("beats per minute, to set the grid by hand"),
+			firstDownbeat: num(0, 600).optional().describe("seconds to the first downbeat (with tempo)"),
+			beatsPerBar: number().int().min(1).max(12).optional()
+		}),
+		normalize: (a) => tidy(a, {
+			bpm: "tempo",
+			offset: "firstDownbeat",
+			first_downbeat: "firstDownbeat",
+			firstdownbeat: "firstDownbeat",
+			downbeat: "firstDownbeat",
+			beats_per_bar: "beatsPerBar",
+			beatsperbar: "beatsPerBar"
+		}),
+		prepare: async (a) => {
+			pendingBeats = null;
+			const song = songMedia();
+			if (!song) throw new Error("add the song first (Audio, in the left panel)");
+			const mediaId = song.poolId ?? song.id;
+			if (a.tempo) {
+				const duration = song.duration ?? 0;
+				if (!(duration > 0)) throw new Error("the song's length is not known yet; wait for it to load");
+				pendingBeats = {
+					mediaId,
+					result: manualBeats(a.tempo, a.firstDownbeat ?? 0, duration, a.beatsPerBar ?? 4)
+				};
+				return;
+			}
+			const blob = await songBlob(song);
+			if (!blob) throw new Error("could not read the song file (open the project again or re-add the song)");
+			pendingBeats = {
+				mediaId,
+				result: await analyzeBeats(blob)
+			};
+		},
+		applyDoc: (doc) => {
+			const r = pendingBeats;
+			pendingBeats = null;
+			if (!r) throw new Error("beat detection produced no result");
+			const { beats, analysis } = r.result;
+			const down = beats.filter((b) => b.downbeat).length;
+			return {
+				doc: applyBeatResult(doc, r.mediaId, r.result),
+				summary: `found ${beats.length} beats at ${Math.round(analysis.tempo)} BPM (${down} downbeats${analysis.source === "manual" ? ", set by hand" : ""})`
+			};
+		}
+	})
+];
 // ../src/lib/tools/index.ts
+init_project();
+init_convert();
+init_media();
 /** The one list of tools. Add a tool to a group file; it is picked up everywhere from here. */
 const registry = createRegistry([
 	...styleTools,
@@ -31138,7 +32347,8 @@ const registry = createRegistry([
 	...syncTools,
 	...transformTools,
 	...motionTools,
-	...timelineTools
+	...timelineTools,
+	...kineticTools
 ]);
 registry.all.map((t) => t.name);
 /** Tool definitions in Ollama's format, generated from the zod schemas. Pass groups to send a subset. */
@@ -31156,7 +32366,7 @@ const obj = (properties = {}, required = []) => ({
 const APP_TOOLS = [
 	{
 		name: "get_project",
-		description: "Summary of the project open in Cutir: aspect, frame rate, duration, playhead, lyric lines (index, layer, times, text), the timeline's tracks and clips with ids, markers, in/out, the media library and what is selected. Read this first.",
+		description: "Summary of the project open in Cutir: aspect, frame rate, duration, playhead, lyric lines (index, layer, times, text, emphasised words and other word overrides as 1-based word numbers), beats (count, tempo) and the beat reaction and energy, the timeline's tracks and clips with ids, markers, in/out, the media library and what is selected. Read this first.",
 		inputSchema: obj()
 	},
 	{

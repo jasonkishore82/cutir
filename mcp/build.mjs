@@ -23,6 +23,6 @@ await build({
   logLevel: "warn",
   // optional native speed-ups of ws; it works without them
   external: ["bufferutil", "utf-8-validate"],
-  output: { file: join(outDir, "cutir-mcp.mjs"), format: "esm", banner: "// Cutir MCP server (bundled). Source: mcp/src/server.ts" },
+  output: { file: join(outDir, "cutir-mcp.mjs"), format: "esm", codeSplitting: false, banner: "// Cutir MCP server (bundled). Source: mcp/src/server.ts" },
 });
 console.log("built plugin/server/cutir-mcp.mjs");

@@ -10,7 +10,8 @@ Cutir does not use a tool-calling framework. It has its own small registry in `s
   - the one-line signature in the system prompt (`toolSignature`),
   - validation and application (`applyCalls` in `src/lib/tools/index.ts`).
 - All calls from one AI reply are applied as one undoable history step.
-- Tools are grouped (style, lines, layers, scene, sync) so only relevant ones are sent per request.
+- Tools are grouped (style, lines, layers, scene, sync, transform, motion, timeline, kinetic) so only relevant ones are sent per request.
+- The kinetic group (`src/lib/tools/kinetic.ts`, phase 16.5) covers single words and beats: `set_word_style`, `emphasize_words`, `auto_emphasis`, `set_beat_reaction`, `set_energy`, `snap_to_beats`, `detect_beats`. It is offered when a message mentions beats, pulse, flash, shake, drums, emphasis, energy, kinetic or words, and the prompt then adds a line saying whether beats exist (and the tempo) and which words carry emphasis. Words are numbered from 1 within a line or named by their text. `detect_beats` analyses in `prepare` and writes in `applyDoc`, so it stays one undo step.
 - Replies where a model writes its tool call as text (`{"name": ..., "arguments": ...}`, `<tool_call>` tags, and similar) are recognised and run.
 
 To add a tool: write one `defineTool` in the right group file and add it to that file's export.

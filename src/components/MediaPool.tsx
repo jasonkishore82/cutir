@@ -9,6 +9,7 @@ import { poolMediaId, timecode, useTimelineUi } from "../timeline/ui";
 import { POOL_MIME } from "./TrackLanes";
 import { Icon } from "./ui";
 import { cancelJob, makeVariants, proxySettings, removeVariant, useProxyJobs, wantsProxy } from "../lib/proxy";
+import { cancelBeats, detectBeatsFor, manualBeats, storeBeatResult, useBeatJobs } from "../lib/beats";
 
 const mmss = (s?: number) => {
   if (s === undefined) return "";
@@ -133,6 +134,8 @@ export function MediaLibrary() {
   const [over, setOver] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [beatGrid, setBeatGrid] = useState<string | null>(null);
+  const beatJobs = useBeatJobs((s) => s.jobs);
   const fileRef = useRef<HTMLInputElement>(null);
   const relinkRef = useRef<HTMLInputElement>(null);
   const relinkId = useRef<string | null>(null);
@@ -184,6 +187,14 @@ export function MediaLibrary() {
       {used.has(it.id) && <Badge tone="accent" title="Used in this project">In use</Badge>}
       {it.proxy && <Badge tone="gray" title="A smaller copy plays in the viewer; export uses the original">{`Proxy ${it.proxy.height}p`}</Badge>}
       {it.optimized && <Badge tone="gray" title="An easy-to-seek copy plays in the viewer">Optimized</Badge>}
+      {it.beatResult && !beatJobs[it.id] && (
+        <Badge tone="gray" title={`Beats detected (${it.beatResult.analysis.source}), ${it.beatResult.beats.length} beats`}>{`${Math.round(it.beatResult.analysis.tempo)} BPM`}</Badge>
+      )}
+      {beatJobs[it.id] && (
+        <Badge tone={beatJobs[it.id].error ? "red" : "gray"} title={beatJobs[it.id].error ?? "Finding the beats in the background"}>
+          {beatJobs[it.id].error ? "Beats failed" : `Beats ${Math.round(beatJobs[it.id].progress * 100)}%`}
+        </Badge>
+      )}
       {jobs[it.id] && (
         <Badge tone={jobs[it.id].error ? "red" : "gray"} title={jobs[it.id].error ?? "Being made in the background"}>
           {jobs[it.id].error ? "Proxy failed" : jobs[it.id].queued ? "Queued" : `${jobs[it.id].kind === "proxy" ? "Proxy" : "Optimizing"} ${Math.round(jobs[it.id].progress * 100)}%`}
@@ -428,6 +439,14 @@ export function MediaLibrary() {
                         : { label: "Create optimized media (easy to seek)", onClick: () => makeVariants([it.id], "optimized") },
                     ]
                 : []),
+              ...(it.kind === "audio"
+                ? beatJobs[it.id] && !beatJobs[it.id].error
+                  ? [{ label: "Cancel beat detection", onClick: () => cancelBeats(it.id) }]
+                  : [
+                      { label: it.beatResult ? "Re-detect beats" : "Detect beats", onClick: () => void detectBeatsFor(it.id).catch(() => undefined) },
+                      { label: "Set tempo manually...", onClick: () => setBeatGrid(it.id) },
+                    ]
+                : []),
               ...(it.binId ? [{ label: "Move out of bin", onClick: () => useMedia.getState().moveToBin([it.id], undefined) }] : []),
               ...targets.map((b) => ({ label: `Move to ${b.name}`, onClick: () => useMedia.getState().moveToBin([it.id], b.id) })),
               { label: "Import media", onClick: () => fileRef.current?.click() },
@@ -436,7 +455,69 @@ export function MediaLibrary() {
           })()}
         />
       )}
+      {beatGrid && items.find((i) => i.id === beatGrid) && <BeatGridDialog item={items.find((i) => i.id === beatGrid)!} onClose={() => setBeatGrid(null)} />}
     </div>
+  );
+}
+
+/** Manual tempo, first downbeat and beats per bar, for songs the detector gets wrong. Replaces the song's beats. */
+function BeatGridDialog({ item, onClose }: { item: MediaItem; onClose: () => void }) {
+  const a = item.beatResult?.analysis;
+  const [bpm, setBpm] = useState(a ? String(Math.round(a.tempo * 100) / 100) : "120");
+  const [offset, setOffset] = useState(a ? String(a.firstDownbeat) : "0");
+  const [bpb, setBpb] = useState(String(a?.beatsPerBar ?? 4));
+  const tempo = Number(bpm);
+  const first = Number(offset);
+  const perBar = Math.round(Number(bpb));
+  const ok = tempo >= 20 && tempo <= 400 && first >= 0 && perBar >= 1 && perBar <= 16;
+  const apply = () => {
+    if (!ok) return;
+    const duration = item.duration ?? item.beatResult?.beats[item.beatResult.beats.length - 1]?.time ?? 600;
+    const r = manualBeats(tempo, first, duration, perBar);
+    if (item.beatResult?.analysis.energy) r.analysis.energy = item.beatResult.analysis.energy; // keep the loudness curve
+    storeBeatResult(item.id, r);
+    onClose();
+  };
+  return createPortal(
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <form
+        role="dialog"
+        aria-label="Beat grid"
+        className="w-[360px] max-w-[92vw] space-y-4 rounded-2xl border border-white/10 bg-panel p-5 text-sm shadow-2xl shadow-black/60"
+        onClick={(e) => e.stopPropagation()}
+        onSubmit={(e) => (e.preventDefault(), apply())}
+        onKeyDown={(e) => e.key === "Escape" && onClose()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">Beat grid</h2>
+          <button type="button" className="text-gray-500 hover:text-gray-100" onClick={onClose} aria-label="Close">
+            <Icon name="close" className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="text-xs text-gray-400">A steady grid for "{item.name}". It replaces the detected beats on every timeline that uses this song.</p>
+        <label className="block space-y-1 text-xs text-gray-400">
+          Tempo (BPM)
+          <input className="field" type="number" min={20} max={400} step="0.01" value={bpm} onChange={(e) => setBpm(e.target.value)} autoFocus />
+        </label>
+        <label className="block space-y-1 text-xs text-gray-400">
+          First downbeat (seconds into the song)
+          <input className="field" type="number" min={0} step="0.001" value={offset} onChange={(e) => setOffset(e.target.value)} />
+        </label>
+        <label className="block space-y-1 text-xs text-gray-400">
+          Beats per bar
+          <input className="field" type="number" min={1} max={16} step={1} value={bpb} onChange={(e) => setBpb(e.target.value)} />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button type="button" className="rounded border border-edge px-3 py-1.5 text-xs hover:bg-edge" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" disabled={!ok} className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-black disabled:opacity-40">
+            Apply
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body
   );
 }
 

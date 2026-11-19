@@ -4,11 +4,12 @@ import { useProject } from "../store/project";
 import { useMedia, type MediaItem } from "../store/media";
 import { activeTimeline } from "../model/convert";
 import type { Clip, Timeline, Track } from "../model/types";
+import type { EnergyCurve } from "../store/project";
 import { getTime, seek } from "../lib/transport";
 import * as E from "../timeline/engine";
 import { variantFor } from "../lib/proxy";
 import { DEFAULT_PROXY } from "../model/types";
-import { CURSOR, MODE_HINT, editCtx, editTimeline, sourceOf, tlNow, useTimelineUi, withPoolMedia } from "../timeline/ui";
+import { CURSOR, MODE_HINT, beatSnapOn, editCtx, editTimeline, sourceOf, tlNow, useTimelineUi, withPoolMedia } from "../timeline/ui";
 
 /** Drag type used by the media pool. */
 export const POOL_MIME = "application/x-cutir-media";
@@ -56,6 +57,8 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
   const proxyStored = useProject((s) => s.doc.settings.proxy);
   const proxyCfg = { ...DEFAULT_PROXY, ...(proxyStored ?? {}) };
   const anySolo = tracks.some((t) => t.solo && t.kind === "audio");
+  const docMedia = useProject((s) => s.doc.media);
+  const mediaEnergy = (id?: string) => (id ? docMedia.find((m) => m.id === id)?.analysis?.energy : undefined);
 
   /* ---------- visible window ---------- */
   useEffect(() => {
@@ -101,7 +104,7 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
   const trackAt = (y: number): Track | undefined => tracks.find((t) => y >= rowTop.get(t.id)! && y < rowTop.get(t.id)! + t.height);
   const kindIndex = (t: Track) => tracks.filter((x) => x.kind === t.kind).indexOf(t);
 
-  const points = (exclude: string[]) => E.snapPoints(tlNow(), { playhead: getTime() }, exclude, [view.t0, view.t1]);
+  const points = (exclude: string[], alt = false) => E.snapPoints(tlNow(), { playhead: getTime(), beats: beatSnapOn(alt) }, exclude, [view.t0, view.t1]);
   const thr = SNAP_PX / pps;
 
   /* ---------- clip gestures ---------- */
@@ -145,7 +148,7 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
     let guideAt: number | undefined;
     const snapEdges = (edges: number[]) => {
       if (!snap) return;
-      const r = E.snapDelta(edges, dt, E.snapPoints(g.tl0, { playhead: getTime() }, sel, [view.t0, view.t1]), thr);
+      const r = E.snapDelta(edges, dt, E.snapPoints(g.tl0, { playhead: getTime(), beats: ui.beatSnap }, sel, [view.t0, view.t1]), thr);
       dt = r.dt;
       guideAt = r.at;
     };
@@ -279,7 +282,7 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
     if (!track || !src) return null;
     let start = p.t;
     const len = src.out - src.in;
-    if (useTimelineUi.getState().snapping !== e.altKey) start = start + E.snapDelta([start, start + len], 0, points([]), thr).dt;
+    if (useTimelineUi.getState().snapping !== e.altKey) start = start + E.snapDelta([start, start + len], 0, points([], e.altKey), thr).dt;
     return { track, src, start: Math.max(0, start), len };
   };
   const onDragOver = (e: React.DragEvent) => {
@@ -394,11 +397,15 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
             setMenu({ x: e.clientX, y: e.clientY, trackId: t.id, time: local(e).t });
           }}
         >
-          {fill.map((c) => (
-            <div key={c.id} className="pointer-events-none absolute inset-y-1 left-0 right-0 rounded border border-dashed border-edge bg-white/[0.03] px-2 text-[10px] leading-6 text-gray-500">
-              {c.id === "c-song" ? "Song (whole timeline)" : "Lyric background (whole timeline)"}
-            </div>
-          ))}
+          {fill.map((c) => {
+            const energy = t.kind === "audio" ? mediaEnergy(c.mediaId) : undefined;
+            return (
+              <div key={c.id} className="pointer-events-none absolute inset-y-1 left-0 right-0 rounded border border-dashed border-edge bg-white/[0.03] px-2 text-[10px] leading-6 text-gray-500">
+                {energy && <EnergyArea curve={energy} clip={{ ...c, start: 0, duration: view.t1 + 1 }} t0={view.t0} t1={view.t1} pps={pps} height={t.height - 10} />}
+                <span className="relative">{c.id === "c-song" ? "Song (whole timeline)" : "Lyric background (whole timeline)"}</span>
+              </div>
+            );
+          })}
           {clips.map((c) => {
             const on = sel.has(c.id);
             const media = useProject.getState().doc.media.find((m) => m.id === c.mediaId);
@@ -424,7 +431,10 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
                 } ${t.kind === "audio" ? "bg-emerald-600/70" : media?.kind === "image" ? "bg-violet-600/70" : "bg-sky-600/70"} ${c.enabled ? "" : "opacity-40"}`}
                 style={{ left: c.start * pps, width: Math.max(2, c.duration * pps) }}
               >
-                <div className="flex items-center gap-1 truncate bg-black/25 px-1.5 leading-4 text-white">
+                {t.kind === "audio" && media?.analysis?.energy && (
+                  <EnergyArea curve={media.analysis.energy} clip={c} t0={view.t0} t1={view.t1} pps={pps} height={t.height - 10} />
+                )}
+                <div className="relative flex items-center gap-1 truncate bg-black/25 px-1.5 leading-4 text-white">
                   {c.linkId && <span title="Linked">⛓</span>}
                   {(() => {
                     const it = media?.poolId ? items.find((i) => i.id === media.poolId) : undefined;
@@ -440,7 +450,7 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
                   {c.effects.length > 0 && <span className="rounded bg-black/40 px-0.5">fx</span>}
                   <span className="truncate">{c.name ?? media?.name ?? "clip"}</span>
                 </div>
-                <div className="px-1.5 text-[9px] text-white/70">{c.duration.toFixed(2)}s</div>
+                <div className="relative px-1.5 text-[9px] text-white/70">{c.duration.toFixed(2)}s</div>
                 {tl.markers.filter((m) => m.clipId === c.id).map((m) => (
                   <span key={m.id} className="absolute bottom-0 h-1.5 w-1.5 rounded-full" style={{ left: (m.time - c.start) * pps - 3, background: m.color }} title={m.name || "Marker"} />
                 ))}
@@ -508,6 +518,43 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
         <p className="pointer-events-none absolute right-3 top-1 text-[10px] text-gray-600">Drag files from the Media library onto a track</p>
       )}
     </div>
+  );
+}
+
+/**
+ * The outline of a loudness curve under a clip, as an SVG path in clip-local pixels (x from the clip's left edge,
+ * y from the top, louder = higher). Source time is mapped through the clip's source in point and speed; only
+ * [t0, t1] (timeline seconds) is traced, one point every `step` pixels, each the loudest value in its span.
+ */
+export function energyPath(curve: EnergyCurve, clip: Pick<Clip, "start" | "duration" | "sourceIn" | "speed">, t0: number, t1: number, pps: number, height: number, step = 2): string {
+  const a = Math.max(t0, clip.start);
+  const b = Math.min(t1, clip.start + clip.duration);
+  if (b <= a || !curve.values.length || curve.rate <= 0) return "";
+  const n = curve.values.length;
+  const idx = (u: number) => (clip.sourceIn + (u - clip.start) * clip.speed) * curve.rate;
+  const dt = step / pps;
+  const x = (u: number) => ((u - clip.start) * pps).toFixed(1);
+  let d = `M${x(a)},${height}`;
+  for (let u = a; u <= b + dt / 2; u += dt) {
+    const uu = Math.min(u, b);
+    const i0 = Math.max(0, Math.floor(idx(uu - dt / 2)));
+    const i1 = Math.min(n - 1, Math.ceil(idx(uu + dt / 2)));
+    let v = 0;
+    for (let i = i0; i <= i1; i++) v = Math.max(v, curve.values[i] ?? 0);
+    if (i0 > n - 1) v = 0;
+    d += `L${x(uu)},${(height * (1 - Math.min(1, Math.max(0, v)) * 0.9)).toFixed(1)}`;
+  }
+  return `${d}L${x(b)},${height}Z`;
+}
+
+/** The song's loudness as a soft filled area behind a clip's label (theme-aware: `--white` swaps in light mode). */
+function EnergyArea({ curve, clip, t0, t1, pps, height }: { curve: EnergyCurve; clip: Pick<Clip, "start" | "duration" | "sourceIn" | "speed">; t0: number; t1: number; pps: number; height: number }) {
+  const d = energyPath(curve, clip, t0, t1, pps, height);
+  if (!d) return null;
+  return (
+    <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={height} aria-hidden>
+      <path d={d} style={{ fill: "rgb(var(--white) / 0.16)", stroke: "rgb(var(--white) / 0.35)", strokeWidth: 1 }} />
+    </svg>
   );
 }
 

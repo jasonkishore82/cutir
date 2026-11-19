@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { layerIdOf, useProject, type Project } from "../../store/project";
+import { layerIdOf, lineWords, useProject, type Project } from "../../store/project";
 import { createRegistry, toOllamaTool, toolSignature, type AnyTool, type ToolGroup } from "./registry";
 import { lineTools } from "./lines";
 import { styleTools } from "./style";
@@ -8,11 +8,12 @@ import { syncTools } from "./sync";
 import { layerTools } from "./layers";
 import { animationTools, motionTools, transformTools } from "./motion";
 import { timelineTools } from "./timeline";
-import { activeTimeline } from "../../model/convert";
+import { kineticTools } from "./kinetic";
+import { activeTimeline, IDS } from "../../model/convert";
 import { useMedia } from "../../store/media";
 
 /** The one list of tools. Add a tool to a group file; it is picked up everywhere from here. */
-export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools]);
+export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools, ...kineticTools]);
 
 export const TOOL_NAMES = registry.all.map((t) => t.name);
 
@@ -31,6 +32,10 @@ const MOTION_WORDS =
 const TIMELINE_WORDS =
   /\b(clips?|tracks?|video|footage|b-?roll|audio|sound|music|voice.?over|image|photo|picture|trim|ripple|blade|cut|split|marker|in.?point|out.?point|insert|overwrite|append|timeline|volume|mute|solo|library|media)\b/i;
 
+/** Words that bring in the kinetic tools (single words, emphasis, beats, energy). */
+const KINETIC_WORDS =
+  /\b(beats?|bpm|tempo|rhythm|pulse|pulsing|flash|flashing|strobe|shake|drums?|kick|snare|downbeats?|on the beat|snap|emphasis|emphasi[sz]e[sd]?|emphasi[sz]ing|stress|key ?words?|highlight (the |a |one |that )?words?|energy|energetic|intense|loudness|kinetic|words?|hook)\b/i;
+
 /**
  * Which tool groups to offer for this message. Fewer tools = better accuracy and a shorter prompt for small models.
  * Style (with the animation slots), line, scene and sync tools are always offered; the rest only when the request
@@ -42,6 +47,7 @@ export function selectToolGroups(text: string, p: Project): ToolGroup[] {
   if (TRANSFORM_WORDS.test(text)) groups.push("transform");
   if (MOTION_WORDS.test(text)) groups.push("motion");
   if (TIMELINE_WORDS.test(text)) groups.push("timeline");
+  if (KINETIC_WORDS.test(text)) groups.push("kinetic");
   return groups;
 }
 
@@ -170,12 +176,32 @@ export function buildSystemPrompt(p: Project, fallbackJson: boolean, groups?: To
     const media = useMedia.getState().items.slice(0, 60).map((i) => `${i.name} (${i.kind}${i.duration ? ` ${i.duration.toFixed(1)}s` : ""})`);
     parts.push(`TRACKS: ${tracks.join(", ") || "(none)"}`, `CLIPS (id | track | start-end | media):\n${clips.join("\n") || "(none)"}`, `MEDIA LIBRARY: ${media.join(", ") || "(empty)"}`);
   }
+  if (groups?.includes("kinetic")) parts.push(kineticPrompt(p));
   if (fallbackJson) {
     parts.push(
       'Tools are unavailable. Reply with ONE ```json block containing {"actions":[{"tool":"<name>","args":{...}}]} and nothing else needed.'
     );
   }
   return parts.join("\n");
+}
+
+/** Beats, tempo and the words that already carry emphasis, for the kinetic tools. */
+function kineticPrompt(p: Project): string {
+  const doc = useProject.getState().doc;
+  const song = doc.media.find((m) => m.id === activeTimeline(doc).clips.find((c) => c.id === IDS.audioClip)?.mediaId);
+  const tempo = song?.analysis?.tempo;
+  const beats = p.beats?.length
+    ? `BEATS: ${p.beats.length} beats${tempo ? ` at ${Math.round(tempo)} BPM` : ""}; set_beat_reaction and snap_to_beats use them.`
+    : "BEATS: none yet; call detect_beats before set_beat_reaction or snap_to_beats.";
+  const emph = p.lines
+    .slice(0, MAX_PROMPT_LINES)
+    .map((l, i) => {
+      const words = lineWords(l.text);
+      const marked = Object.entries(l.wordOverrides ?? {}).filter(([, o]) => o.emphasis).map(([k, o]) => `${words[Number(k)] ?? k}=${o.emphasis}`);
+      return marked.length ? `${i + 1}: ${marked.join(" ")}` : "";
+    })
+    .filter(Boolean);
+  return `${beats} Words are numbered from 1 within a line (or name the word). Emphasis levels: 1 mild, 2 strong, 3 strongest, 0 normal; auto_emphasis picks them for you.${emph.length ? ` EMPHASIS (line: word=level): ${emph.join(", ")}` : ""}`;
 }
 
 const SMALL_TALK = /^\s*(hi+|hello+|hey+|hiya|yo|sup|howdy|thanks?|thank you|thx|ok(ay)?|cool|nice|great|good (morning|afternoon|evening|night)|bye|goodbye|how are you\??|who are you\??|what can you do\??|help)[\s!.?]*$/i;

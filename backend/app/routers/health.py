@@ -5,6 +5,7 @@ from fastapi import APIRouter
 
 from .. import __version__
 from ..config import settings
+from ..services import beats
 
 router = APIRouter(prefix="/api", tags=["health"])
 
@@ -29,4 +30,5 @@ def health():
             "stable_ts": _installed("stable_whisper"),
             "demucs": _installed("demucs"),
         },
+        "beats": beats.available(),
     }

@@ -9,6 +9,8 @@ import { onActive, type EditCtx, type PointerMode, type Source, type Tool } from
 type TimelineUi = {
   tool: Tool;
   snapping: boolean;
+  /** Snap to beat markers too (phase 16.5); only while snapping is on. */
+  beatSnap: boolean;
   /** Selected clips on video and audio tracks (lyric lines keep their own selection). */
   selected: string[];
   /** The media-pool item used by insert, overwrite, replace... (the "source"). */
@@ -18,7 +20,7 @@ type TimelineUi = {
   mode: PointerMode | null;
 };
 
-export const useTimelineUi = create<TimelineUi>(() => ({ tool: "select", snapping: true, selected: [], sourceId: null, guide: null, mode: null }));
+export const useTimelineUi = create<TimelineUi>(() => ({ tool: "select", snapping: true, beatSnap: true, selected: [], sourceId: null, guide: null, mode: null }));
 
 export const TOOL_KEYS: Record<string, Tool> = { KeyA: "select", KeyT: "trim", KeyB: "blade", KeyH: "hand", KeyZ: "zoom" };
 
@@ -94,6 +96,12 @@ export function sourceOf(item: MediaItem): Source | null {
   const a = Math.max(0, Math.min(item.markIn ?? 0, len));
   const b = Math.max(a + 0.04, Math.min(item.markOut ?? len, len));
   return { mediaId: poolMediaId(item.id), name: item.name, kind: item.kind, in: a, out: b, withAudio: item.kind === "video" && item.hasAudio !== false };
+}
+
+/** Whether a drag snaps to beats right now: snapping on (Alt flips it) and the beat toggle on. */
+export function beatSnapOn(altKey = false): boolean {
+  const ui = useTimelineUi.getState();
+  return ui.snapping !== altKey && ui.beatSnap;
 }
 
 /** Timecode h:mm:ss:ff (hours only when needed). */

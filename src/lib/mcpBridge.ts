@@ -1,10 +1,10 @@
 import { create } from "zustand";
 import { applyCalls, registry } from "./tools";
 import { paramsSchema } from "./tools/registry";
-import { useProject } from "../store/project";
+import { lineWords, useProject, type LyricLine } from "../store/project";
 import { useMedia } from "../store/media";
 import { useLibrary } from "../store/library";
-import { activeTimeline } from "../model/convert";
+import { activeTimeline, IDS } from "../model/convert";
 import { getTime, pause, play, seek, usePlayback } from "./transport";
 import { ASPECT_SIZES, type MediaSource } from "./renderer";
 import { ensureFont } from "./fonts";
@@ -230,7 +230,17 @@ function projectSummary() {
     song: project.audio?.name ?? null,
     background: project.background.type === "gradient" ? { gradient: project.background.colors } : { file: project.background.asset?.name ?? null },
     layers: project.layers.map((l) => ({ id: l.id, name: l.name, visible: l.visible, locked: l.locked })),
-    lines: project.lines.slice(0, 300).map((l, i) => ({ index: i + 1, layer: layerName.get(l.layerId ?? "") ?? "", start: l.start, end: l.end, text: l.text, ...(l.keyframes ? { keyframes: l.keyframes.length } : {}) })),
+    lines: project.lines.slice(0, 300).map((l, i) => ({
+      index: i + 1,
+      layer: layerName.get(l.layerId ?? "") ?? "",
+      start: l.start,
+      end: l.end,
+      text: l.text,
+      ...(l.keyframes ? { keyframes: l.keyframes.length } : {}),
+      ...(l.styleOverride?.animation?.beat ? { beat: l.styleOverride.animation.beat } : {}),
+      ...(l.styleOverride?.energy !== undefined ? { energy: l.styleOverride.energy } : {}),
+      ...wordsOf(l),
+    })),
     moreLines: Math.max(0, project.lines.length - 300),
     selectedLines: selectedIds,
     tracks: tl.tracks.filter((t) => t.kind !== "subtitle").map((t) => ({ id: t.id, name: t.name, kind: t.kind, muted: t.muted, solo: t.solo, locked: t.locked, hidden: t.hidden, target: !!t.target })),
@@ -249,9 +259,44 @@ function projectSummary() {
         ...(c.volume !== undefined ? { volume: c.volume } : {}),
         ...(c.enabled ? {} : { enabled: false }),
       })),
-    markers: tl.markers.map((m) => ({ time: m.time, name: m.name, ...(m.clipId ? { clip: m.clipId } : {}) })),
+    markers: tl.markers.filter((m) => m.kind !== "beat").map((m) => ({ time: m.time, name: m.name, ...(m.clipId ? { clip: m.clipId } : {}) })),
+    beats: beatSummary(),
+    beatReaction: project.style.animation.beat ?? null,
+    energy: project.style.energy ?? 0,
     range: tl.inPoint !== undefined || tl.outPoint !== undefined ? { in: tl.inPoint, out: tl.outPoint } : null,
     media: mediaList(),
+  };
+}
+
+/** A line's word overrides (non-empty ones), 1-based like the word tools: emphasis levels and what else is set. */
+function wordsOf(l: LyricLine): { emphasis?: Record<string, number>; words?: Record<string, unknown>[] } {
+  const all = lineWords(l.text);
+  const entries = Object.entries(l.wordOverrides ?? {}).filter(([, o]) => o && Object.keys(o).length);
+  if (!entries.length) return {};
+  const emphasis: Record<string, number> = {};
+  const words: Record<string, unknown>[] = [];
+  for (const [k, o] of entries) {
+    const n = Number(k) + 1;
+    if (o.emphasis) emphasis[`${n} ${all[Number(k)] ?? ""}`.trim()] = o.emphasis;
+    const { emphasis: _e, keyframes, ...rest } = o;
+    void _e;
+    if (Object.keys(rest).length || keyframes?.length) words.push({ word: n, text: all[Number(k)], ...rest, ...(keyframes?.length ? { keyframes: keyframes.length } : {}) });
+  }
+  return { ...(Object.keys(emphasis).length ? { emphasis } : {}), ...(words.length ? { words } : {}) };
+}
+
+/** Beat count, tempo and where they came from; null before detect_beats. */
+function beatSummary() {
+  const { doc, project } = useProject.getState();
+  if (!project.beats?.length) return null;
+  const song = doc.media.find((m) => m.id === activeTimeline(doc).clips.find((c) => c.id === IDS.audioClip)?.mediaId);
+  const a = song?.analysis;
+  return {
+    count: project.beats.length,
+    downbeats: project.beats.filter((b) => b.downbeat).length,
+    first: project.beats[0].time,
+    last: project.beats[project.beats.length - 1].time,
+    ...(a ? { tempo: Math.round(a.tempo * 10) / 10, beatsPerBar: a.beatsPerBar, source: a.source } : {}),
   };
 }
 

@@ -2,6 +2,10 @@ import { create } from "zustand";
 import { uid } from "./project";
 import { canLink, getFile, pickLinkedFiles, putFile, readLinked, removeFile, removeFolder, saveHandle, forgetHandle } from "../lib/filestore";
 import { playbackNote, probeImage, probeMedia, type ProbeInfo } from "../lib/probe";
+import type { BeatResult } from "../lib/beats";
+
+/** Beat detection is loaded on demand (it imports this store). */
+const beatsLib = () => import("../lib/beats");
 
 /**
  * Per-project media pool: every file imported into a project, organised in bins and reused on timelines.
@@ -46,6 +50,8 @@ export type MediaItem = {
   proxy?: { height: number; size: number };
   /** An easy-to-seek full-size copy (short keyframe interval), stored at `<projectId>/opt/<itemId>`. */
   optimized?: { size: number };
+  /** Beat detection result for a song (phase 16.5), kept so placing it again never re-analyses it. */
+  beatResult?: BeatResult;
 };
 
 export type Bin = { id: string; name: string; parentId?: string };
@@ -269,6 +275,7 @@ export const useMedia = create<MediaState>((set, get) => {
     setUrl(item.id, URL.createObjectURL(f));
     saveItems();
     void enrich(pid, item, f);
+    if (kind === "audio") void beatsLib().then((b) => b.autoDetectPoolItem(item.id));
     return item;
   };
 
@@ -307,6 +314,7 @@ export const useMedia = create<MediaState>((set, get) => {
       revoke();
       set({ projectId: pid, items: [], bins: [], status: {}, urls: {}, thumbs: {}, notice: "", progress: null });
       if (!pid) return;
+      void beatsLib().then((b) => b.watchSongs()); // songs on the timeline get their beats once
       const items = readJson<MediaItem[]>(metaKey(pid), []);
       set({ items, bins: readJson<Bin[]>(binKey(pid), []) });
       for (const it of items) {
@@ -387,11 +395,12 @@ export const useMedia = create<MediaState>((set, get) => {
       if (!pid || !it) return;
       if (it.storage === "link") await forgetHandle(fileKey(pid, id));
       await putFile(fileKey(pid, id), file, file.name);
-      patch(id, { storage: "copy", size: file.size, mime: file.type, lastModified: file.lastModified, note: "" });
+      patch(id, { storage: "copy", size: file.size, mime: file.type, lastModified: file.lastModified, note: "", beatResult: undefined });
       setStatus(id, "ok");
       setUrl(id, URL.createObjectURL(file));
       const fresh = get().items.find((i) => i.id === id)!;
       void enrich(pid, fresh, file);
+      if (fresh.kind === "audio") void beatsLib().then((b) => b.autoDetectPoolItem(id));
     },
 
     grantAccess: async (id) => {

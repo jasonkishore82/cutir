@@ -96,8 +96,9 @@ export function handleTimelineKey(e: KeyboardEvent): boolean {
     useTimelineUi.setState({ tool: TOOL_KEYS[e.code] });
     return true;
   }
+  if (!mod && e.shiftKey && e.code === "KeyN") return (useTimelineUi.setState({ beatSnap: !ui.beatSnap }), true);
   if (!mod && e.code === "KeyN") return (useTimelineUi.setState({ snapping: !ui.snapping }), true);
-  if (!mod && e.code === "KeyM") return (editTimeline((x) => E.addMarker(x, t, { name: `Marker ${x.markers.length + 1}` }).tl), true);
+  if (!mod && e.code === "KeyM") return (editTimeline((x) => E.addMarker(x, t, { name: `Marker ${E.userMarkers(x).length + 1}` }).tl), true);
   if (e.shiftKey && (e.code === "ArrowUp" || e.code === "ArrowDown")) {
     const m = E.nearMarker(tlNow(), t, e.code === "ArrowDown" ? 1 : -1);
     if (m) seek(m.time);
