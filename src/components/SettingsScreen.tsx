@@ -321,7 +321,8 @@ const SHORTCUTS: { group: string; items: [string[], string][] }[] = [
       [["Ctrl", "C"], "Copy the selected lyric block"],
       [["Ctrl", "V"], "Paste at the playhead"],
       [["Ctrl", "D"], "Duplicate the selected block"],
-      [["Delete"], "Delete the selected block"],
+      [["Delete"], "Delete the selected block (or its selected keyframe)"],
+      [["K"], "Add a keyframe to the selected line at the playhead"],
     ],
   },
   {

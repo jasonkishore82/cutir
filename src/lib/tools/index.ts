@@ -6,9 +6,10 @@ import { styleTools } from "./style";
 import { sceneTools } from "./scene";
 import { syncTools } from "./sync";
 import { layerTools } from "./layers";
+import { animationTools, motionTools, transformTools } from "./motion";
 
 /** The one list of tools. Add a tool to a group file; it is picked up everywhere from here. */
-export const registry = createRegistry([...styleTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools]);
+export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools]);
 
 export const TOOL_NAMES = registry.all.map((t) => t.name);
 
@@ -16,13 +17,23 @@ export const TOOL_NAMES = registry.all.map((t) => t.name);
 export const getOllamaTools = (groups?: ToolGroup[]) => registry.list(groups).map(toOllamaTool);
 export const OLLAMA_TOOLS = getOllamaTools();
 
+/** Words that bring in the placement tools (move / scale / rotate). */
+const TRANSFORM_WORDS =
+  /\b(move|moves|moving|put|place|position|top|bottom|left|right|corner|centre|center|middle|upper|lower|scale|resize|bigger|smaller|larger|size|rotate|rotated|tilt|tilted|angle|degrees?|turn|upside)\b/i;
+/** Words that bring in keyframes, transitions and templates. */
+const MOTION_WORDS =
+  /\b(keyframes?|key ?frames?|motion|path|drift|fly|flies|flying|travel|glide|across|transitions?|crossfade|cross-fade|dissolve|push|zoom.?through|between (all |the )?lines|templates?|presets?|look|karaoke|neon|minimal|cinematic|bold caption|caption style)\b/i;
+
 /**
  * Which tool groups to offer for this message. Fewer tools = better accuracy and a shorter prompt for small models.
- * Layer tools are only sent when the request (or the project) involves layers.
+ * Style (with the animation slots), line, scene and sync tools are always offered; the rest only when the request
+ * mentions them (or, for layers, when the project has several).
  */
 export function selectToolGroups(text: string, p: Project): ToolGroup[] {
   const groups: ToolGroup[] = ["style", "lines", "scene", "sync"];
   if (p.layers.length > 1 || /\b(layers?|tracks?|lanes?|translation|translate|subtitles?|overlay|credits?|caption)\b/i.test(text)) groups.push("layers");
+  if (TRANSFORM_WORDS.test(text)) groups.push("transform");
+  if (MOTION_WORDS.test(text)) groups.push("motion");
   return groups;
 }
 

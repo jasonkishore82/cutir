@@ -200,7 +200,7 @@ export default function App() {
   useEffect(() => {
     useLibrary.getState().init(); // loads the project list (and migrates the old single autosave)
     installUnloadSave();
-    return startAutosave((p) => useLibrary.getState().saveContent(p));
+    return startAutosave((doc, view) => useLibrary.getState().saveContent(doc, view));
   }, []);
 
   useEffect(() => {

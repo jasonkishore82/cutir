@@ -2,9 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Icon } from "./ui";
 import { createPortal } from "react-dom";
 import WaveSurfer from "wavesurfer.js";
-import { layerIdOf, linesOfLayer, orderByLayers, uid, useProject, type Layer, type LyricLine, type Position } from "../store/project";
+import { layerIdOf, linesOfLayer, orderByLayers, uid, useProject, type Layer, type LyricLine, type Position, type TransitionType } from "../store/project";
 import { addLayer, moveLayer, moveLineToLayer, removeLayer, updateLayer, updateLayerStyle } from "../store/layers";
 import { getTime, play, seek, setLoop, usePlayback, pause } from "../lib/transport";
+import { addKeyAtPlayhead, copyKey, pasteKey, removeKey, splitKeyframes, updateKey, useKeyUi } from "../lib/keyframes";
+import { EASING_NAMES, TRANSITIONS, TRANSITION_NAMES } from "../lib/animations";
 
 const SNAP = 0.05;
 const MIN_LEN = 0.1;
@@ -21,6 +23,7 @@ const isTyping = (t: EventTarget | null) => {
 };
 
 type Drag = { id: string; mode: "move" | "l" | "r"; x0: number; start: number; end: number };
+type KeyDrag = { lineId: string; id: string; x0: number; time0: number; dur: number; moved: boolean };
 
 /* ---------- line operations (shared by the context menu and keyboard shortcuts) ---------- */
 
@@ -74,10 +77,11 @@ function splitLineAt(id: string, t: number) {
   if (words.length < 2) return;
   const k = Math.min(words.length - 1, Math.max(1, Math.round((words.length * (t - l.start)) / (l.end - l.start))));
   const cut = snap(t);
-  const second: LyricLine = { ...l, id: uid(), text: words.slice(k).join(" "), start: cut, end: l.end, words: undefined };
+  const [k1, k2] = splitKeyframes(l.keyframes, cut - l.start);
+  const second: LyricLine = { ...l, id: uid(), text: words.slice(k).join(" "), start: cut, end: l.end, words: undefined, keyframes: k2 };
   store().update((p) => ({
     ...p,
-    lines: p.lines.flatMap((x) => (x.id === id ? [{ ...l, text: words.slice(0, k).join(" "), end: cut, words: undefined }, second] : [x])),
+    lines: p.lines.flatMap((x) => (x.id === id ? [{ ...l, text: words.slice(0, k).join(" "), end: cut, words: undefined, keyframes: k1 }, second] : [x])),
   }));
   store().select(second.id);
 }
@@ -88,6 +92,29 @@ function setLineEdge(id: string, edge: "start" | "end", t: number) {
   const v = snap(t);
   if (edge === "start" && v < l.end - MIN_LEN) store().updateLine(id, { start: Math.max(0, v) });
   if (edge === "end" && v > l.start + MIN_LEN) store().updateLine(id, { end: v });
+}
+
+/** The next line on the same layer (by start time), if any. */
+function nextOnLayer(p: { layers: Layer[]; lines: LyricLine[] }, l: LyricLine): LyricLine | undefined {
+  const lid = layerIdOf(p, l);
+  return p.lines
+    .filter((x) => x.id !== l.id && layerIdOf(p, x) === lid && x.start >= l.start)
+    .sort((a, b) => a.start - b.start)[0];
+}
+
+function setLineTransition(id: string, type: TransitionType | null) {
+  store().update((p) => ({
+    ...p,
+    lines: p.lines.map((x) => {
+      if (x.id !== id) return x;
+      if (type === null) {
+        const { transition: _t, ...rest } = x;
+        void _t;
+        return rest;
+      }
+      return { ...x, transition: { type, ms: x.transition?.ms ?? p.transition.ms } };
+    }),
+  }));
 }
 
 /* ---------- right-click menu ---------- */
@@ -523,6 +550,63 @@ export default function Timeline() {
     useProject.getState().endGesture();
   };
 
+  /* ---------- transition markers between consecutive lines ---------- */
+  const projTransition = useProject((s) => s.project.transition);
+  const gapMarks = (layerLines: LyricLine[]) => {
+    const sorted = [...layerLines].sort((a, b) => a.start - b.start);
+    const out: { from: string; at: number; label: string; ms: number }[] = [];
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const a = sorted[i];
+      const b = sorted[i + 1];
+      const tr = a.transition ?? projTransition;
+      const gap = b.start - a.end;
+      if (tr.type === "none" || gap < -1e-6 || gap > tr.ms / 1000) continue; // only gaps where it actually plays
+      out.push({ from: a.id, at: (a.end + b.start) / 2, label: TRANSITIONS[tr.type].label, ms: tr.ms });
+    }
+    return out;
+  };
+
+  /* ---------- keyframe diamonds: click to jump the playhead, drag to retime ---------- */
+  const selKey = useKeyUi((s) => s.selected);
+  const keyDrag = useRef<KeyDrag | null>(null);
+  const onKeyDown = (e: React.PointerEvent, l: LyricLine, id: string, time0: number, locked: boolean) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    const st = useProject.getState();
+    st.select(l.id);
+    useKeyUi.setState({ selected: { lineId: l.id, id } });
+    if (locked) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    keyDrag.current = { lineId: l.id, id, x0: e.clientX, time0, dur: l.end - l.start, moved: false };
+  };
+  const onKeyMove = (e: React.PointerEvent) => {
+    const d = keyDrag.current;
+    if (!d) return;
+    if (!d.moved) {
+      if (Math.abs(e.clientX - d.x0) < 3) return;
+      d.moved = true;
+      useProject.getState().beginGesture();
+    }
+    const fps = useProject.getState().project.fps;
+    const t = Math.min(d.dur, Math.max(0, d.time0 + (e.clientX - d.x0) / pps));
+    updateKey(d.lineId, d.id, { time: Math.round(t * fps) / fps });
+  };
+  const onKeyUp = () => {
+    const d = keyDrag.current;
+    if (!d) return;
+    keyDrag.current = null;
+    if (d.moved) {
+      useProject.getState().endGesture();
+      // the playhead follows the keyframe to its new time (keyframes are re-sorted on every edit)
+      const l = useProject.getState().project.lines.find((x) => x.id === d.lineId);
+      const kf = l?.keyframes?.find((k) => k.id === d.id);
+      if (l && kf) seek(l.start + kf.time);
+    } else {
+      const l = useProject.getState().project.lines.find((x) => x.id === d.lineId);
+      if (l) seek(l.start + d.time0);
+    }
+  };
+
   /* ---------- add / edit text blocks ---------- */
   const addBlockAt = (layer: Layer, e: React.MouseEvent<HTMLDivElement>) => {
     if (layer.locked) return;
@@ -532,13 +616,34 @@ export default function Timeline() {
   };
 
   /* ---------- right-click menus ---------- */
-  type Ctx = { x: number; y: number } & ({ kind: "block"; lineId: string } | { kind: "lane"; layerId: string; time: number });
+  type Ctx = { x: number; y: number } & (
+    | { kind: "block"; lineId: string }
+    | { kind: "lane"; layerId: string; time: number }
+    | { kind: "key"; lineId: string; keyId: string }
+  );
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const closeCtx = useCallback(() => setCtx(null), []);
 
   const menuItems = (c: Ctx): MenuItem[] => {
     const p = useProject.getState().project;
     const now = getTime();
+
+    if (c.kind === "key") {
+      const l = p.lines.find((x) => x.id === c.lineId);
+      const kf = l?.keyframes?.find((k) => k.id === c.keyId);
+      if (!l || !kf) return [];
+      const edit = !p.layers.find((x) => x.id === layerIdOf(p, l))?.locked;
+      return [
+        { label: "Go to keyframe", onClick: () => seek(l.start + kf.time) },
+        "sep",
+        ...EASING_NAMES.map((e) => ({ label: `${kf.easing === e ? "✓ " : "   "}Easing: ${e}`, disabled: !edit, onClick: () => updateKey(l.id, kf.id, { easing: e }) })),
+        "sep",
+        { label: "Copy keyframe", onClick: () => copyKey(l.id, kf.id) },
+        { label: "Paste keyframe at playhead", disabled: !edit || !useKeyUi.getState().clipboard, onClick: () => pasteKey(l.id, now) },
+        "sep",
+        { label: "Delete keyframe", hint: "Del", danger: true, disabled: !edit, onClick: () => removeKey(l.id, kf.id) },
+      ];
+    }
 
     if (c.kind === "lane") {
       const layer = p.layers.find((l) => l.id === c.layerId);
@@ -567,6 +672,20 @@ export default function Timeline() {
       { label: "Copy", hint: "Ctrl+C", onClick: () => copyLine(l.id) },
       "sep",
       { label: "Split at playhead", disabled: !edit || !inside || !multiWord, onClick: () => splitLineAt(l.id, now) },
+      { label: "Add keyframe at playhead", hint: "K", disabled: !edit || now < l.start || now > l.end, onClick: () => addKeyAtPlayhead(l.id, now) },
+      "sep",
+      ...(() => {
+        const next = nextOnLayer(p, l);
+        const eff = l.transition ?? p.transition;
+        const items: MenuItem[] = TRANSITION_NAMES.map((n) => ({
+          label: `${eff.type === n ? "✓ " : "   "}To next line: ${n === "none" ? "cut" : TRANSITIONS[n].label}`,
+          hint: !l.transition && n === p.transition.type ? "default" : undefined,
+          disabled: !edit || !next,
+          onClick: () => setLineTransition(l.id, n),
+        }));
+        if (l.transition) items.push({ label: "   Use the project default", disabled: !edit, onClick: () => setLineTransition(l.id, null) });
+        return items;
+      })(),
       { label: "Set start to playhead", disabled: !edit || now >= l.end - MIN_LEN, onClick: () => setLineEdge(l.id, "start", now) },
       { label: "Set end to playhead", disabled: !edit || now <= l.start + MIN_LEN, onClick: () => setLineEdge(l.id, "end", now) },
       "sep",
@@ -670,11 +789,22 @@ export default function Timeline() {
         return;
       }
 
-      /* arrow keys nudge the selected line; Delete removes it */
+      /* arrow keys nudge the selected line; Delete removes it (or its selected keyframe); K adds a keyframe */
       const sel = selected;
       if (!sel) return;
       const layer = st.project.layers.find((l) => l.id === layerIdOf(st.project, sel));
       if (layer?.locked) return;
+      if (e.code === "KeyK" && !mod && !e.altKey) {
+        e.preventDefault();
+        addKeyAtPlayhead(sel.id, getTime());
+        return;
+      }
+      const selKey = useKeyUi.getState().selected;
+      if ((e.code === "Delete" || e.code === "Backspace") && selKey?.lineId === sel.id && sel.keyframes?.some((k) => k.id === selKey.id)) {
+        e.preventDefault();
+        removeKey(sel.id, selKey.id);
+        return;
+      }
       if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
         if (e.target instanceof HTMLElement && e.target.closest("[data-text-stage]")) return; // the preview moves the text instead
         e.preventDefault();
@@ -800,7 +930,7 @@ export default function Timeline() {
                   >
                     {layerLines.map((l, i) => {
                       const gi = globalIndex.get(l.id) ?? 0;
-                      return (
+                      return [
                         <div
                           key={l.id}
                           onPointerDown={(e) => onBlockDown(e, l.id, "move")}
@@ -844,9 +974,47 @@ export default function Timeline() {
                           {!layer.locked && (
                             <span className="absolute right-0 top-0 h-full w-1.5 cursor-ew-resize" onPointerDown={(e) => onBlockDown(e, l.id, "r")} onPointerMove={onBlockMove} onPointerUp={onBlockUp} />
                           )}
-                        </div>
-                      );
+                        </div>,
+                        ...(l.keyframes ?? []).map((kf) => {
+                          const on = selKey?.lineId === l.id && selKey.id === kf.id;
+                          const lineSel = selectedIds.includes(l.id);
+                          return (
+                            <span
+                              key={`${l.id}:${kf.id}`}
+                              role="button"
+                              aria-label={`Keyframe at ${kf.time.toFixed(2)} seconds into line ${gi + 1}`}
+                              title={`Keyframe ${kf.time.toFixed(2)}s · ${Object.keys(kf.props).join(", ")} · ${kf.easing}. Drag to retime, right-click for options.`}
+                              className={`absolute z-[5] h-2.5 w-2.5 rotate-45 rounded-[2px] border ${
+                                on ? "border-white bg-yellow-400" : lineSel ? "border-accent bg-white" : "border-gray-500 bg-gray-300"
+                              } ${layer.locked ? "" : "cursor-ew-resize"}`}
+                              style={{ left: (l.start + kf.time) * pps - 5, top: 35 }}
+                              onPointerDown={(e) => onKeyDown(e, l, kf.id, kf.time, layer.locked)}
+                              onPointerMove={onKeyMove}
+                              onPointerUp={onKeyUp}
+                              onPointerCancel={onKeyUp}
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                useProject.getState().select(l.id);
+                                useKeyUi.setState({ selected: { lineId: l.id, id: kf.id } });
+                                setCtx({ kind: "key", lineId: l.id, keyId: kf.id, x: e.clientX, y: e.clientY });
+                              }}
+                            />
+                          );
+                        }),
+                      ];
                     })}
+                    {gapMarks(layerLines).map((g) => (
+                      <span
+                        key={`gap:${g.from}`}
+                        className="pointer-events-none absolute top-[13px] z-[4] -translate-x-1/2 rounded-full border border-accent/60 bg-panel px-1 text-[10px] leading-4 text-accent"
+                        style={{ left: g.at * pps }}
+                        title={`${g.label}, ${g.ms} ms`}
+                        aria-label={`Transition: ${g.label}`}
+                      >
+                        ⇄
+                      </span>
+                    ))}
                   </div>
                 </div>
               );

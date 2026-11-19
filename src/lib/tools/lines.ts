@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mergeKeyframes, splitKeyframes } from "../keyframes";
 import { layerIdOf, linesOfLayer, orderByLayers, uid, useProject, type LyricLine } from "../../store/project";
 import { findLayer } from "../../store/layers";
 import { defineTool } from "./registry";
@@ -107,8 +108,9 @@ export const splitLine = defineTool({
     const words = l.text.split(/\s+/).filter(Boolean);
     if (a.at_word >= words.length) throw new Error(`line ${a.index} has ${words.length} words; at_word must be 1-${words.length - 1}`);
     const mid = round2(l.start + ((l.end - l.start) * a.at_word) / words.length);
-    const first: LyricLine = { id: l.id, text: words.slice(0, a.at_word).join(" "), start: l.start, end: mid, styleOverride: l.styleOverride, layerId: l.layerId };
-    const second: LyricLine = { id: uid(), text: words.slice(a.at_word).join(" "), start: mid, end: l.end, styleOverride: l.styleOverride, layerId: l.layerId };
+    const [k1, k2] = splitKeyframes(l.keyframes, mid - l.start);
+    const first: LyricLine = { id: l.id, text: words.slice(0, a.at_word).join(" "), start: l.start, end: mid, styleOverride: l.styleOverride, layerId: l.layerId, keyframes: k1 };
+    const second: LyricLine = { id: uid(), text: words.slice(a.at_word).join(" "), start: mid, end: l.end, styleOverride: l.styleOverride, layerId: l.layerId, keyframes: k2 };
     const lines = [...p.lines.slice(0, a.index - 1), first, second, ...p.lines.slice(a.index)];
     return { project: withLines(p, lines), summary: `line ${a.index} split after word ${a.at_word}` };
   },
@@ -125,7 +127,8 @@ export const mergeLines = defineTool({
     const hi = Math.max(a.index_a, a.index_b);
     const A = lineAt(p, lo);
     const B = lineAt(p, hi);
-    const merged: LyricLine = { ...A, text: `${A.text} ${B.text}`, start: Math.min(A.start, B.start), end: Math.max(A.end, B.end), words: undefined };
+    const start = Math.min(A.start, B.start);
+    const merged: LyricLine = { ...A, text: `${A.text} ${B.text}`, start, end: Math.max(A.end, B.end), words: undefined, keyframes: mergeKeyframes(A, B, start) };
     const lines = p.lines.filter((_, i) => i + 1 !== hi).map((l) => (l === A ? merged : l));
     return { project: withLines(p, lines), summary: `lines ${lo} and ${hi} merged` };
   },

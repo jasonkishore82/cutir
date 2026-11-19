@@ -1,5 +1,6 @@
-import { EFFECTS, IDENTITY, LOOPS, combineFx, presenceIn, presenceOut, toFx, unitPresence, type Info } from "./animations";
-import { effectiveStyle, linesOfLayer, type Aspect, type LyricLine, type Project, type TextStyle } from "../store/project";
+import { EASINGS, EFFECTS, IDENTITY, LOOPS, TRANSITIONS, combineFx, presenceIn, presenceOut, toFx, unitPresence, type Fx, type Info } from "./animations";
+import { evalKeyframes } from "./keyframes";
+import { effectiveStyle, linesOfLayer, type Aspect, type LyricLine, type Project, type TextStyle, type TransitionType } from "../store/project";
 
 /**
  * Single draw function shared by the live preview and the exporter.
@@ -144,6 +145,32 @@ function activeLine(lines: LyricLine[], t: number): LyricLine | undefined {
   return found;
 }
 
+/** A transition in progress on one layer: the outgoing line, the incoming one and the progress 0..1. */
+export type Handover = { from: LyricLine; to: LyricLine; p: number; type: Exclude<TransitionType, "none"> };
+
+/**
+ * The transition running at time t between two consecutive lines of a layer, if any. The transition window is centred
+ * on the gap between the lines, so the outgoing line's tail and the incoming line's head overlap by its length.
+ * Lines further apart than the transition length simply cut.
+ */
+export function handoverAt(project: Project, lines: LyricLine[], t: number): Handover | null {
+  const sorted = [...lines].sort((a, b) => a.start - b.start);
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const from = sorted[i];
+    const to = sorted[i + 1];
+    const tr = from.transition ?? project.transition;
+    if (!tr || tr.type === "none" || tr.ms <= 0) continue;
+    const gap = to.start - from.end;
+    let d = tr.ms / 1000;
+    if (gap < -1e-6 || gap > d) continue;
+    d = Math.min(d, gap + (from.end - from.start), gap + (to.end - to.start)); // never longer than the lines themselves
+    const mid = (from.end + to.start) / 2;
+    const a = mid - d / 2;
+    if (t >= a && t < a + d) return { from, to, p: (t - a) / d, type: tr.type };
+  }
+  return null;
+}
+
 /** Per-word start times for word-highlight: real timings if present, else an even split. */
 function wordStarts(line: LyricLine, count: number): number[] {
   if (line.words && line.words.length === count) return line.words.map((w) => w.start);
@@ -199,14 +226,25 @@ export function activeLinesAt(project: Project, t: number): { line: LyricLine; l
   return out;
 }
 
-/** The rotated box of a line in its resting state (animation offsets are ignored so handles stay steady). */
-export function getLineBounds(project: Project, line: LyricLine, w: number, h: number): LineBounds | null {
+/**
+ * The rotated box of a line. In/out/loop offsets are ignored so handles stay steady; keyframes are included when a
+ * time is given (seconds, absolute), so the box follows keyframed motion.
+ */
+export function getLineBounds(project: Project, line: LyricLine, w: number, h: number, t?: number): LineBounds | null {
   const L = layoutLine(getMeasureCtx(), project, line, w, h);
   if (!L) return null;
   const tf = L.style.transform ?? { scale: 1, rotation: 0 };
+  const k = t === undefined ? undefined : evalKeyframes(line.keyframes, t - line.start);
+  const s = tf.scale * (k?.scale ?? 1);
   const padX = L.fontPx * 0.2;
   const padY = L.fontPx * 0.12;
-  return { cx: L.cx, cy: L.cy, halfW: (L.textW / 2 + padX) * tf.scale, halfH: (L.blockH / 2 + padY) * tf.scale, rotation: tf.rotation };
+  return {
+    cx: L.cx + (k?.x ?? 0) * w,
+    cy: L.cy + (k?.y ?? 0) * h,
+    halfW: (L.textW / 2 + padX) * s,
+    halfH: (L.blockH / 2 + padY) * s,
+    rotation: tf.rotation + (k?.rotation ?? 0),
+  };
 }
 
 /** The top-most unlocked line under a point (canvas pixels) at time t. */
@@ -214,7 +252,7 @@ export function hitTestLine(project: Project, t: number, w: number, h: number, p
   const lines = activeLinesAt(project, t);
   for (let i = lines.length - 1; i >= 0; i--) {
     if (lines[i].locked) continue;
-    const b = getLineBounds(project, lines[i].line, w, h);
+    const b = getLineBounds(project, lines[i].line, w, h, t);
     if (!b) continue;
     const a = (-b.rotation * Math.PI) / 180;
     const dx = px - b.cx;
@@ -241,16 +279,25 @@ export function drawFrame(
   ctx.clearRect(0, 0, w, h);
   drawBackground(ctx, project, w, h, assets);
 
-  // layers are drawn bottom to top; each visible layer shows its own active line
+  // layers are drawn bottom to top; each visible layer shows its own active line, or two during a transition
   for (const layer of project.layers) {
     if (!layer.visible) continue;
-    const line = activeLine(linesOfLayer(project, layer.id), time);
+    const lines = linesOfLayer(project, layer.id);
+    const ho = handoverAt(project, lines, time);
+    if (ho) {
+      const def = TRANSITIONS[ho.type];
+      drawLyric(ctx, project, ho.from, time, w, h, { side: "out", fx: toFx(def.out(ho.p)) });
+      drawLyric(ctx, project, ho.to, time, w, h, { side: "in", fx: toFx(def.in(ho.p)) });
+      continue;
+    }
+    const line = activeLine(lines, time);
     if (line) drawLyric(ctx, project, line, time, w, h);
   }
   ctx.restore();
 }
 
-function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricLine, t: number, w: number, h: number) {
+/** `trans` replaces the line's own out (or in) slot while a transition hands it over to (or from) its neighbour. */
+function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricLine, t: number, w: number, h: number, trans?: { side: "in" | "out"; fx: Fx }) {
   const L = layoutLine(ctx, project, line, w, h);
   if (!L) return;
   const { style, scale, fontPx, lineH, rows, blockH, cx, cy } = L;
@@ -263,17 +310,23 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
   const inDef = EFFECTS[anim.in.name];
   const outDef = EFFECTS[anim.out.name];
   const loopDef = LOOPS[anim.loop.name];
-  const pIn = presenceIn(anim.in, t - line.start, info);
-  const pOut = presenceOut(anim.out, line.end - t, info);
+  const tIn = trans?.side === "in";
+  const tOut = trans?.side === "out";
+  const pIn = tIn ? 1 : presenceIn(anim.in, t - line.start, info);
+  const pOut = tOut ? 1 : presenceOut(anim.out, line.end - t, info);
 
   // word and letter effects act on each unit; every other effect acts on the whole block
-  const staggerIn = inDef.mode === "word" || inDef.mode === "letter";
-  const staggerOut = outDef.mode === "word" || outDef.mode === "letter";
+  const staggerIn = !tIn && (inDef.mode === "word" || inDef.mode === "letter");
+  const staggerOut = !tOut && (outDef.mode === "word" || outDef.mode === "letter");
   const t0 = t - line.start;
   const loop = loopDef.fx(t0, anim.loop.speed);
   const letterWise = !!loopDef.letterDy;
   let fx = combineFx(staggerIn ? IDENTITY : toFx(inDef.fx(pIn, "in")), staggerOut ? IDENTITY : toFx(outDef.fx(pOut, "out")));
   fx = combineFx(fx, toFx(loop));
+  if (trans) fx = combineFx(fx, trans.fx);
+  // keyframes ride on top of everything above (same code path for preview and export)
+  const kf = evalKeyframes(line.keyframes, t0);
+  fx = { ...fx, opacity: fx.opacity * kf.opacity };
   if (fx.opacity <= 0) return;
 
   const highlight = inDef.mode === "highlight";
@@ -284,9 +337,9 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
 
   ctx.save();
   ctx.globalAlpha = Math.min(1, Math.max(0, fx.opacity));
-  ctx.translate(cx + fx.dx * h, cy + fx.dy * h);
-  ctx.rotate(((tf.rotation + fx.rotation) * Math.PI) / 180);
-  ctx.scale(fx.scale * tf.scale, fx.scale * tf.scale);
+  ctx.translate(cx + fx.dx * h + kf.x * w, cy + fx.dy * h + kf.y * h);
+  ctx.rotate(((tf.rotation + fx.rotation + kf.rotation) * Math.PI) / 180);
+  ctx.scale(fx.scale * tf.scale * kf.scale, fx.scale * tf.scale * kf.scale);
   ctx.translate(-cx, -cy);
   if (fx.blur > 0.05 && "filter" in ctx) (ctx as CanvasRenderingContext2D).filter = `blur(${fx.blur * scale}px)`;
 
@@ -351,6 +404,41 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
   const totalWords = wordsByRow.reduce((n, ws) => n + ws.length, 0);
   const starts = highlight ? wordStarts(line, totalWords) : [];
   let charsLeft = revealFrac === null ? Infinity : Math.floor(revealFrac * rows.join("").length + 1e-6);
+
+  /* karaoke: each word drawn on its own, sung words tinted, the word being sung scaled up */
+  const hl = style.highlight;
+  if (highlight && revealFrac === null && (hl?.tint || (hl?.activeScale ?? 1) !== 1)) {
+    let wi = 0;
+    rows.forEach((row, ri) => {
+      const y = cy - blockH / 2 + lineH * (ri + 0.5);
+      const x0 = cx - ctx.measureText(row).width / 2;
+      let pos = 0;
+      for (const word of wordsByRow[ri]) {
+        const start = starts[wi];
+        const next = wi + 1 < starts.length ? starts[wi + 1] : line.end;
+        wi++;
+        const x = x0 + ctx.measureText(row.slice(0, pos)).width;
+        pos += word.length + 1;
+        if (!word) continue;
+        const sung = t >= start;
+        const look = sung && hl.tint ? { ...style, color: hl.color } : style;
+        const active = sung && t < next;
+        // the active word pops up quickly, then settles back as the next word starts
+        const grow = active ? 1 + (hl.activeScale - 1) * EASINGS["ease-out"](Math.min(1, (t - start) / 0.12)) : 1;
+        const ww = ctx.measureText(word).width;
+        ctx.save();
+        if (grow !== 1) {
+          ctx.translate(x + ww / 2, y);
+          ctx.scale(grow, grow);
+          ctx.translate(-(x + ww / 2), -y);
+        }
+        paintText(ctx, word, x, y, look, scale, sung ? 1 : dim, glow);
+        ctx.restore();
+      }
+    });
+    ctx.restore();
+    return;
+  }
 
   let wordIdx = 0;
   rows.forEach((row, ri) => {

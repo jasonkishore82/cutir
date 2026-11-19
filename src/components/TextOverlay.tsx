@@ -3,6 +3,19 @@ import { useProject, type Transform } from "../store/project";
 import { activeLinesAt, getLineBounds, hitTestLine, type LineBounds } from "../lib/renderer";
 import { getTime } from "../lib/transport";
 import { transformOf, writeLineTransform } from "../lib/transform";
+import { evalKeyframes, keyAt, keyedProps, setKeyAt, useKeyUi, type KeyValues } from "../lib/keyframes";
+import type { LyricLine, Project } from "../store/project";
+
+/**
+ * Whether a change to this line at `now` edits keyframes rather than its resting transform: yes when the playhead is
+ * on one of its keyframes, or when auto-key is on and the playhead is inside the line.
+ */
+function keyTarget(line: LyricLine | undefined, now: number): { t: number; v: KeyValues } | null {
+  if (!line || now < line.start || now > line.end) return null;
+  const t = now - line.start;
+  if (!keyAt(line, t) && !useKeyUi.getState().autoKey) return null;
+  return { t, v: evalKeyframes(line.keyframes, t) };
+}
 
 const SNAP_PX = 6;
 const MARGIN = 0.05;
@@ -20,10 +33,45 @@ type Drag = {
   ang0: number;
   dist0: number;
   moved: boolean;
-  /** Every line that moves together when several are selected. */
-  group: { id: string; b0: LineBounds }[];
+  /** Every line that moves together when several are selected. `kx`/`ky` = keyframe offset in pixels at drag start. */
+  group: Member[];
   collapseTo?: string;
+  /** Set when this drag edits a keyframe instead of the resting transform. */
+  key: { t: number; v: KeyValues } | null;
 };
+
+type Member = { id: string; b0: LineBounds; kx: number; ky: number };
+
+/** A line's box at the playhead plus its keyframe offset in pixels (so a resting move can subtract it). */
+function memberOf(id: string, w: number, h: number): Member | null {
+  const p = useProject.getState().project;
+  const line = p.lines.find((l) => l.id === id);
+  if (!line) return null;
+  const now = getTime();
+  const b0 = getLineBounds(p, line, w, h, now);
+  if (!b0) return null;
+  const k = evalKeyframes(line.keyframes, now - line.start);
+  return { id, b0, kx: k.x * w, ky: k.y * h };
+}
+
+/** The x / y path a line's keyframes trace across its life, sampled for the preview. Null when it does not move. */
+function motionPath(project: Project, line: LyricLine, w: number, h: number) {
+  const props = keyedProps(line.keyframes);
+  if (!props.includes("x") && !props.includes("y")) return null;
+  const rest = getLineBounds(project, line, w, h);
+  if (!rest) return null;
+  const dur = line.end - line.start;
+  const pts: string[] = [];
+  for (let i = 0; i <= 60; i++) {
+    const k = evalKeyframes(line.keyframes, (dur * i) / 60);
+    pts.push(`${(rest.cx + k.x * w).toFixed(1)},${(rest.cy + k.y * h).toFixed(1)}`);
+  }
+  const keys = (line.keyframes ?? []).map((kf) => {
+    const k = evalKeyframes(line.keyframes, kf.time);
+    return { x: rest.cx + k.x * w, y: rest.cy + k.y * h };
+  });
+  return { points: pts.join(" "), keys };
+}
 
 /** Snap one axis: centre of the block to the canvas centre, or its edges to the 5% margins. */
 function snapAxis(c: number, half: number, size: number) {
@@ -98,18 +146,23 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
   const shownNow = activeLinesAt(project, time).filter((a) => selectedIds.includes(a.line.id) && !a.locked);
   const single = selectedIds.length === 1;
   const active = single && selectedId ? shownNow.find((a) => a.line.id === selectedId) : undefined;
-  const b = active ? getLineBounds(project, active.line, w, h) : null;
-  const others = single ? [] : shownNow.map((a) => ({ id: a.line.id, b: getLineBounds(project, a.line, w, h) })).filter((x): x is { id: string; b: LineBounds } => !!x.b);
+  const b = active ? getLineBounds(project, active.line, w, h, time) : null;
+  const others = single ? [] : shownNow.map((a) => ({ id: a.line.id, b: getLineBounds(project, a.line, w, h, time) })).filter((x): x is { id: string; b: LineBounds } => !!x.b);
+  const showPath = useKeyUi((s) => s.showPath);
+  const path = active && showPath ? motionPath(project, active.line, w, h) : null;
 
   const local = (e: { clientX: number; clientY: number }) => {
     const r = stage.current!.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
 
-  const startDrag = (e: React.PointerEvent, mode: Mode, id: string, b0: LineBounds, group: { id: string; b0: LineBounds }[] = [{ id, b0 }], collapseTo?: string) => {
+  const startDrag = (e: React.PointerEvent, mode: Mode, id: string, b0: LineBounds, group?: Member[], collapseTo?: string) => {
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const p0 = local(e);
+    const members = group ?? [memberOf(id, w, h)].filter((m): m is Member => !!m);
+    // one line: keyframes may be the target; several lines always move their resting placement
+    const key = members.length <= 1 ? keyTarget(useProject.getState().project.lines.find((l) => l.id === id), getTime()) : null;
     const d: Drag = {
       mode,
       id,
@@ -120,8 +173,9 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
       ang0: Math.atan2(p0.y - b0.cy, p0.x - b0.cx),
       dist0: Math.max(1, Math.hypot(p0.x - b0.cx, p0.y - b0.cy)),
       moved: false,
-      group,
+      group: members,
       collapseTo,
+      key,
     };
     drag.current = d;
 
@@ -155,16 +209,21 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
           g = { x: sx.guide, y: sy.guide };
         }
         setGuides(g);
-        moveLines(d.group.map((m) => ({ id: m.id, x: (m.b0.cx + dx) / w, y: (m.b0.cy + dy) / h })));
+        if (d.key) setKeyAt(d.id, d.key.t, { x: d.key.v.x + dx / w, y: d.key.v.y + dy / h });
+        else moveLines(d.group.map((m) => ({ id: m.id, x: (m.b0.cx - m.kx + dx) / w, y: (m.b0.cy - m.ky + dy) / h })));
       } else if (d.mode === "scale") {
-        const dist = Math.hypot(p.x - d.b0.cx, p.y - d.b0.cy);
-        writeLineTransform(d.id, { scale: Math.min(8, Math.max(0.1, d.tf0.scale * (dist / d.dist0))) });
+        const ratio = Math.hypot(p.x - d.b0.cx, p.y - d.b0.cy) / d.dist0;
+        if (d.key) setKeyAt(d.id, d.key.t, { scale: Math.min(8, Math.max(0.05, d.key.v.scale * ratio)) });
+        else writeLineTransform(d.id, { scale: Math.min(8, Math.max(0.1, d.tf0.scale * ratio)) });
       } else {
         const ang = Math.atan2(p.y - d.b0.cy, p.x - d.b0.cx);
-        let rot = d.tf0.rotation + ((ang - d.ang0) * 180) / Math.PI;
+        let rot = (d.key ? d.key.v.rotation : d.tf0.rotation) + ((ang - d.ang0) * 180) / Math.PI;
         if (ev.shiftKey) rot = Math.round(rot / 15) * 15;
-        rot = ((((rot + 180) % 360) + 360) % 360) - 180;
-        writeLineTransform(d.id, { rotation: Math.round(rot * 10) / 10 });
+        if (d.key) setKeyAt(d.id, d.key.t, { rotation: Math.round(rot * 10) / 10 });
+        else {
+          rot = ((((rot + 180) % 360) + 360) % 360) - 180;
+          writeLineTransform(d.id, { rotation: Math.round(rot * 10) / 10 });
+        }
       }
     };
     const up = () => {
@@ -198,13 +257,7 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
     const inGroup = st.selectedIds.length > 1 && st.selectedIds.includes(hit.id);
     if (!inGroup) st.select(hit.id);
     const ids = inGroup ? st.selectedIds : [hit.id];
-    const group = ids
-      .map((id) => {
-        const line = st.project.lines.find((l) => l.id === id);
-        const gb = line ? getLineBounds(st.project, line, w, h) : null;
-        return gb ? { id, b0: gb } : null;
-      })
-      .filter((x): x is { id: string; b0: LineBounds } => !!x);
+    const group = ids.map((id) => memberOf(id, w, h)).filter((x): x is Member => !!x);
     const bounds = group.find((m) => m.id === hit.id)?.b0;
     if (bounds) startDrag(e, "move", hit.id, bounds, group, inGroup ? hit.id : undefined);
   };
@@ -228,6 +281,13 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
     if (!d) return;
     e.preventDefault();
     const st = useProject.getState();
+    // one line on a keyframe (or with auto-key): nudge the keyframe
+    const one = st.selectedIds.length === 1 ? st.project.lines.find((l) => l.id === st.selectedIds[0]) : undefined;
+    const key = keyTarget(one, getTime());
+    if (one && key) {
+      setKeyAt(one.id, key.t, { x: key.v.x + d[0] / w, y: key.v.y + d[1] / h }, `nudge-key:${one.id}`);
+      return;
+    }
     const moves = st.selectedIds
       .map((id) => {
         const line = st.project.lines.find((l) => l.id === id);
@@ -257,6 +317,15 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
     >
       {guides.x !== undefined && <span className="pointer-events-none absolute inset-y-0 w-px bg-accent/80" style={{ left: guides.x }} />}
       {guides.y !== undefined && <span className="pointer-events-none absolute inset-x-0 h-px bg-accent/80" style={{ top: guides.y }} />}
+
+      {path && (
+        <svg className="pointer-events-none absolute inset-0 overflow-visible" width={w} height={h} aria-hidden>
+          <polyline points={path.points} fill="none" stroke="rgb(var(--accent))" strokeOpacity="0.75" strokeWidth="1.5" strokeDasharray="4 4" />
+          {path.keys.map((k, i) => (
+            <rect key={i} x={k.x - 4} y={k.y - 4} width="8" height="8" transform={`rotate(45 ${k.x} ${k.y})`} fill="white" stroke="rgb(var(--accent))" strokeWidth="1.5" />
+          ))}
+        </svg>
+      )}
 
       {others.map((o) => (
         <div

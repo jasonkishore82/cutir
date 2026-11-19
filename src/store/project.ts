@@ -1,4 +1,8 @@
 import { create } from "zustand";
+import { activeTimeline, docToView, viewToDoc } from "../model/convert";
+import { applyOperation, applyPatches, makeOperation, revertOperation, type Operation } from "../model/ops";
+import { serializeDoc } from "../model/migrate";
+import type { ProjectDoc } from "../model/types";
 
 /* ---------- Types ---------- */
 
@@ -16,6 +20,13 @@ export type AnimationSpec = {
   loop: { name: LoopName; speed: number };
 };
 export type Position = "top" | "center" | "bottom";
+
+/** How one line hands over to the next line on its layer. "none" is a hard cut. */
+export type TransitionType = "none" | "crossfade" | "slide-push" | "zoom-through";
+export type Transition = { type: TransitionType; ms: number };
+
+/** Karaoke look for the word-highlight entrance: sung words take `color` when `tint` is on; the word being sung grows to `activeScale`. */
+export type Highlight = { tint: boolean; color: string; activeScale: number };
 
 export type AssetRef = {
   name: string;
@@ -49,6 +60,7 @@ export type TextStyle = {
   position: Position;
   transform: Transform;
   animation: AnimationSpec;
+  highlight: Highlight;
 };
 
 /** Overrides for a layer or a line: any subset of the style, including single fields inside shadow, outline and transform. */
@@ -64,7 +76,21 @@ export type LyricLine = {
   styleOverride?: StyleOverride;
   /** Which layer this line lives on. Missing = the first layer. */
   layerId?: string;
+  /** Custom motion over the line's life. Times are relative to `start`, so moving the line moves its keyframes. */
+  keyframes?: Keyframe[];
+  /** Transition into the next line on the same layer. Missing = the project's default transition. */
+  transition?: Transition;
 };
+
+/** Properties a keyframe can animate. All are offsets on top of the resolved style and the in/out/loop animation. */
+export type KeyProp = "x" | "y" | "scale" | "rotation" | "opacity";
+
+/**
+ * One keyframe. `x` and `y` are offsets as fractions of the canvas width and height, `scale` and `opacity` multiply,
+ * `rotation` adds degrees. Only the properties present are keyed here; the rest interpolate past this keyframe.
+ * `easing` shapes the move from this keyframe to the next one that keys the same property.
+ */
+export type Keyframe = { id: string; time: number; props: Partial<Record<KeyProp, number>>; easing: Easing };
 
 /** A timeline layer (lane). Today every layer holds text; the style here overrides the project style for its lines. */
 export type Layer = {
@@ -83,6 +109,8 @@ export type Project = {
   style: TextStyle;
   aspect: Aspect;
   fps: 30 | 60;
+  /** Default transition between consecutive lines; a line's own `transition` overrides it. */
+  transition: Transition;
 };
 
 /* ---------- Defaults ---------- */
@@ -111,6 +139,7 @@ export const DEFAULT_STYLE: TextStyle = {
     out: { name: "fade", ms: 200, easing: "linear" },
     loop: { name: "none", speed: 1 },
   },
+  highlight: { tint: false, color: "#ffd84a", activeScale: 1 },
 };
 
 export const mainLayer = (): Layer => ({ id: "main", name: "Lyrics", visible: true, locked: false });
@@ -122,6 +151,7 @@ export const defaultProject = (): Project => ({
   style: DEFAULT_STYLE,
   aspect: "16:9",
   fps: 30,
+  transition: { type: "none", ms: 400 },
 });
 
 /* ---------- Helpers ---------- */
@@ -206,23 +236,26 @@ export function linesFromText(text: string, prev: LyricLine[]): LyricLine[] {
 
 export const linesToText = (lines: LyricLine[]) => lines.map((l) => l.text).join("\n");
 
-/** Strip session-only blob URLs before serialising. */
-export function serializeProject(p: Project): string {
-  const strip = (a?: AssetRef) => (a ? { ...a, url: undefined } : a);
-  const bg: Background =
-    p.background.type === "asset" ? { ...p.background, asset: strip(p.background.asset) } : p.background;
-  return JSON.stringify({ ...p, audio: strip(p.audio), background: bg }, null, 2);
-}
+/** A lyric project saved in the current file format (v2 document), without session-only blob URLs. */
+export const serializeProject = (p: Project): string => serializeDoc(viewToDoc(p));
 
 /* ---------- Store ---------- */
 
 const HISTORY_LIMIT = 200;
 const COALESCE_MS = 600;
 
+/**
+ * The store keeps two things in step:
+ *   doc      the project document (model v2: settings, media, timelines, tracks, clips). This is what is saved.
+ *   project  the active timeline seen as a lyric project, which the editor, renderer and chat tools work on.
+ * Every edit goes through `update`: the new lyric view is folded into the document, the difference becomes an
+ * Operation (patches + inverse patches), and undo / redo replay those operations instead of storing copies.
+ */
 type State = {
+  doc: ProjectDoc;
   project: Project;
-  past: Project[];
-  future: Project[];
+  past: Operation[];
+  future: Operation[];
 
   // non-undoable UI state
   /** The line the handles are on: the last one selected. */
@@ -244,6 +277,8 @@ type State = {
   endGesture: () => void;
   undo: () => void;
   redo: () => void;
+  /** Apply a recorded operation to the document (undoable). */
+  applyOperation: (op: Operation) => void;
 
   setStyle: (patch: Partial<TextStyle>, coalesceKey?: string) => void;
   setAspect: (a: Aspect) => void;
@@ -252,6 +287,8 @@ type State = {
   setLinesFromText: (text: string) => void;
   updateLine: (id: string, patch: Partial<LyricLine>, coalesceKey?: string) => void;
   loadProject: (p: Project) => void;
+  /** Open a whole document (keeps tracks, clips and timelines the lyric view does not show). */
+  loadDoc: (doc: ProjectDoc) => void;
   /** Select a line; with `add`, toggle it in the selection instead. */
   select: (id: string | null, add?: boolean) => void;
   selectMany: (ids: string[]) => void;
@@ -262,12 +299,23 @@ type State = {
 };
 
 let batchDepth = 0;
-let batchBase: Project | null = null;
+let batchBase: ProjectDoc | null = null;
 let lastKey: string | undefined;
 let lastTime = 0;
 
+const firstDoc = viewToDoc(defaultProject());
+
+/** Fold a new lyric view into the document, sharing every unchanged part with the old document. */
+function fold(doc: ProjectDoc, view: Project): { doc: ProjectDoc; op: Operation | null } {
+  const op = makeOperation(doc, viewToDoc(view, doc));
+  return { doc: op ? applyPatches(doc, op.patches) : doc, op };
+}
+
+const pushOp = (past: Operation[], op: Operation | null) => (op ? [...past, op].slice(-HISTORY_LIMIT) : past);
+
 export const useProject = create<State>((set, get) => ({
-  project: defaultProject(),
+  doc: firstDoc,
+  project: docToView(firstDoc),
   past: [],
   future: [],
   selectedLineId: null,
@@ -278,26 +326,30 @@ export const useProject = create<State>((set, get) => ({
   syncIndex: 0,
 
   update: (fn, coalesceKey) => {
-    const { project, past } = get();
+    const { project, doc, past } = get();
     const next = fn(project);
     if (next === project) return;
+    const { doc: nextDoc, op } = fold(doc, next);
 
-    // Inside a batch: just apply; the base snapshot is pushed once at the end.
+    // Inside a batch: just apply; one operation for the whole batch is recorded at the end.
     if (batchDepth > 0) {
-      set({ project: next });
+      set({ project: next, doc: nextDoc });
       return;
     }
 
     const now = Date.now();
-    const coalesce = !!coalesceKey && coalesceKey === lastKey && now - lastTime < COALESCE_MS;
+    const coalesce = !!coalesceKey && coalesceKey === lastKey && now - lastTime < COALESCE_MS && past.length > 0;
     lastKey = coalesceKey;
     lastTime = now;
 
-    set({
-      project: next,
-      past: coalesce ? past : [...past, project].slice(-HISTORY_LIMIT),
-      future: [],
-    });
+    if (coalesce) {
+      // merge into the previous step: one operation from before that step to now
+      const prev = past[past.length - 1];
+      const merged = makeOperation(revertOperation(doc, prev), nextDoc, prev.label);
+      set({ project: next, doc: nextDoc, past: merged ? [...past.slice(0, -1), merged] : past.slice(0, -1), future: [] });
+      return;
+    }
+    set({ project: next, doc: nextDoc, past: pushOp(past, op), future: op ? [] : get().future });
   },
 
   batch: (fn) => {
@@ -310,7 +362,7 @@ export const useProject = create<State>((set, get) => ({
   },
 
   beginGesture: () => {
-    if (batchDepth === 0) batchBase = get().project;
+    if (batchDepth === 0) batchBase = get().doc;
     batchDepth++;
   },
 
@@ -318,27 +370,37 @@ export const useProject = create<State>((set, get) => ({
     if (batchDepth === 0) return;
     batchDepth--;
     if (batchDepth === 0 && batchBase) {
-      const { project, past } = get();
-      if (project !== batchBase) {
-        set({ past: [...past, batchBase].slice(-HISTORY_LIMIT), future: [] });
-      }
+      const { doc, past } = get();
+      const op = makeOperation(batchBase, doc);
+      if (op) set({ past: pushOp(past, op), future: [] });
       batchBase = null;
       lastKey = undefined;
     }
   },
 
   undo: () => {
-    const { past, future, project } = get();
+    const { past, future, doc } = get();
     if (!past.length) return;
     lastKey = undefined;
-    set({ project: past[past.length - 1], past: past.slice(0, -1), future: [project, ...future] });
+    const op = past[past.length - 1];
+    const prev = revertOperation(doc, op);
+    set({ doc: prev, project: docToView(prev), past: past.slice(0, -1), future: [op, ...future] });
   },
 
   redo: () => {
-    const { past, future, project } = get();
+    const { past, future, doc } = get();
     if (!future.length) return;
     lastKey = undefined;
-    set({ project: future[0], past: [...past, project], future: future.slice(1) });
+    const op = future[0];
+    const next = applyOperation(doc, op);
+    set({ doc: next, project: docToView(next), past: pushOp(past, op), future: future.slice(1) });
+  },
+
+  applyOperation: (op) => {
+    const { doc, past } = get();
+    const next = applyOperation(doc, op);
+    lastKey = undefined;
+    set({ doc: next, project: docToView(next), past: pushOp(past, op), future: [] });
   },
 
   setStyle: (patch, key) =>
@@ -356,7 +418,12 @@ export const useProject = create<State>((set, get) => ({
     }, "lyrics-text"),
   updateLine: (id, patch, key) =>
     get().update((p) => ({ ...p, lines: p.lines.map((l) => (l.id === id ? { ...l, ...patch } : l)) }), key),
-  loadProject: (project) => set({ project, past: [], future: [], selectedLineId: null, selectedIds: [], activeLayerId: project.layers[0].id }),
+  loadProject: (project) => get().loadDoc(viewToDoc(project)),
+  loadDoc: (doc) => {
+    const project = docToView(doc);
+    lastKey = undefined;
+    set({ doc, project, past: [], future: [], selectedLineId: null, selectedIds: [], activeLayerId: project.layers[0].id });
+  },
   select: (id, add) =>
     set((s) => {
       if (id === null) return { selectedLineId: null, selectedIds: [] };
@@ -425,18 +492,42 @@ export function normalizeProject(raw: Partial<Project>): Project {
   return orderByLayers({ ...d, ...raw, layers, style: mergeStyle(DEFAULT_STYLE, raw.style as StyleOverride | undefined), lines: raw.lines ?? [] });
 }
 
-/** Debounced autosave: calls `save` ~400ms after the last change to the project. */
-export function startAutosave(save: (p: Project) => void) {
+/** Debounced autosave: calls `save` ~400ms after the last change to the document. */
+export function startAutosave(save: (doc: ProjectDoc, view: Project) => void) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return useProject.subscribe((s, prev) => {
-    if (s.project === prev.project) return;
+    if (s.doc === prev.doc) return;
     clearTimeout(timer);
-    timer = setTimeout(() => save(s.project), 400);
+    timer = setTimeout(() => save(useProject.getState().doc, useProject.getState().project), 400);
   });
 }
 
+/* ---------- per-timeline selectors: components re-render only when the part they show changes ---------- */
+
+export const useActiveTimeline = () => useProject((s) => activeTimeline(s.doc));
+export const useTimeline = (id: string) => useProject((s) => s.doc.timelines.find((t) => t.id === id));
+export const useTracks = (timelineId: string) => useProject((s) => s.doc.timelines.find((t) => t.id === timelineId)?.tracks);
+/** Clips of one track. Returns the same array while that track's clips are unchanged. */
+export function useTrackClips(timelineId: string, trackId: string) {
+  return useProject((s) => {
+    const tl = s.doc.timelines.find((t) => t.id === timelineId);
+    return tl ? clipsOf(tl, trackId) : EMPTY;
+  });
+}
+const EMPTY: never[] = [];
+const clipCache = new WeakMap<object, Map<string, unknown[]>>();
+function clipsOf(tl: ProjectDoc["timelines"][number], trackId: string) {
+  let byTrack = clipCache.get(tl.clips);
+  if (!byTrack) clipCache.set(tl.clips, (byTrack = new Map()));
+  let list = byTrack.get(trackId);
+  if (!list) byTrack.set(trackId, (list = tl.clips.filter((c) => c.trackId === trackId)));
+  return list as ProjectDoc["timelines"][number]["clips"];
+}
+
 export function downloadProject(p: Project) {
-  const blob = new Blob([serializeProject(p)], { type: "application/json" });
+  const st = useProject.getState();
+  const doc = p === st.project ? st.doc : viewToDoc(p);
+  const blob = new Blob([serializeDoc(doc)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = "cutir-project.json";

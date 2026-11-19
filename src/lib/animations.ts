@@ -1,4 +1,4 @@
-import type { AnimationSpec, Easing, EffectName, LoopName } from "../store/project";
+import type { AnimationSpec, Easing, EffectName, LoopName, TransitionType } from "../store/project";
 
 /**
  * Text animation: easing curves, the in/out effects and the loop effects.
@@ -163,3 +163,32 @@ export const LOOPS: Record<LoopName, LoopDef> = {
 
 export const LOOP_NAMES = Object.keys(LOOPS) as LoopName[];
 export const EASING_NAMES = Object.keys(EASINGS) as Easing[];
+
+/* ---------- transitions between consecutive lines ---------- */
+
+export type TransitionDef = {
+  label: string;
+  /** The outgoing line at progress p (0 = transition starts, 1 = done). */
+  out: (p: number) => Partial<Fx>;
+  /** The incoming line at progress p. */
+  in: (p: number) => Partial<Fx>;
+};
+
+const smooth = EASINGS["ease-in-out"];
+
+export const TRANSITIONS: Record<TransitionType, TransitionDef> = {
+  none: { label: "none (cut)", out: () => ({}), in: () => ({}) },
+  crossfade: { label: "crossfade", out: (p) => ({ opacity: 1 - p }), in: (p) => ({ opacity: p }) },
+  "slide-push": {
+    label: "slide push",
+    out: (p) => ({ opacity: 1 - p, dy: -0.08 * smooth(p) }),
+    in: (p) => ({ opacity: p, dy: 0.08 * (1 - smooth(p)) }),
+  },
+  "zoom-through": {
+    label: "zoom through",
+    out: (p) => ({ opacity: 1 - p, scale: 1 + 0.6 * smooth(p), blur: 6 * p }),
+    in: (p) => ({ opacity: p, scale: 0.7 + 0.3 * smooth(p) }),
+  },
+};
+
+export const TRANSITION_NAMES = Object.keys(TRANSITIONS) as TransitionType[];

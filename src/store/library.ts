@@ -1,15 +1,8 @@
 import { create } from "zustand";
-import {
-  DEFAULT_STYLE,
-  defaultProject,
-  normalizeProject,
-  serializeProject,
-  uid,
-  useProject,
-  type AssetRef,
-  type Aspect,
-  type Project,
-} from "./project";
+import { DEFAULT_STYLE, defaultProject, uid, useProject, type Aspect, type Project } from "./project";
+import { docToView, viewToDoc } from "../model/convert";
+import { loadDoc, serializeDoc } from "../model/migrate";
+import { SCHEMA_VERSION, type ProjectDoc } from "../model/types";
 import { useChat } from "./chat";
 import { copyProjectMedia, deleteProjectMedia, useMedia } from "./media";
 import { useSettings } from "./settings";
@@ -19,8 +12,10 @@ import { makeThumbnail } from "../lib/thumbnail";
 /**
  * The project library behind the Home screen.
  * localStorage layout:   cutir:library      -> JSON array of ProjectEntry (small, for the Home grid)
- *                        cutir:p:<id>       -> the project JSON (lyrics, style, asset names)
+ *                        cutir:p:<id>       -> the project document (model v2, see src/model/types.ts)
  *                        cutir:t:<id>       -> JPEG data URL thumbnail
+ *                        cutir:backup:<id>:v<n> -> the original JSON of a project saved in an older format, kept
+ *                                              read-only the first time it is migrated
  * IndexedDB (assetdb):   <id>/audio, <id>/bg -> the actual song / background files
  */
 
@@ -50,8 +45,8 @@ type Library = {
   duplicateProject: (id: string) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   importProject: (name: string, raw: unknown) => Promise<void>;
-  /** Called by autosave with the live project. */
-  saveContent: (p: Project) => void;
+  /** Called by autosave with the live document and its lyric view. */
+  saveContent: (doc: ProjectDoc, view: Project) => void;
   saveAsset: (slot: "audio" | "bg", file: Blob, name: string) => void;
   clearAsset: (slot: "audio" | "bg") => void;
 };
@@ -120,8 +115,8 @@ export const useLibrary = create<Library>((set, get) => {
     return thumbs;
   };
 
-  const writeProject = (id: string, p: Project, withThumb: boolean) => {
-    const ok = safeSet(`cutir:p:${id}`, serializeProject(p));
+  const writeProject = (id: string, doc: ProjectDoc, p: Project, withThumb: boolean) => {
+    const ok = safeSet(`cutir:p:${id}`, serializeDoc(doc));
     let thumb: string | null = null;
     if (withThumb) {
       thumb = makeThumbnail(p);
@@ -136,25 +131,34 @@ export const useLibrary = create<Library>((set, get) => {
     safeSet(LIB_KEY, JSON.stringify(entries));
   };
 
-  /** Read a project and put its saved audio/background back (object URLs are session-only). */
-  const hydrate = async (id: string): Promise<Project> => {
+  /**
+   * Read a project (any saved format) and put its media files back (object URLs are session-only).
+   * A project saved in an older format is migrated; its original JSON is kept once as a read-only backup.
+   */
+  const hydrate = async (id: string): Promise<ProjectDoc> => {
     const raw = safeGet(`cutir:p:${id}`);
-    const project = raw ? normalizeProject(JSON.parse(raw)) : defaultProject();
+    let doc: ProjectDoc;
+    if (!raw) doc = viewToDoc(defaultProject());
+    else {
+      const { doc: loaded, fromVersion } = loadDoc(raw);
+      doc = loaded;
+      if (fromVersion < SCHEMA_VERSION) {
+        const backupKey = `cutir:backup:${id}:v${fromVersion}`;
+        if (safeGet(backupKey) === null) safeSet(backupKey, raw);
+        safeSet(`cutir:p:${id}`, serializeDoc(doc));
+      }
+    }
     revokeLive();
-    const url = (b: Blob) => {
-      const u = URL.createObjectURL(b);
-      liveUrls.push(u);
-      return u;
-    };
-    if (project.audio) {
-      const f = await loadFile(`${id}/audio`);
-      if (f) project.audio = { ...project.audio, url: url(f.blob) };
-    }
-    if (project.background.type === "asset" && project.background.asset) {
-      const f = await loadFile(`${id}/bg`);
-      if (f) project.background = { ...project.background, asset: { ...project.background.asset, url: url(f.blob) } as AssetRef };
-    }
-    return project;
+    const media = await Promise.all(
+      doc.media.map(async (m) => {
+        const f = await loadFile(`${id}/${m.fileKey}`);
+        if (!f) return m;
+        const u = URL.createObjectURL(f.blob);
+        liveUrls.push(u);
+        return { ...m, url: u };
+      })
+    );
+    return { ...doc, media };
   };
 
   const addEntry = (name: string, p: Project): ProjectEntry => {
@@ -179,10 +183,11 @@ export const useLibrary = create<Library>((set, get) => {
       const legacy = safeGet(LEGACY_KEY);
       if (legacy) {
         try {
-          const p = normalizeProject(JSON.parse(legacy));
+          const { doc } = loadDoc(legacy);
+          const p = docToView(doc);
           const id = uid() + uid();
           const now = Date.now();
-          if (safeSet(`cutir:p:${id}`, serializeProject(p))) {
+          if (safeSet(`cutir:p:${id}`, serializeDoc(doc))) {
             entries = [{ id, name: "Untitled project", createdAt: now, updatedAt: now, ...metaOf(p) }, ...entries];
             safeSet(LIB_KEY, JSON.stringify(entries));
             safeDel(LEGACY_KEY);
@@ -197,7 +202,7 @@ export const useLibrary = create<Library>((set, get) => {
     createProject: async ({ name, aspect, fps }) => {
       const p: Project = { ...defaultProject(), aspect, fps, style: { ...DEFAULT_STYLE } };
       const entry = addEntry(uniqueName(name.trim() || "Untitled project", get().entries), p);
-      safeSet(`cutir:p:${entry.id}`, serializeProject(p));
+      safeSet(`cutir:p:${entry.id}`, serializeDoc(viewToDoc(p)));
       await get().openProject(entry.id);
       return entry.id;
     },
@@ -205,21 +210,21 @@ export const useLibrary = create<Library>((set, get) => {
     openProject: async (id) => {
       const cur = get().currentId;
       if (cur && cur !== id) {
-        writeProject(cur, useProject.getState().project, true);
+        writeProject(cur, useProject.getState().doc, useProject.getState().project, true);
       }
-      const project = await hydrate(id);
+      const doc = await hydrate(id);
       if (cur !== id) {
         useChat.getState().loadProject(id); // chats belong to the project they were started in
         void useMedia.getState().load(id);
       }
-      useProject.getState().loadProject(project);
+      useProject.getState().loadDoc(doc);
       useProject.setState({ chatOpen: useSettings.getState().showAiOnOpen });
       set({ currentId: id, screen: "editor" });
     },
 
     goHome: () => {
       const id = get().currentId;
-      if (id) writeProject(id, useProject.getState().project, true);
+      if (id) writeProject(id, useProject.getState().doc, useProject.getState().project, true);
       useChat.getState().loadProject(null);
       void useMedia.getState().load(null);
       set({ currentId: null, screen: "home" });
@@ -261,15 +266,15 @@ export const useLibrary = create<Library>((set, get) => {
     },
 
     importProject: async (name, raw) => {
-      const p = normalizeProject(raw as Partial<Project>);
-      const entry = addEntry(uniqueName(name.trim() || "Imported project", get().entries), p);
-      safeSet(`cutir:p:${entry.id}`, serializeProject(p));
+      const { doc } = loadDoc(raw); // any format; a file from a newer Cutir throws with a message
+      const entry = addEntry(uniqueName(name.trim() || "Imported project", get().entries), docToView(doc));
+      safeSet(`cutir:p:${entry.id}`, serializeDoc(doc));
       await get().openProject(entry.id);
     },
 
-    saveContent: (p) => {
+    saveContent: (doc, p) => {
       const id = get().currentId;
-      if (id) writeProject(id, p, false);
+      if (id) writeProject(id, doc, p, false);
     },
 
     saveAsset: (slot, file, name) => {
@@ -289,7 +294,6 @@ export function installUnloadSave() {
   window.addEventListener("beforeunload", () => {
     const { currentId } = useLibrary.getState();
     if (!currentId) return;
-    const p = useProject.getState().project;
-    safeSet(`cutir:p:${currentId}`, serializeProject(p));
+    safeSet(`cutir:p:${currentId}`, serializeDoc(useProject.getState().doc));
   });
 }

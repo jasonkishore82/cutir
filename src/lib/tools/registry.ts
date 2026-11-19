@@ -11,7 +11,7 @@ import type { Project } from "../../store/project";
  * To add a tool: write defineTool({...}) in a group file and add it to that file's export. Nothing else.
  */
 
-export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers";
+export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers" | "transform" | "motion";
 
 export type ToolResultOk = { project: Project; summary: string };
 
@@ -22,6 +22,8 @@ export type ToolDef<S extends z.ZodType = z.ZodType> = {
   group: ToolGroup;
   /** Extra guidance appended to this tool's line in the system prompt. */
   hint?: string;
+  /** Still runs when called, but is never offered to the model (kept for old prompts and saved replies). */
+  alias?: boolean;
   params: S;
   /** Repair common small-model mistakes before validation (wrong wrapper, flattened args...). */
   normalize?: (args: unknown) => unknown;
@@ -89,6 +91,6 @@ export function createRegistry(tools: AnyTool[]) {
     all: tools,
     get: (name: string) => byName.get(name),
     /** All tools, or just those in the given groups. */
-    list: (groups?: ToolGroup[]) => (groups ? tools.filter((t) => groups.includes(t.group)) : tools),
+    list: (groups?: ToolGroup[]) => tools.filter((t) => !t.alias && (!groups || groups.includes(t.group))),
   };
 }

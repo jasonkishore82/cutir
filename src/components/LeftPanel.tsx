@@ -2,6 +2,9 @@ import { useRef, useState } from "react";
 import { ensureFont, markFontReady } from "../lib/fonts";
 import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
+import KeyframesCard from "./KeyframesCard";
+import TemplatesCard from "./TemplatesCard";
+import TransitionsCard from "./TransitionsCard";
 import MediaPool, { PoolThumb } from "./MediaPool";
 import { useMedia, type MediaItem } from "../store/media";
 import { SECTIONS, type SectionId } from "./SectionTabs";
@@ -296,6 +299,8 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
         <>
           <ScopeBar />
 
+          <TemplatesCard />
+
           <Card title="Font">
             <PropSelect path="fontFamily" label="Typeface" options={FONTS} />
             <div className="space-y-1.5">
@@ -335,6 +340,12 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
           <Card title="Outline">
             <PropSlider path="outline.width" label="Width" min={0} max={20} />
             <PropColor path="outline.color" label="Colour" />
+          </Card>
+
+          <Card title="Karaoke" hint="For the word highlight entrance (Motion, Animation, In): how sung words look.">
+            <PropCheck path="highlight.tint" label="Colour sung words" />
+            <PropColor path="highlight.color" label="Sung word colour" />
+            <PropSlider path="highlight.activeScale" label="Current word size" min={100} max={160} factor={100} unit="%" />
           </Card>
 
           <StyleActions />
@@ -380,6 +391,8 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
           )}
 
           <AnimationCard />
+          <TransitionsCard />
+          <KeyframesCard />
         </>
       )}
     </div>
