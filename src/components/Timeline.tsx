@@ -321,7 +321,7 @@ export default function Timeline() {
   const layers = useProject((s) => s.project.layers);
   const lines = useProject((s) => s.project.lines);
   const audioUrl = useProject((s) => s.project.audio?.url);
-  const selected = useProject((s) => s.selectedLineId);
+  const selectedIds = useProject((s) => s.selectedIds);
   const activeLayerId = useProject((s) => (s.project.layers.some((l) => l.id === s.activeLayerId) ? s.activeLayerId : s.project.layers[0].id));
   const syncMode = useProject((s) => s.syncMode);
   const syncIndex = useProject((s) => s.syncIndex);
@@ -475,6 +475,10 @@ export default function Timeline() {
     const line = st.project.lines.find((l) => l.id === id);
     if (!line) return;
     const layerId = layerIdOf(st.project, line);
+    if (e.shiftKey) {
+      st.select(id, true); // Shift-click adds to or removes from the selection
+      return;
+    }
     st.select(id);
     st.setActiveLayer(layerId);
     if (st.project.layers.find((l) => l.id === layerId)?.locked) return; // locked layers can be selected, not changed
@@ -813,7 +817,7 @@ export default function Timeline() {
                             setCtx({ kind: "block", lineId: l.id, x: e.clientX, y: e.clientY });
                           }}
                           className={`absolute top-1 h-9 rounded border text-[11px] leading-9 px-2 truncate select-none touch-none ${layer.locked ? "cursor-default" : "cursor-grab active:cursor-grabbing"} ${
-                            selected === l.id ? "bg-accent/40 border-accent text-white" : "bg-edge/80 border-gray-600 text-gray-300"
+                            selectedIds.includes(l.id) ? "bg-accent/40 border-accent text-white" : "bg-edge/80 border-gray-600 text-gray-300"
                           } ${syncMode && layer.id === activeLayer.id && i === syncIndex ? "ring-2 ring-yellow-400" : ""}`}
                           style={{ left: l.start * pps, width: Math.max(6, (l.end - l.start) * pps) }}
                           title={`${gi + 1} | ${layer.name} | ${l.start.toFixed(2)}-${l.end.toFixed(2)} | ${l.text}`}

@@ -5,11 +5,11 @@ import AutoSync from "./AutoSync";
 import MediaPool, { PoolThumb } from "./MediaPool";
 import { useMedia, type MediaItem } from "../store/media";
 import { SECTIONS, type SectionId } from "./SectionTabs";
-import { ActionButton, Card, Icon, Row, Segmented, Slider } from "./ui";
+import { ActionButton, Card, Icon, Row, Segmented } from "./ui";
 import { useLibrary } from "../store/library";
-import { resetLineTransform, writeLineTransform } from "../lib/transform";
+import { ScopeBar, PropCheck, PropChoice, PropColor, PropSelect, PropSlider, useTarget } from "./props";
+import { alignLines, applyStyle, copyStyle, distributeLines, editStyle, idsOfLayer, resetFields, snapshotOf, useStyleClipboard, writeField, type AlignMode } from "../lib/styleEdit";
 import {
-  effectiveStyle,
   layerIdOf,
   linesOfLayer,
   linesToText,
@@ -48,15 +48,11 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
   const setActiveLayer = useProject((s) => s.setActiveLayer);
   const layer = project.layers.find((l) => l.id === activeLayerId) ?? project.layers[0];
   const layerLines = linesOfLayer(project, layer.id);
-  const { style } = project;
-  const setStyle = useProject((s) => s.setStyle);
   const setAspect = useProject((s) => s.setAspect);
   const setBackground = useProject((s) => s.setBackground);
   const setAudio = useProject((s) => s.setAudio);
   const setLinesFromText = useProject((s) => s.setLinesFromText);
-  const selectedId = useProject((s) => s.selectedLineId);
-  const selectedLine = project.lines.find((l) => l.id === selectedId);
-  const selTf = selectedLine ? effectiveStyle(project, selectedLine).transform : undefined;
+  const { target, ...sel } = useTarget();
   const pool = useMedia((s) => s.items);
   const audioItems = pool.filter((i) => i.kind === "audio");
   const visualItems = pool.filter((i) => i.kind !== "audio");
@@ -73,7 +69,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
     setGfontMsg(null);
     try {
       const family = await ensureFont(name, useProject.getState().project.lines.map((l) => l.text).join(" "));
-      setStyle({ fontFamily: family });
+      writeField(target, "fontFamily", family);
       setGfontMsg({ ok: true, text: `Using ${family}` });
       setGfont("");
     } catch (e) {
@@ -113,7 +109,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
       await face.load();
       document.fonts.add(face);
       markFontReady(family);
-      setStyle({ fontFamily: family });
+      writeField(target, "fontFamily", family);
     } catch {
       alert("Could not load that font file.");
     }
@@ -289,6 +285,8 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
             </button>
           </Card>
 
+          {sel.ids.length === 1 && <LineFields id={sel.ids[0]} />}
+
           <Card title="Sync">
             <AutoSync />
           </Card>
@@ -297,14 +295,10 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
 
       {tab === "style" && (
         <>
+          <ScopeBar />
+
           <Card title="Font">
-            <Row label="Typeface">
-              <select className="field" value={style.fontFamily} onChange={(e) => setStyle({ fontFamily: e.target.value })}>
-                {[...new Set([style.fontFamily, ...FONTS])].map((f) => (
-                  <option key={f}>{f}</option>
-                ))}
-              </select>
-            </Row>
+            <PropSelect path="fontFamily" label="Typeface" options={FONTS} />
             <div className="space-y-1.5">
               <div className="flex gap-1.5">
                 <input
@@ -325,94 +319,136 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
           </Card>
 
           <Card title="Text">
-            <Slider label="Size" value={style.fontSize} min={24} max={240} onChange={(v) => setStyle({ fontSize: v })} />
-            <div className="flex items-center justify-between gap-3">
-              <label className="flex items-center gap-2.5 text-[12px] text-gray-300">
-                <input type="color" value={style.color} onChange={(e) => setStyle({ color: e.target.value })} aria-label="Text colour" />
-                Colour
-              </label>
-              <label className="flex items-center gap-2 text-[12px] text-gray-300">
-                <input type="checkbox" checked={style.uppercase} onChange={(e) => setStyle({ uppercase: e.target.checked })} />
-                ALL CAPS
-              </label>
-            </div>
-            <Slider label="Letter spacing" value={style.letterSpacing} min={-5} max={30} onChange={(v) => setStyle({ letterSpacing: v })} />
-            <Slider label="Line height" value={style.lineHeight} min={0.8} max={2} step={0.05} onChange={(v) => setStyle({ lineHeight: v })} />
-            <Slider label="Characters per line" value={style.maxCharsPerLine} min={8} max={60} onChange={(v) => setStyle({ maxCharsPerLine: v })} />
+            <PropSlider path="fontSize" label="Size" min={24} max={240} />
+            <PropColor path="color" label="Colour" />
+            <PropCheck path="uppercase" label="ALL CAPS" />
+            <PropSlider path="letterSpacing" label="Letter spacing" min={-5} max={30} />
+            <PropSlider path="lineHeight" label="Line height" min={0.8} max={2} step={0.05} />
+            <PropSlider path="maxCharsPerLine" label="Characters per line" min={8} max={60} />
           </Card>
 
           <Card title="Shadow">
-            <Slider label="Blur" value={style.shadow.blur} min={0} max={60} onChange={(v) => setStyle({ shadow: { ...style.shadow, blur: v } }, "shadow")} />
-            <Slider label="Distance" value={style.shadow.offsetY} min={-40} max={40} onChange={(v) => setStyle({ shadow: { ...style.shadow, offsetY: v } }, "shadow")} />
-            <Slider label="Opacity" value={style.shadow.opacity} min={0} max={1} step={0.05} onChange={(v) => setStyle({ shadow: { ...style.shadow, opacity: v } }, "shadow")} />
+            <PropSlider path="shadow.blur" label="Blur" min={0} max={60} />
+            <PropSlider path="shadow.offsetY" label="Distance" min={-40} max={40} />
+            <PropSlider path="shadow.opacity" label="Opacity" min={0} max={1} step={0.05} />
           </Card>
 
           <Card title="Outline">
-            <Slider label="Width" value={style.outline.width} min={0} max={20} onChange={(v) => setStyle({ outline: { ...style.outline, width: v } }, "outline")} />
-            <label className="flex items-center gap-2.5 text-[12px] text-gray-300">
-              <input type="color" value={style.outline.color} onChange={(e) => setStyle({ outline: { ...style.outline, color: e.target.value } }, "outline")} aria-label="Outline colour" />
-              Colour
-            </label>
+            <PropSlider path="outline.width" label="Width" min={0} max={20} />
+            <PropColor path="outline.color" label="Colour" />
           </Card>
+
+          <StyleActions />
         </>
       )}
 
       {tab === "motion" && (
         <>
+          <ScopeBar />
+
           <Card title="Position">
-            <Segmented
-              label="Position"
-              value={style.position}
+            <PropChoice
+              path="position"
+              label="Preset"
               options={POSITIONS}
-              onChange={(p) => setStyle({ position: p, transform: { ...style.transform, x: undefined, y: undefined } })}
+              columns={3}
+              onPick={(v, t) => editStyle(t, { set: [["position", v]], unset: ["transform.x", "transform.y"] })}
             />
+            <PropSlider path="transform.x" label="Horizontal" min={0} max={100} factor={100} unit="%" auto={50} />
+            <PropSlider path="transform.y" label="Vertical" min={0} max={100} factor={100} unit="%" auto={50} />
+            <PropSlider path="transform.scale" label="Size" min={10} max={500} factor={100} unit="%" />
+            <PropSlider path="transform.rotation" label="Rotation" min={-180} max={180} unit=" deg" />
+            <button className={`${textBtn} w-full text-left`} onClick={() => resetFields(target, ["transform.x", "transform.y", "transform.scale", "transform.rotation"])}>
+              Reset position, size and rotation
+            </button>
           </Card>
 
-          <Card title="Selected line">
-            {!selectedLine ? (
-              <p className="text-[12px] text-gray-500">Click a line in the preview or the timeline to move, scale or rotate it.</p>
-            ) : (
-              <>
-                <p className="truncate text-[12px] text-gray-300" title={selectedLine.text}>{selectedLine.text}</p>
-                {selTf?.x === undefined && <p className="text-[11px] text-gray-500">Placed by the position preset. Drag it in the preview to place it freely.</p>}
-                {selTf?.x !== undefined && (
-                  <Slider label="Horizontal" value={Math.round(selTf.x * 100)} min={0} max={100} unit="%" onChange={(v) => writeLineTransform(selectedLine.id, { x: v / 100 }, `tf:x:${selectedLine.id}`)} />
-                )}
-                {selTf?.y !== undefined && (
-                  <Slider label="Vertical" value={Math.round(selTf.y * 100)} min={0} max={100} unit="%" onChange={(v) => writeLineTransform(selectedLine.id, { y: v / 100 }, `tf:y:${selectedLine.id}`)} />
-                )}
-                <Slider label="Size" value={Math.round((selTf?.scale ?? 1) * 100)} min={10} max={500} unit="%" onChange={(v) => writeLineTransform(selectedLine.id, { scale: v / 100 }, `tf:s:${selectedLine.id}`)} />
-                <Slider label="Rotation" value={Math.round(selTf?.rotation ?? 0)} min={-180} max={180} unit=" deg" onChange={(v) => writeLineTransform(selectedLine.id, { rotation: v }, `tf:r:${selectedLine.id}`)} />
-                <button className={`${textBtn} w-full text-left`} onClick={() => resetLineTransform(selectedLine.id)}>
-                  Reset position, size and rotation
-                </button>
-              </>
-            )}
-          </Card>
+          {sel.ids.length > 0 && (
+            <Card title="Align to canvas">
+              <div className="grid grid-cols-3 gap-1.5">
+                {(
+                  [["left", "Left"], ["centerX", "Centre"], ["right", "Right"], ["top", "Top"], ["centerY", "Middle"], ["bottom", "Bottom"]] as [AlignMode, string][]
+                ).map(([m, l]) => (
+                  <button key={m} className={`${textBtn} px-1 text-center text-[12px]`} onClick={() => alignLines(sel.ids, m)}>{l}</button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button className={`${textBtn} text-center text-[12px] disabled:opacity-40`} disabled={sel.ids.length < 3} onClick={() => distributeLines(sel.ids, "x")}>Space across</button>
+                <button className={`${textBtn} text-center text-[12px] disabled:opacity-40`} disabled={sel.ids.length < 3} onClick={() => distributeLines(sel.ids, "y")}>Space down</button>
+              </div>
+              {sel.ids.length < 3 && <p className="text-[11px] text-gray-500">Select three or more lines to space them evenly.</p>}
+            </Card>
+          )}
 
           <Card title="Entrance">
-            <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Animation">
-              {ANIMATIONS.map((a) => {
-                const on = style.animation === a;
-                return (
-                  <button
-                    key={a}
-                    role="radio"
-                    aria-checked={on}
-                    onClick={() => setStyle({ animation: a })}
-                    className={`rounded-lg border px-2.5 py-2 text-left text-[13px] capitalize ${
-                      on ? "border-accent/50 bg-accent/10 text-white" : "border-edge bg-black/20 text-gray-300 hover:bg-raised"
-                    }`}
-                  >
-                    {a.replace("-", " ")}
-                  </button>
-                );
-              })}
-            </div>
-            <Slider label="Speed" value={style.animationMs} min={0} max={1000} step={50} unit=" ms" onChange={(v) => setStyle({ animationMs: v })} />
+            <PropChoice path="animation" label="Animation" options={ANIMATIONS} />
+            <PropSlider path="animationMs" label="Speed" min={0} max={1000} step={50} unit=" ms" />
           </Card>
         </>
       )}
     </div>
+  );
+}
+
+/** Copy a line's look and give it to other lines. */
+function StyleActions() {
+  const { ids, has, project } = useTarget();
+  const snap = useStyleClipboard((s) => s.snapshot);
+  const primary = useProject((s) => s.selectedLineId);
+  const btn = "rounded-lg border border-edge bg-black/20 px-3 py-2 text-left text-[13px] text-gray-300 hover:bg-raised hover:text-white disabled:opacity-40 disabled:hover:bg-black/20 disabled:hover:text-gray-300";
+  const from = primary && project.lines.some((l) => l.id === primary) ? primary : ids[0];
+  return (
+    <Card title="Copy and apply">
+      <div className="grid grid-cols-2 gap-1.5">
+        <button className={btn} disabled={!from} onClick={() => from && copyStyle(from)}>Copy style</button>
+        <button className={btn} disabled={!has || !snap} onClick={() => snap && applyStyle(ids, snap)}>Paste style</button>
+        <button className={btn} disabled={!from} onClick={() => { const s = from && snapshotOf(project, from); if (s && from) applyStyle(idsOfLayer(project, from), s); }}>Apply to layer</button>
+        <button className={btn} disabled={!from} onClick={() => { const s = from && snapshotOf(project, from); if (s) applyStyle(project.lines.map((l) => l.id), s); }}>Apply to all lines</button>
+      </div>
+      <p className="text-[11px] text-gray-500">{from ? "Uses the style of the selected line. Position is not copied." : "Select a line to copy its style."}</p>
+    </Card>
+  );
+}
+
+/** Text and timing of the selected line, as numbers. */
+function LineFields({ id }: { id: string }) {
+  const line = useProject((s) => s.project.lines.find((l) => l.id === id));
+  const updateLine = useProject((s) => s.updateLine);
+  if (!line) return null;
+  const num = "field tabular-nums";
+  return (
+    <Card title="Selected line">
+      <Row label="Text">
+        <input className="field" value={line.text} onChange={(e) => updateLine(id, { text: e.target.value }, `text:${id}`)} />
+      </Row>
+      <div className="grid grid-cols-2 gap-2">
+        <Row label="Start (s)">
+          <input
+            type="number"
+            step={0.01}
+            min={0}
+            className={num}
+            value={Number(line.start.toFixed(2))}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v) && v >= 0) updateLine(id, { start: v, end: Math.max(line.end, v + 0.05) }, `start:${id}`);
+            }}
+          />
+        </Row>
+        <Row label="End (s)">
+          <input
+            type="number"
+            step={0.01}
+            min={0}
+            className={num}
+            value={Number(line.end.toFixed(2))}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v) && v > line.start) updateLine(id, { end: v }, `end:${id}`);
+            }}
+          />
+        </Row>
+      </div>
+    </Card>
   );
 }

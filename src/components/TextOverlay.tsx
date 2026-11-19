@@ -10,7 +10,20 @@ const MOVE_THRESHOLD = 3;
 const ROTATE_GAP = 26;
 
 type Mode = "move" | "scale" | "rotate";
-type Drag = { mode: Mode; id: string; x0: number; y0: number; b0: LineBounds; tf0: Transform; ang0: number; dist0: number; moved: boolean };
+type Drag = {
+  mode: Mode;
+  id: string;
+  x0: number;
+  y0: number;
+  b0: LineBounds;
+  tf0: Transform;
+  ang0: number;
+  dist0: number;
+  moved: boolean;
+  /** Every line that moves together when several are selected. */
+  group: { id: string; b0: LineBounds }[];
+  collapseTo?: string;
+};
 
 /** Snap one axis: centre of the block to the canvas centre, or its edges to the 5% margins. */
 function snapAxis(c: number, half: number, size: number) {
@@ -25,6 +38,22 @@ function snapAxis(c: number, half: number, size: number) {
     if (Math.abs(diff) <= SNAP_PX && (!best || Math.abs(diff) < Math.abs(best.diff))) best = { diff, guide: t.target };
   }
   return best ? { v: c + best.diff, guide: best.guide } : { v: c, guide: undefined };
+}
+
+/** Place several lines in one undo step. */
+function moveLines(moves: { id: string; x: number; y: number }[], key?: string) {
+  const by = new Map(moves.map((m) => [m.id, m]));
+  useProject.getState().update(
+    (p) => ({
+      ...p,
+      lines: p.lines.map((l) => {
+        const m = by.get(l.id);
+        if (!m) return l;
+        return { ...l, styleOverride: { ...l.styleOverride, transform: { ...l.styleOverride?.transform, x: m.x, y: m.y } } };
+      }),
+    }),
+    key
+  );
 }
 
 const rotate = (x: number, y: number, deg: number) => {
@@ -44,6 +73,7 @@ const isTyping = (t: EventTarget | null) => {
 export default function TextOverlay({ w, h }: { w: number; h: number }) {
   const project = useProject((s) => s.project);
   const selectedId = useProject((s) => s.selectedLineId);
+  const selectedIds = useProject((s) => s.selectedIds);
   const [time, setTime] = useState(() => getTime());
   const [guides, setGuides] = useState<{ x?: number; y?: number }>({});
   const stage = useRef<HTMLDivElement>(null);
@@ -65,15 +95,18 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const active = selectedId ? activeLinesAt(project, time).find((a) => a.line.id === selectedId && !a.locked) : undefined;
+  const shownNow = activeLinesAt(project, time).filter((a) => selectedIds.includes(a.line.id) && !a.locked);
+  const single = selectedIds.length === 1;
+  const active = single && selectedId ? shownNow.find((a) => a.line.id === selectedId) : undefined;
   const b = active ? getLineBounds(project, active.line, w, h) : null;
+  const others = single ? [] : shownNow.map((a) => ({ id: a.line.id, b: getLineBounds(project, a.line, w, h) })).filter((x): x is { id: string; b: LineBounds } => !!x.b);
 
   const local = (e: { clientX: number; clientY: number }) => {
     const r = stage.current!.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
 
-  const startDrag = (e: React.PointerEvent, mode: Mode, id: string, b0: LineBounds) => {
+  const startDrag = (e: React.PointerEvent, mode: Mode, id: string, b0: LineBounds, group: { id: string; b0: LineBounds }[] = [{ id, b0 }], collapseTo?: string) => {
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     const p0 = local(e);
@@ -87,6 +120,8 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
       ang0: Math.atan2(p0.y - b0.cy, p0.x - b0.cx),
       dist0: Math.max(1, Math.hypot(p0.x - b0.cx, p0.y - b0.cy)),
       moved: false,
+      group,
+      collapseTo,
     };
     drag.current = d;
 
@@ -98,21 +133,29 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
         useProject.getState().beginGesture(); // everything until release is one undo step
       }
       if (d.mode === "move") {
-        let cx = d.b0.cx + (p.x - d.x0);
-        let cy = d.b0.cy + (p.y - d.y0);
+        let dx = p.x - d.x0;
+        let dy = p.y - d.y0;
         let g: { x?: number; y?: number } = {};
         if (!ev.altKey) {
-          const a = (d.b0.rotation * Math.PI) / 180;
-          const hw = Math.abs(Math.cos(a)) * d.b0.halfW + Math.abs(Math.sin(a)) * d.b0.halfH;
-          const hh = Math.abs(Math.sin(a)) * d.b0.halfW + Math.abs(Math.cos(a)) * d.b0.halfH;
-          const sx = snapAxis(cx, hw, w);
-          const sy = snapAxis(cy, hh, h);
-          cx = sx.v;
-          cy = sy.v;
+          // snap the whole group by its outer box
+          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+          for (const m of d.group) {
+            const a = (m.b0.rotation * Math.PI) / 180;
+            const hw = Math.abs(Math.cos(a)) * m.b0.halfW + Math.abs(Math.sin(a)) * m.b0.halfH;
+            const hh = Math.abs(Math.sin(a)) * m.b0.halfW + Math.abs(Math.cos(a)) * m.b0.halfH;
+            minX = Math.min(minX, m.b0.cx - hw);
+            maxX = Math.max(maxX, m.b0.cx + hw);
+            minY = Math.min(minY, m.b0.cy - hh);
+            maxY = Math.max(maxY, m.b0.cy + hh);
+          }
+          const sx = snapAxis((minX + maxX) / 2 + dx, (maxX - minX) / 2, w);
+          const sy = snapAxis((minY + maxY) / 2 + dy, (maxY - minY) / 2, h);
+          dx = sx.v - (minX + maxX) / 2;
+          dy = sy.v - (minY + maxY) / 2;
           g = { x: sx.guide, y: sy.guide };
         }
         setGuides(g);
-        writeLineTransform(d.id, { x: cx / w, y: cy / h });
+        moveLines(d.group.map((m) => ({ id: m.id, x: (m.b0.cx + dx) / w, y: (m.b0.cy + dy) / h })));
       } else if (d.mode === "scale") {
         const dist = Math.hypot(p.x - d.b0.cx, p.y - d.b0.cy);
         writeLineTransform(d.id, { scale: Math.min(8, Math.max(0.1, d.tf0.scale * (dist / d.dist0))) });
@@ -129,6 +172,7 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
       el.removeEventListener("pointerup", up);
       el.removeEventListener("pointercancel", up);
       if (d.moved) useProject.getState().endGesture();
+      else if (d.collapseTo) useProject.getState().select(d.collapseTo);
       drag.current = null;
       setGuides({});
     };
@@ -147,9 +191,22 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
       st.select(null);
       return;
     }
-    st.select(hit.id);
-    const bounds = getLineBounds(st.project, hit, w, h);
-    if (bounds) startDrag(e, "move", hit.id, bounds);
+    if (e.shiftKey) {
+      st.select(hit.id, true);
+      return;
+    }
+    const inGroup = st.selectedIds.length > 1 && st.selectedIds.includes(hit.id);
+    if (!inGroup) st.select(hit.id);
+    const ids = inGroup ? st.selectedIds : [hit.id];
+    const group = ids
+      .map((id) => {
+        const line = st.project.lines.find((l) => l.id === id);
+        const gb = line ? getLineBounds(st.project, line, w, h) : null;
+        return gb ? { id, b0: gb } : null;
+      })
+      .filter((x): x is { id: string; b0: LineBounds } => !!x);
+    const bounds = group.find((m) => m.id === hit.id)?.b0;
+    if (bounds) startDrag(e, "move", hit.id, bounds, group, inGroup ? hit.id : undefined);
   };
 
   const onStageMove = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -161,7 +218,7 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
 
   /* arrow keys nudge by 1px, Shift for 10px */
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (isTyping(e.target) || !b || !active) return;
+    if (isTyping(e.target) || (!b && !others.length)) return;
     if (e.key === "Escape") {
       useProject.getState().select(null);
       return;
@@ -170,7 +227,15 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
     const d = e.key === "ArrowLeft" ? [-step, 0] : e.key === "ArrowRight" ? [step, 0] : e.key === "ArrowUp" ? [0, -step] : e.key === "ArrowDown" ? [0, step] : null;
     if (!d) return;
     e.preventDefault();
-    writeLineTransform(active.line.id, { x: (b.cx + d[0]) / w, y: (b.cy + d[1]) / h }, `nudge-pos:${active.line.id}`);
+    const st = useProject.getState();
+    const moves = st.selectedIds
+      .map((id) => {
+        const line = st.project.lines.find((l) => l.id === id);
+        const lb = line ? getLineBounds(st.project, line, w, h) : null;
+        return lb ? { id, x: (lb.cx + d[0]) / w, y: (lb.cy + d[1]) / h } : null;
+      })
+      .filter((x): x is { id: string; x: number; y: number } => !!x);
+    moveLines(moves, `nudge-pos:${st.selectedIds.join(",")}`);
   };
 
   const corner = (sx: number, sy: number) => {
@@ -192,6 +257,14 @@ export default function TextOverlay({ w, h }: { w: number; h: number }) {
     >
       {guides.x !== undefined && <span className="pointer-events-none absolute inset-y-0 w-px bg-accent/80" style={{ left: guides.x }} />}
       {guides.y !== undefined && <span className="pointer-events-none absolute inset-x-0 h-px bg-accent/80" style={{ top: guides.y }} />}
+
+      {others.map((o) => (
+        <div
+          key={o.id}
+          className="pointer-events-none absolute rounded-[3px] border-[1.5px] border-dashed border-accent"
+          style={{ left: o.b.cx - o.b.halfW, top: o.b.cy - o.b.halfH, width: o.b.halfW * 2, height: o.b.halfH * 2, transform: `rotate(${o.b.rotation}deg)` }}
+        />
+      ))}
 
       {b && active && (
         <>

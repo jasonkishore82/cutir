@@ -41,13 +41,16 @@ export type TextStyle = {
   animationMs: number;
 };
 
+/** Overrides for a layer or a line: any subset of the style, including single fields inside shadow, outline and transform. */
+export type StyleOverride = { [K in keyof TextStyle]?: TextStyle[K] extends object ? Partial<TextStyle[K]> : TextStyle[K] };
+
 export type LyricLine = {
   id: string;
   text: string;
   start: number;
   end: number;
   words?: { text: string; start: number; end: number }[];
-  styleOverride?: Partial<TextStyle>;
+  styleOverride?: StyleOverride;
   /** Which layer this line lives on. Missing = the first layer. */
   layerId?: string;
 };
@@ -58,7 +61,7 @@ export type Layer = {
   name: string;
   visible: boolean;
   locked: boolean;
-  style?: Partial<TextStyle>;
+  style?: StyleOverride;
 };
 
 export type Project = {
@@ -133,11 +136,39 @@ export function orderByLayers(p: Project): Project {
   return { ...p, lines };
 }
 
-/** Project style, then the layer's style, then the line's own override. */
-export function effectiveStyle(p: Project, line: LyricLine): TextStyle {
-  const layer = p.layers.find((x) => x.id === layerIdOf(p, line));
-  return { ...p.style, ...layer?.style, ...line.styleOverride };
+const NESTED = ["shadow", "outline", "transform"] as const;
+
+/** Lay overrides over a base style. Nested groups (shadow, outline, transform) merge field by field. */
+function mergeStyle(base: TextStyle, ...layers: (StyleOverride | undefined)[]): TextStyle {
+  const out: Record<string, unknown> = { ...base };
+  for (const o of layers) {
+    if (!o) continue;
+    for (const [k, v] of Object.entries(o)) {
+      if (v === undefined) continue;
+      if ((NESTED as readonly string[]).includes(k)) {
+        const merged: Record<string, unknown> = { ...(out[k] as object) };
+        for (const [kk, vv] of Object.entries(v as object)) if (vv !== undefined) merged[kk] = vv;
+        out[k] = merged;
+      } else out[k] = v;
+    }
+  }
+  return out as TextStyle;
 }
+
+/** The style a layer gives its lines: project style with the layer's overrides. */
+export const resolveLayerStyle = (p: Project, layer?: Layer): TextStyle => mergeStyle(p.style, layer?.style);
+
+/**
+ * The one place the cascade lives: project style, then the layer's style, then the line's own override.
+ * The renderer, the preview overlay, the exporters and the properties panel all read through this.
+ */
+export function resolveStyle(p: Project, line: LyricLine): TextStyle {
+  const layer = p.layers.find((x) => x.id === layerIdOf(p, line));
+  return mergeStyle(p.style, layer?.style, line.styleOverride);
+}
+
+/** Older name for `resolveStyle`. */
+export const effectiveStyle = resolveStyle;
 
 const DEFAULT_LEN = 3;
 const DEFAULT_GAP = 0.2;
@@ -180,7 +211,10 @@ type State = {
   future: Project[];
 
   // non-undoable UI state
+  /** The line the handles are on: the last one selected. */
   selectedLineId: string | null;
+  /** Every selected line, the primary one included. */
+  selectedIds: string[];
   /** The layer the lyrics box, tap-sync and "add" act on. */
   activeLayerId: string;
   chatOpen: boolean;
@@ -204,7 +238,9 @@ type State = {
   setLinesFromText: (text: string) => void;
   updateLine: (id: string, patch: Partial<LyricLine>, coalesceKey?: string) => void;
   loadProject: (p: Project) => void;
-  select: (id: string | null) => void;
+  /** Select a line; with `add`, toggle it in the selection instead. */
+  select: (id: string | null, add?: boolean) => void;
+  selectMany: (ids: string[]) => void;
   setActiveLayer: (id: string) => void;
   toggleChat: () => void;
   setSync: (on: boolean, index?: number) => void;
@@ -221,6 +257,7 @@ export const useProject = create<State>((set, get) => ({
   past: [],
   future: [],
   selectedLineId: null,
+  selectedIds: [],
   activeLayerId: "main",
   chatOpen: false,
   syncMode: false,
@@ -305,8 +342,18 @@ export const useProject = create<State>((set, get) => ({
     }, "lyrics-text"),
   updateLine: (id, patch, key) =>
     get().update((p) => ({ ...p, lines: p.lines.map((l) => (l.id === id ? { ...l, ...patch } : l)) }), key),
-  loadProject: (project) => set({ project, past: [], future: [], selectedLineId: null, activeLayerId: project.layers[0].id }),
-  select: (selectedLineId) => set({ selectedLineId }),
+  loadProject: (project) => set({ project, past: [], future: [], selectedLineId: null, selectedIds: [], activeLayerId: project.layers[0].id }),
+  select: (id, add) =>
+    set((s) => {
+      if (id === null) return { selectedLineId: null, selectedIds: [] };
+      if (!add) return { selectedLineId: id, selectedIds: [id] };
+      if (s.selectedIds.includes(id)) {
+        const rest = s.selectedIds.filter((x) => x !== id);
+        return { selectedIds: rest, selectedLineId: s.selectedLineId === id ? rest[rest.length - 1] ?? null : s.selectedLineId };
+      }
+      return { selectedIds: [...s.selectedIds, id], selectedLineId: id };
+    }),
+  selectMany: (ids) => set({ selectedIds: ids, selectedLineId: ids[ids.length - 1] ?? null }),
   setActiveLayer: (activeLayerId) => set({ activeLayerId }),
   toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
   setSync: (syncMode, index) => set((s) => ({ syncMode, syncIndex: index ?? (syncMode ? 0 : s.syncIndex) })),

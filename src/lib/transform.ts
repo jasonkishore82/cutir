@@ -16,8 +16,8 @@ export function writeLineTransform(id: string, patch: Partial<Transform>, coales
       ...p,
       lines: p.lines.map((l) => {
         if (l.id !== id) return l;
-        const cur = effectiveStyle(p, l).transform ?? REST;
-        return { ...l, styleOverride: { ...l.styleOverride, transform: { ...cur, ...patch } } };
+        // only the changed fields become overrides; the rest keep inheriting
+        return { ...l, styleOverride: { ...l.styleOverride, transform: { ...l.styleOverride?.transform, ...patch } } };
       }),
     }),
     coalesceKey

@@ -66,7 +66,7 @@ export function parseSubtitleFile(name: string, text: string): LyricLine[] {
 /* ---------- export: .srt and .ass (karaoke) ---------- */
 
 import { wrapText } from "./renderer";
-import { effectiveStyle, layerIdOf, type Project, type TextStyle } from "../store/project";
+import { effectiveStyle, layerIdOf, resolveLayerStyle, type Project, type TextStyle } from "../store/project";
 
 const p2 = (n: number, w = 2) => String(n).padStart(w, "0");
 
@@ -126,7 +126,7 @@ export function toAss(p: Project): string {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    ...p.layers.map((layer, i) => styleLine(`L${i}`, { ...p.style, ...layer.style })),
+    ...p.layers.map((layer, i) => styleLine(`L${i}`, resolveLayerStyle(p, layer))),
     "",
     "[Events]",
     "Format: Layer, Start, End, Name, MarginL, MarginR, MarginV, Effect, Text",
