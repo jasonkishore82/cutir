@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 export type IconName =
   | "media" | "lyrics" | "style" | "motion" | "undo" | "redo" | "ai" | "play" | "pause" | "skipBack"
-  | "loop" | "back" | "export" | "plus" | "music" | "image";
+  | "loop" | "back" | "export" | "plus" | "music" | "image" | "close" | "refresh" | "settings" | "dots" | "check";
 
 const PATHS: Record<IconName, ReactNode> = {
   media: <><rect x="3" y="4" width="18" height="16" rx="3" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 9" /></>,
@@ -23,6 +23,11 @@ const PATHS: Record<IconName, ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
   music: <><path d="M9 18V5l11-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="17" cy="16" r="3" /></>,
   image: <><rect x="3" y="4" width="18" height="16" rx="3" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 9" /></>,
+  close: <path d="M6 6l12 12M18 6L6 18" />,
+  refresh: <><path d="M20 12a8 8 0 10-2.3 5.6" /><path d="M20 5v6h-6" /></>,
+  settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" /></>,
+  dots: <><circle cx="5" cy="12" r="1.3" fill="currentColor" /><circle cx="12" cy="12" r="1.3" fill="currentColor" /><circle cx="19" cy="12" r="1.3" fill="currentColor" /></>,
+  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
 };
 
 export function Icon({ name, className = "h-4 w-4" }: { name: IconName; className?: string }) {

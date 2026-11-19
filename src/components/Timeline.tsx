@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "./ui";
 import { createPortal } from "react-dom";
 import WaveSurfer from "wavesurfer.js";
 import { layerIdOf, linesOfLayer, orderByLayers, uid, useProject, type Layer, type LyricLine, type Position } from "../store/project";
@@ -251,7 +252,7 @@ function LayerHeader({ layer, index, count, active }: { layer: Layer; index: num
         const r = e.currentTarget.getBoundingClientRect();
         setMenu((m) => (m ? null : { x: r.left, y: r.bottom + 4 }));
       }}>
-        <span className="text-xs leading-none">⋯</span>
+        <Icon name="dots" className="h-4 w-4" />
       </button>
 
       {menu && createPortal(
@@ -278,7 +279,7 @@ function LayerHeader({ layer, index, count, active }: { layer: Layer; index: num
               min={16}
               max={240}
               value={style.fontSize ?? st().project.style.fontSize}
-              className="w-full accent-[#e0709a]"
+              className="w-full accent-[#5b9dff]"
               onChange={(e) => st().update((p) => updateLayerStyle(p, layer.id, { fontSize: Number(e.target.value) }), `layer-size:${layer.id}`)}
             />
           </label>
@@ -715,13 +716,13 @@ export default function Timeline() {
             : "Drag blocks to move (up/down changes layer), edges to resize. Double-click empty space to add text, a block to edit it."}
         </span>
         <label className="flex items-center gap-1.5 text-gray-500" title="Keep the playhead in view while playing">
-          <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="accent-[#e0709a]" />
+          <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="accent-[#5b9dff]" />
           Follow
         </label>
         <button className={btn} onClick={fitToView} title="Zoom out to show the whole song">Fit</button>
         <label className="flex items-center gap-2 text-gray-500" title="Ctrl + mouse wheel also zooms">
           Zoom
-          <input type="range" min={4} max={300} value={pps} onChange={(e) => setPps(Number(e.target.value))} className="w-24 accent-[#e0709a]" />
+          <input type="range" min={4} max={300} value={pps} onChange={(e) => setPps(Number(e.target.value))} className="w-24 accent-[#5b9dff]" />
         </label>
       </div>
 
@@ -749,7 +750,7 @@ export default function Timeline() {
                 disabled={layers.length >= MAX_LAYERS}
                 title={layers.length >= MAX_LAYERS ? `Up to ${MAX_LAYERS} layers` : "Add a text layer"}
               >
-                + Layer
+                Add layer
               </button>
             </div>
             <div className="relative" style={{ width }}>

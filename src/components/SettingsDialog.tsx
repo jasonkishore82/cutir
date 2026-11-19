@@ -1,3 +1,4 @@
+import { Icon } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import { PROVIDERS, providerById } from "../lib/llm/providers";
 import { configProblem, listChatModels } from "../lib/llm";
@@ -34,12 +35,12 @@ export default function SettingsDialog() {
     }
     const ac = new AbortController();
     abortRef.current = ac;
-    setTest({ state: "checking", text: "Connecting…" });
+    setTest({ state: "checking", text: "Connecting" });
     try {
       const list = await listChatModels(cfg, ac.signal);
       if (ac.signal.aborted) return;
       setModels(list.models);
-      setTest({ state: "ok", text: list.models.length ? `Connected · ${list.models.length} models` : "Connected, but no chat models were listed. Type a model name." });
+      setTest({ state: "ok", text: list.models.length ? `Connected, ${list.models.length} models` : "Connected, but no chat models were listed. Type a model name." });
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
       setModels([]);
@@ -89,7 +90,7 @@ export default function SettingsDialog() {
         <div className="flex items-center justify-between border-b border-edge px-4 py-3">
           <h2 className="text-sm font-medium text-gray-100">AI models &amp; API keys</h2>
           <button onClick={closeDialog} aria-label="Close" className="h-6 w-6 rounded text-lg leading-none text-gray-400 hover:bg-edge hover:text-gray-100">
-            ×
+            <Icon name="close" className="mx-auto h-4 w-4" />
           </button>
         </div>
 
@@ -133,7 +134,7 @@ export default function SettingsDialog() {
                 <label className={label} htmlFor="llm-key">API key{provider.needsKey ? "" : " (optional)"}</label>
                 {provider.keyUrl && (
                   <a className="text-[11px] text-gray-500 hover:text-accent" href={provider.keyUrl} target="_blank" rel="noreferrer">
-                    Get a key ↗
+                    Get a key
                   </a>
                 )}
               </div>
@@ -165,9 +166,9 @@ export default function SettingsDialog() {
                 value={cfg.model}
                 onChange={(e) => (e.target.value === CUSTOM ? setCustomModel(true) : patch(provider.id, { model: e.target.value }))}
               >
-                {!cfg.model && <option value="">Choose a model…</option>}
+                {!cfg.model && <option value="">Choose a model</option>}
                 {models.map((m) => <option key={m} value={m}>{m}</option>)}
-                <option value={CUSTOM}>Other (type a name)…</option>
+                <option value={CUSTOM}>Other (type a name)</option>
               </select>
             ) : (
               <input
@@ -180,7 +181,7 @@ export default function SettingsDialog() {
                 autoComplete="off"
               />
             )}
-            <p className="mt-1.5 text-[11px] text-gray-500">The assistant works best with models that support tool calling. Others fall back to JSON replies automatically.</p>
+            <p className="mt-1.5 text-[11px] text-gray-500">Models without tool calling fall back to JSON replies.</p>
           </div>
 
           <div className="flex items-start justify-between gap-3">
@@ -192,17 +193,17 @@ export default function SettingsDialog() {
 
           <div className="space-y-2 border-t border-edge pt-3">
             <label className="flex items-center gap-2 text-xs text-gray-300">
-              <input type="checkbox" checked={rememberKeys} onChange={(e) => setRememberKeys(e.target.checked)} className="accent-[#e0709a]" />
+              <input type="checkbox" checked={rememberKeys} onChange={(e) => setRememberKeys(e.target.checked)} className="accent-[#5b9dff]" />
               Remember API keys on this device
             </label>
             <p className="text-[11px] leading-relaxed text-gray-500">
-              Keys stay in this browser (turn the box off to keep them only until you close the tab). Cutir has no server: your key, lyrics and project are sent only to the provider you choose.
+              Keys stay in this browser. Turn the box off to keep them only until the tab closes. Requests go straight to the provider you choose.
             </p>
           </div>
         </div>
 
         <div className="flex justify-end border-t border-edge px-4 py-3">
-          <button className="rounded border border-accent px-4 py-1.5 text-xs text-accent hover:bg-accent/10" onClick={closeDialog}>
+          <button className="btn-primary rounded-lg px-5 py-1.5 text-xs" onClick={closeDialog}>
             Done
           </button>
         </div>

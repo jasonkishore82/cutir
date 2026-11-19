@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useChat, type Attachment, type ChatEntry } from "../store/chat";
 import { useActiveConfig, useSettings } from "../store/settings";
 import { useProject } from "../store/project";
+import { Icon } from "./ui";
 import Thinking from "./Thinking";
 import SyncProgress from "./SyncProgress";
 
@@ -151,7 +152,6 @@ export default function ChatPanel() {
                   active ? "bg-white/[0.08] text-gray-100" : "text-gray-500 hover:bg-white/[0.04] hover:text-gray-300"
                 } ${busy && !active ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                <span className="text-accent text-sm leading-none">✱</span>
                 <span className="truncate">{c.title}</span>
                 <button
                   aria-label={`Close ${c.title}`}
@@ -162,7 +162,7 @@ export default function ChatPanel() {
                   }}
                   className="w-5 h-5 rounded text-gray-500 hover:bg-edge hover:text-gray-100 disabled:opacity-40 leading-none"
                 >
-                  ×
+                  <Icon name="close" className="mx-auto h-3 w-3" />
                 </button>
               </div>
             );
@@ -175,7 +175,7 @@ export default function ChatPanel() {
           aria-label="New chat"
           className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-lg leading-none text-gray-400 hover:bg-white/[0.07] hover:text-gray-100 disabled:opacity-40"
         >
-          +
+          <Icon name="plus" className="mx-auto h-4 w-4" />
         </button>
       </div>
 
@@ -200,7 +200,7 @@ export default function ChatPanel() {
               aria-label="AI provider"
             >
               {provider.name}
-              {provider.needsKey && !apiKey && <span className="text-yellow-400"> · add API key</span>}
+              {provider.needsKey && !apiKey && <span className="text-yellow-400"> (add API key)</span>}
             </button>
           )}
           <button
@@ -209,7 +209,7 @@ export default function ChatPanel() {
             title="AI settings: provider, API key, model"
             aria-label="AI settings"
           >
-            ⚙
+            <Icon name="settings" className="mx-auto h-4 w-4" />
           </button>
         </div>
         <div className="flex gap-2">
@@ -225,7 +225,7 @@ export default function ChatPanel() {
             onClick={() => refreshModels()}
             title="Refresh models"
           >
-            ↻
+            <Icon name="refresh" className="mx-auto h-4 w-4" />
           </button>
           <button className="px-2 text-xs rounded border border-edge hover:bg-edge" onClick={clear} title="Clear chat">
             Clear
@@ -240,13 +240,12 @@ export default function ChatPanel() {
           <div className="h-full flex flex-col items-center justify-center text-center gap-4 pb-6">
             <div className="flex items-center gap-2.5">
               <img src="/favicon.svg" alt="" className="h-9 w-9" />
-              <span className="text-[30px] leading-none text-gray-100 tracking-tight" style={{ letterSpacing: "-0.02em", fontWeight: 600 }}>
+              <span className="text-gradient text-[30px] leading-none" style={{ letterSpacing: "-0.02em", fontWeight: 600 }}>
                 Cutir
               </span>
             </div>
-            <p className="text-xs text-gray-500">Edit your lyric video in plain English</p>
             <div className="flex flex-col gap-1.5 w-full max-w-[260px]">
-              {["make the font bigger", "shift lines 4 to 8 by 0.5s", "use a pink-to-orange gradient", "delete line 2"].map((t) => (
+              {["make the font bigger", "shift lines 4 to 8 by 0.5s", "use a blue-to-white gradient", "delete line 2"].map((t) => (
                 <button
                   key={t}
                   onClick={() => setDraft(t)}
@@ -339,7 +338,7 @@ export default function ChatPanel() {
                   className="text-gray-500 hover:text-gray-100 leading-none px-0.5"
                   onClick={() => setAtts((x) => x.filter((_, j) => j !== i))}
                 >
-                  ×
+                  <Icon name="close" className="mx-auto h-3 w-3" />
                 </button>
               </span>
             ))}
@@ -350,7 +349,7 @@ export default function ChatPanel() {
           <div className="relative flex-1">
             <textarea
               className="field resize-none h-20 !pb-8"
-              placeholder="Describe an edit…  (Enter to send, Shift+Enter for newline)"
+              placeholder="Describe an edit"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -385,7 +384,7 @@ export default function ChatPanel() {
             <button className="px-3 text-xs rounded border border-red-700 text-red-300 hover:bg-red-950" onClick={stop}>Stop</button>
           ) : (
             <button
-              className="px-3 text-xs rounded bg-accent text-black font-medium disabled:opacity-40"
+              className="px-3 text-xs btn-primary rounded-lg"
               onClick={submit}
               disabled={!draft.trim() && !atts.length}
             >

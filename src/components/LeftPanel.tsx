@@ -103,15 +103,14 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
   return (
     <div id="inspector" role="tabpanel" aria-labelledby={`tab-${tab}`} className="space-y-3 p-3.5 text-sm">
       <header className="px-0.5 pb-1 pt-0.5">
-        <h2 className="text-[17px] font-semibold tracking-tight text-gray-50">{meta.title}</h2>
-        <p className="mt-0.5 text-xs text-gray-500">{meta.blurb}</p>
+        <h2 className="text-gradient text-[19px] font-semibold tracking-tight">{meta.title}</h2>
       </header>
 
       {tab === "media" && (
         <>
           <Card title="Song">
             <ActionButton icon="music" active={!!project.audio} onClick={() => pickFile("audio/*,.mp3,.wav,.m4a", loadAudio)}>
-              {project.audio ? project.audio.name : "Choose audio (mp3, wav, m4a)"}
+              {project.audio ? project.audio.name : "Choose audio file"}
             </ActionButton>
           </Card>
 
@@ -121,10 +120,10 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
               active={project.background.type === "asset"}
               onClick={() => pickFile("image/*,video/*", loadBackground)}
             >
-              {project.background.type === "asset" && project.background.asset ? project.background.asset.name : "Choose image or video loop"}
+              {project.background.type === "asset" && project.background.asset ? project.background.asset.name : "Choose image or video"}
             </ActionButton>
             <div>
-              <span className="label">Or pick a gradient</span>
+              <span className="label">Gradients</span>
               <div className="grid grid-cols-4 gap-2">
                 {GRADIENT_PRESETS.map((g) => (
                   <button
@@ -140,7 +139,7 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
             </div>
           </Card>
 
-          <Card title="Canvas" hint="The shape of your video.">
+          <Card title="Canvas">
             <Segmented label="Aspect ratio" value={project.aspect} options={ASPECTS} onChange={(a) => setAspect(a)} />
           </Card>
         </>
@@ -148,7 +147,7 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
 
       {tab === "lyrics" && (
         <>
-          <Card title="Lines" hint="One line of lyrics per row.">
+          <Card title="Lines">
             {project.layers.length > 1 && (
               <Row label="Editing layer">
                 <select className="field" value={layer.id} onChange={(e) => setActiveLayer(e.target.value)}>
@@ -160,7 +159,7 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
             )}
             <textarea
               className="field h-40 resize-y font-mono text-xs leading-relaxed"
-              placeholder={project.layers.length > 1 ? `One line per row for "${layer.name}"` : "Type or paste your lyrics here…"}
+              placeholder={project.layers.length > 1 ? `One line per row for "${layer.name}"` : "One lyric line per row"}
               value={linesToText(layerLines)}
               onChange={(e) => setLinesFromText(e.target.value)}
             />
@@ -179,7 +178,7 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
                 })
               }
             >
-              Import .lrc / .srt file…
+              Import .lrc or .srt file
             </button>
           </Card>
 
@@ -210,12 +209,12 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
                   aria-label="Google Fonts name"
                 />
                 <button className={`${textBtn} shrink-0 disabled:opacity-40`} onClick={useGoogleFont} disabled={!gfont.trim() || gfontBusy}>
-                  {gfontBusy ? "…" : "Use"}
+                  {gfontBusy ? "Loading" : "Use"}
                 </button>
               </div>
               {gfontMsg && <p className={`text-[11px] ${gfontMsg.ok ? "text-green-400" : "text-red-400"}`}>{gfontMsg.text}</p>}
             </div>
-            <button className={`${textBtn} w-full text-left`} onClick={() => pickFile(".ttf,.otf", loadFont)}>Upload font file (.ttf / .otf)…</button>
+            <button className={`${textBtn} w-full text-left`} onClick={() => pickFile(".ttf,.otf", loadFont)}>Upload font file (.ttf, .otf)</button>
           </Card>
 
           <Card title="Text">
@@ -253,11 +252,11 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
 
       {tab === "motion" && (
         <>
-          <Card title="Position" hint="Where lines sit on the screen.">
+          <Card title="Position">
             <Segmented label="Position" value={style.position} options={POSITIONS} onChange={(p) => setStyle({ position: p })} />
           </Card>
 
-          <Card title="Entrance" hint="How each line appears.">
+          <Card title="Entrance">
             <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Animation">
               {ANIMATIONS.map((a) => {
                 const on = style.animation === a;

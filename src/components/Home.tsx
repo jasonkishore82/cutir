@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "./ui";
 import { useLibrary, type ProjectEntry } from "../store/library";
 import type { Aspect } from "../store/project";
 
@@ -90,8 +91,8 @@ function NewProjectDialog({ onClose, busy, onCreate }: { onClose: () => void; bu
 
         <div className="flex justify-end gap-2 pt-1">
           <button className="rounded border border-edge px-3 py-1.5 text-xs hover:bg-edge" onClick={onClose}>Cancel</button>
-          <button className="rounded bg-accent px-4 py-1.5 text-xs font-medium text-black disabled:opacity-50" onClick={submit} disabled={busy}>
-            {busy ? "Creating…" : "Create project"}
+          <button className="btn-primary rounded-lg px-4 py-1.5 text-xs" onClick={submit} disabled={busy}>
+            {busy ? "Creating" : "Create project"}
           </button>
         </div>
       </div>
@@ -162,26 +163,26 @@ function Card({ e, thumb, onOpen }: { e: ProjectEntry; thumb?: string; onOpen: (
             <p className="truncate text-sm font-medium text-gray-100" title={e.name}>{e.name}</p>
           )}
           <p className="truncate text-[11px] text-gray-500">
-            {e.aspect} · {e.lineCount} line{e.lineCount === 1 ? "" : "s"} · Edited {ago(e.updatedAt)}
+            {e.aspect}, {e.lineCount} line{e.lineCount === 1 ? "" : "s"}, edited {ago(e.updatedAt)}
           </p>
-          {e.audioName && <p className="truncate text-[11px] text-gray-600">♪ {e.audioName}</p>}
+          {e.audioName && <p className="truncate text-[11px] text-gray-600">{e.audioName}</p>}
         </div>
       </div>
 
-      {/* ⋯ menu */}
+      {/* actions menu */}
       <div ref={menuRef} className="absolute right-2 top-2">
         <button
           aria-label="Project actions"
           onClick={() => setMenu((m) => !m)}
           className={`h-7 w-7 rounded bg-black/60 text-gray-200 hover:bg-black/80 ${menu ? "" : "opacity-0 group-hover:opacity-100 focus:opacity-100"}`}
         >
-          ⋯
+          <Icon name="dots" className="mx-auto h-4 w-4" />
         </button>
         {menu && (
           <div className="absolute right-0 z-10 mt-1 w-36 overflow-hidden rounded border border-edge bg-panel py-1 shadow-xl">
             <button className={item} onClick={() => (setMenu(false), setRenaming(true))}>Rename</button>
             <button className={item} onClick={() => (setMenu(false), duplicateProject(e.id))}>Duplicate</button>
-            <button className={`${item} text-red-400`} onClick={() => (setMenu(false), setConfirmDelete(true))}>Delete…</button>
+            <button className={`${item} text-red-400`} onClick={() => (setMenu(false), setConfirmDelete(true))}>Delete</button>
           </div>
         )}
       </div>
@@ -261,37 +262,37 @@ export default function Home() {
   const side = "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm";
 
   return (
-    <div className="flex h-full gap-2 bg-canvas p-2">
+    <div className="flex h-full gap-2 p-2">
       {/* sidebar */}
-      <aside className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-white/[0.06] bg-panel p-4 shadow-[0_8px_30px_rgb(0_0_0/0.35)]">
+      <aside className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-white/[0.07] bg-panel/80 p-4 shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-xl">
         <div className="mb-6 flex items-center gap-2.5">
           <img src="/favicon.svg" alt="" className="h-8 w-8" />
-          <span className="text-[24px] font-semibold leading-none text-gray-50" style={SERIF}>Cutir</span>
+          <span className="text-gradient text-[24px] font-semibold leading-none" style={SERIF}>Cutir</span>
         </div>
 
-        <button className="mb-2 rounded-xl bg-accent px-3 py-2.5 text-sm font-medium text-black hover:brightness-110" onClick={() => setCreating(true)}>
-          + New project
+        <button className="btn-primary mb-2 rounded-xl px-3 py-2.5 text-sm" onClick={() => setCreating(true)}>
+          New project
         </button>
         <button className={`${side} border border-edge text-gray-300 hover:bg-edge`} onClick={importFile}>
-          Open project file…
+          Open project file
         </button>
 
         <nav className="mt-6 space-y-1">
           <div className={`${side} bg-edge text-gray-100`}>
-            <span>▦</span> All projects <span className="ml-auto text-xs text-gray-500">{entries.length}</span>
+            <span>All projects</span> <span className="ml-auto text-xs text-gray-500">{entries.length}</span>
           </div>
         </nav>
 
         <p className="mt-auto text-[11px] leading-relaxed text-gray-600">
-          Projects are saved automatically in this browser, including your song and background.
+          Projects are saved in this browser.
         </p>
       </aside>
 
       {/* main */}
-      <main className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-white/[0.06] bg-panel/60">
+      <main className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-white/[0.07] bg-panel/60 backdrop-blur-xl">
         <div className="mx-auto max-w-[1100px] px-8 py-8">
           <div className="mb-6 flex flex-wrap items-center gap-3">
-            <h1 className="mr-auto text-[28px] font-semibold" style={SERIF}>Projects</h1>
+            <h1 className="text-gradient mr-auto text-[28px] font-semibold" style={SERIF}>Projects</h1>
             <input
               className="field !w-60"
               placeholder="Search projects"
@@ -311,10 +312,10 @@ export default function Home() {
           {entries.length === 0 ? (
             <div className="mt-24 flex flex-col items-center gap-4 text-center">
               <img src="/favicon.svg" alt="" className="h-16 w-16" />
-              <h2 className="text-3xl font-semibold text-gray-50" style={SERIF}>Welcome to Cutir</h2>
-              <p className="max-w-sm text-sm text-gray-500">Make lyric videos from a song, your lyrics and a background. Start with a new project.</p>
-              <button className="mt-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-black hover:brightness-110" onClick={() => setCreating(true)}>
-                + New project
+              <h2 className="text-gradient text-3xl font-semibold" style={SERIF}>No projects yet</h2>
+              <p className="max-w-sm text-sm text-gray-500">Create a project to start.</p>
+              <button className="btn-primary mt-2 rounded-xl px-5 py-2.5 text-sm" onClick={() => setCreating(true)}>
+                New project
               </button>
             </div>
           ) : shown.length === 0 ? (

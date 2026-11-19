@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "./ui";
 import { downloadProject, useProject } from "../store/project";
 import { useLibrary } from "../store/library";
 import { useChat } from "../store/chat";
@@ -47,10 +48,10 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
       label: "File",
       items: [
         { label: "All projects", onSelect: () => useLibrary.getState().goHome() },
-        { label: "Import project…", onSelect: importProjectFile },
+        { label: "Import project", onSelect: importProjectFile },
         "sep",
         { label: "Save project file", onSelect: () => downloadProject(useProject.getState().project) },
-        { label: "Export video…", onSelect: onExport },
+        { label: "Export video", onSelect: onExport },
       ],
     },
     {
@@ -75,9 +76,9 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
       id: "settings",
       label: "Settings",
       items: [
-        { label: "AI models & API keys…", onSelect: () => useSettings.getState().openDialog() },
+        { label: "AI models and API keys", onSelect: () => useSettings.getState().openDialog() },
         "sep",
-        { label: `Using ${provider.name}${model ? ` · ${model}` : ""}`, info: true, disabled: true },
+        { label: `Using ${provider.name}${model ? `, ${model}` : ""}`, info: true, disabled: true },
       ],
     },
   ];
@@ -184,7 +185,7 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
                         it.info ? "text-gray-500" : "text-gray-200 hover:bg-accent/20 disabled:text-gray-600 disabled:hover:bg-transparent"
                       }`}
                     >
-                      <span className="w-3 shrink-0 text-accent">{it.checked ? "✓" : ""}</span>
+                      <span className="w-3 shrink-0 text-accent">{it.checked ? <Icon name="check" className="h-3 w-3" /> : null}</span>
                       <span className="flex-1 truncate">{it.label}</span>
                       {it.shortcut && <span className="text-[11px] text-gray-500">{it.shortcut}</span>}
                     </button>

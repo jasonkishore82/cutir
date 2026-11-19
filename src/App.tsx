@@ -222,7 +222,7 @@ export default function App() {
   }, [undo, redo]);
 
   const iconBtn = "grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-white/[0.07] hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400";
-  const panel = "overflow-hidden rounded-2xl border border-white/[0.06] bg-panel shadow-[0_8px_30px_rgb(0_0_0/0.35)]";
+  const panel = "overflow-hidden rounded-2xl border border-white/[0.07] bg-panel/80 shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-xl";
 
   const resetLayout = () => {
     setLeftW(300);
@@ -240,7 +240,7 @@ export default function App() {
   if (screen === "home") return <Home />;
 
   return (
-    <div className="flex h-full flex-col bg-canvas p-2">
+    <div className="flex h-full flex-col p-2">
       <header className="mb-2 grid h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-1">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -252,7 +252,7 @@ export default function App() {
           </button>
           <MenuBar onExport={() => setExporting(true)} onResetLayout={resetLayout} />
           <ProjectName />
-          {saveFailed && <span className="shrink-0 text-[11px] text-red-400" title="Browser storage is full or blocked">⚠ not saved</span>}
+          {saveFailed && <span className="shrink-0 text-[11px] text-red-400" title="Browser storage is full or blocked">Not saved</span>}
         </div>
 
         <SectionTabs value={section} onChange={setSection} />
@@ -270,7 +270,7 @@ export default function App() {
             <Icon name="ai" />
           </button>
           <button
-            className="ml-1 flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-xs font-semibold text-black shadow-[0_2px_12px_rgb(224_112_154/0.35)] hover:brightness-110"
+            className="btn-primary ml-1 flex h-8 items-center gap-1.5 rounded-lg px-3.5 text-xs"
             onClick={() => setExporting(true)}
           >
             <Icon name="export" className="h-3.5 w-3.5" /> Export

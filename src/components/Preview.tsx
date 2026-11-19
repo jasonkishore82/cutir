@@ -211,7 +211,7 @@ export default function Preview() {
           aria-pressed={!!loop}
         >
           <Icon name="loop" className="h-3.5 w-3.5" />
-          Loop{loop ? ` ${loop.start.toFixed(1)}–${loop.end.toFixed(1)}` : ""}
+          Loop{loop ? ` ${loop.start.toFixed(1)} to ${loop.end.toFixed(1)}` : ""}
         </button>
       </div>
     </div>

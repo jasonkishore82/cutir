@@ -169,7 +169,7 @@ export const useChat = create<ChatState>((set, get) => {
       if (isAutoSyncIntent(text) && !attachments.length) {
         push({ role: "user", content: text, sent: text });
         set((s) => ({
-          chats: s.chats.map((c) => (c.id === s.activeId && c.title === NEW_TITLE ? { ...c, title: text.length > 26 ? text.slice(0, 26) + "…" : text } : c)),
+          chats: s.chats.map((c) => (c.id === s.activeId && c.title === NEW_TITLE ? { ...c, title: text.slice(0, 26) } : c)),
         }));
         const replyId = push({ role: "assistant", content: "", streaming: true, sync: true });
         const t0 = Date.now();
@@ -218,7 +218,7 @@ ${a.data}
       push({ role: "user", content: text, attachments: attachments.length ? attachments : undefined, sent });
       const title = text || attachments[0].name;
       set((s) => ({
-        chats: s.chats.map((c) => (c.id === s.activeId && c.title === NEW_TITLE ? { ...c, title: title.length > 26 ? title.slice(0, 26) + "…" : title } : c)),
+        chats: s.chats.map((c) => (c.id === s.activeId && c.title === NEW_TITLE ? { ...c, title: title.slice(0, 26) } : c)),
       }));
       const replyId = push({ role: "assistant", content: "", streaming: true });
       abort = new AbortController();
