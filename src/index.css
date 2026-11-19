@@ -6,7 +6,7 @@ html, body, #root { height: 100%; }
 html { color-scheme: dark; }
 body {
   @apply text-gray-200 antialiased;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+  font-family: "IBM Plex Sans KR", system-ui, sans-serif;
   margin: 0;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;

@@ -20,7 +20,7 @@ import {
   type Position,
 } from "../store/project";
 
-const FONTS = ["Permanent Marker", "Inter", "Arial", "Georgia", "Impact", "Courier New"];
+const FONTS = ["Permanent Marker", "IBM Plex Sans KR", "Inter", "Arial", "Georgia", "Impact", "Courier New"];
 const POSITIONS: Position[] = ["top", "center", "bottom"];
 const ASPECTS: Aspect[] = ["16:9", "9:16", "1:1"];
 

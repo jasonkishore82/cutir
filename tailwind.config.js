@@ -3,6 +3,10 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["\"IBM Plex Sans KR\"", "system-ui", "sans-serif"],
+        mono: ["\"IBM Plex Sans KR\"", "system-ui", "sans-serif"],
+      },
       colors: {
         canvas: "#04060c", // the window behind the floating panels
         bg: "#080b12", // wells: inputs, viewer
@@ -13,9 +17,6 @@ export default {
       },
       borderRadius: {
         DEFAULT: "8px", // every plain `rounded` is softer, app-wide
-      },
-      fontFamily: {
-        sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', "Inter", "system-ui", "sans-serif"],
       },
     },
   },

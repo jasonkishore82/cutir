@@ -6,7 +6,7 @@
 
 // Already available: loaded by index.html, or installed on virtually every system.
 const BUILTIN = new Set(
-  ["permanent marker", "inter", "arial", "georgia", "impact", "courier new", "times new roman", "verdana", "helvetica", "tahoma", "trebuchet ms", "sans-serif", "serif", "monospace"]
+  ["permanent marker", "ibm plex sans kr", "arial", "georgia", "impact", "courier new", "times new roman", "verdana", "helvetica", "tahoma", "trebuchet ms", "sans-serif", "serif", "monospace"]
 );
 
 const ready = new Set<string>(); // lower-cased families known to be usable

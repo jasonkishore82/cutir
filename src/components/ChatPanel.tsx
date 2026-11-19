@@ -355,10 +355,7 @@ export default function ChatPanel() {
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-4 pb-6 text-center">
             <div className="flex items-center gap-2.5">
-              <img src="/favicon.svg" alt="" className="h-9 w-9" />
-              <span className="text-gradient text-[30px] leading-none" style={{ letterSpacing: "-0.02em", fontWeight: 600 }}>
-                Cutir
-              </span>
+              <img src="/favicon.svg" alt="Cutir" className="h-9 w-9" />
             </div>
             {noProvider ? (
               <div className="flex w-full max-w-[260px] flex-col items-center gap-3">
