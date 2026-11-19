@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "./ui";
 import { createPortal } from "react-dom";
 import WaveSurfer from "wavesurfer.js";
 import { layerIdOf, linesOfLayer, orderByLayers, uid, useProject, type Layer, type LyricLine, type Position } from "../store/project";
@@ -251,7 +252,7 @@ function LayerHeader({ layer, index, count, active }: { layer: Layer; index: num
         const r = e.currentTarget.getBoundingClientRect();
         setMenu((m) => (m ? null : { x: r.left, y: r.bottom + 4 }));
       }}>
-        <span className="text-xs leading-none">⋯</span>
+        <Icon name="dots" className="h-4 w-4" />
       </button>
 
       {menu && createPortal(
@@ -278,7 +279,7 @@ function LayerHeader({ layer, index, count, active }: { layer: Layer; index: num
               min={16}
               max={240}
               value={style.fontSize ?? st().project.style.fontSize}
-              className="w-full accent-[#38bdf8]"
+              className="w-full accent-[#5b9dff]"
               onChange={(e) => st().update((p) => updateLayerStyle(p, layer.id, { fontSize: Number(e.target.value) }), `layer-size:${layer.id}`)}
             />
           </label>
@@ -320,7 +321,7 @@ export default function Timeline() {
   const layers = useProject((s) => s.project.layers);
   const lines = useProject((s) => s.project.lines);
   const audioUrl = useProject((s) => s.project.audio?.url);
-  const selected = useProject((s) => s.selectedLineId);
+  const selectedIds = useProject((s) => s.selectedIds);
   const activeLayerId = useProject((s) => (s.project.layers.some((l) => l.id === s.activeLayerId) ? s.activeLayerId : s.project.layers[0].id));
   const syncMode = useProject((s) => s.syncMode);
   const syncIndex = useProject((s) => s.syncIndex);
@@ -474,6 +475,10 @@ export default function Timeline() {
     const line = st.project.lines.find((l) => l.id === id);
     if (!line) return;
     const layerId = layerIdOf(st.project, line);
+    if (e.shiftKey) {
+      st.select(id, true); // Shift-click adds to or removes from the selection
+      return;
+    }
     st.select(id);
     st.setActiveLayer(layerId);
     if (st.project.layers.find((l) => l.id === layerId)?.locked) return; // locked layers can be selected, not changed
@@ -671,6 +676,7 @@ export default function Timeline() {
       const layer = st.project.layers.find((l) => l.id === layerIdOf(st.project, sel));
       if (layer?.locked) return;
       if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+        if (e.target instanceof HTMLElement && e.target.closest("[data-text-stage]")) return; // the preview moves the text instead
         e.preventDefault();
         const d = e.code === "ArrowLeft" ? -SNAP : SNAP;
         const start = Math.max(0, snap(sel.start + d));
@@ -715,13 +721,13 @@ export default function Timeline() {
             : "Drag blocks to move (up/down changes layer), edges to resize. Double-click empty space to add text, a block to edit it."}
         </span>
         <label className="flex items-center gap-1.5 text-gray-500" title="Keep the playhead in view while playing">
-          <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="accent-[#38bdf8]" />
+          <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="accent-[#5b9dff]" />
           Follow
         </label>
         <button className={btn} onClick={fitToView} title="Zoom out to show the whole song">Fit</button>
         <label className="flex items-center gap-2 text-gray-500" title="Ctrl + mouse wheel also zooms">
           Zoom
-          <input type="range" min={4} max={300} value={pps} onChange={(e) => setPps(Number(e.target.value))} className="w-24 accent-[#38bdf8]" />
+          <input type="range" min={4} max={300} value={pps} onChange={(e) => setPps(Number(e.target.value))} className="w-24 accent-[#5b9dff]" />
         </label>
       </div>
 
@@ -749,7 +755,7 @@ export default function Timeline() {
                 disabled={layers.length >= MAX_LAYERS}
                 title={layers.length >= MAX_LAYERS ? `Up to ${MAX_LAYERS} layers` : "Add a text layer"}
               >
-                + Layer
+                Add layer
               </button>
             </div>
             <div className="relative" style={{ width }}>
@@ -811,7 +817,7 @@ export default function Timeline() {
                             setCtx({ kind: "block", lineId: l.id, x: e.clientX, y: e.clientY });
                           }}
                           className={`absolute top-1 h-9 rounded border text-[11px] leading-9 px-2 truncate select-none touch-none ${layer.locked ? "cursor-default" : "cursor-grab active:cursor-grabbing"} ${
-                            selected === l.id ? "bg-accent/40 border-accent text-white" : "bg-edge/80 border-gray-600 text-gray-300"
+                            selectedIds.includes(l.id) ? "bg-accent/40 border-accent text-white" : "bg-edge/80 border-gray-600 text-gray-300"
                           } ${syncMode && layer.id === activeLayer.id && i === syncIndex ? "ring-2 ring-yellow-400" : ""}`}
                           style={{ left: l.start * pps, width: Math.max(6, (l.end - l.start) * pps) }}
                           title={`${gi + 1} | ${layer.name} | ${l.start.toFixed(2)}-${l.end.toFixed(2)} | ${l.text}`}

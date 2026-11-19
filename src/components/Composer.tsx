@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useChat, type Attachment } from "../store/chat";
 import { useVoice } from "../store/voice";
+import { useActiveConfig } from "../store/settings";
 import { registerVoiceHandlers, sttSupported, stopSpeaking, toggleListening, ttsSupported } from "../lib/voice";
 import ChatSettings from "./ChatSettings";
 
@@ -40,8 +41,11 @@ export default function Composer({
   onAddFiles: (files: FileList | null) => void;
   onSubmit: () => void;
 }) {
-  const { model, status, busy } = useChat();
+  const status = useChat((s) => s.status);
+  const busy = useChat((s) => !!s.running[s.activeId]);
   const { stop } = useChat.getState();
+  const { provider, model } = useActiveConfig();
+  const noProvider = provider.id === "none";
   const voice = useVoice();
   const fileRef = useRef<HTMLInputElement>(null);
   const areaRef = useRef<HTMLTextAreaElement>(null);
@@ -65,19 +69,22 @@ export default function Composer({
         setDraft("");
         void useChat.getState().send(text);
       },
-      isBusy: () => useChat.getState().busy,
+      isBusy: () => {
+        const c = useChat.getState();
+        return !!c.running[c.activeId];
+      },
     });
     return () => registerVoiceHandlers(null);
   }, [setDraft]);
 
-  const canSend = !!draft.trim() || atts.length > 0;
+  const canSend = !noProvider && (!!draft.trim() || atts.length > 0);
   const status2 = voice.listening ? "listening" : voice.speaking ? "speaking" : voice.message ? "message" : "";
 
   return (
     <div className="p-3">
       <div
         className={`rounded-xl border bg-bg transition-shadow ${
-          voice.listening ? "border-sky-400 shadow-[0_0_0_3px_rgba(56,189,248,0.18)]" : "border-accent/50 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(56,189,248,0.12)]"
+          voice.listening ? "border-sky-400 shadow-[0_0_0_3px_rgba(91,157,255,0.18)]" : "border-accent/50 focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(91,157,255,0.12)]"
         }`}
       >
         {atts.length > 0 && (
@@ -101,7 +108,7 @@ export default function Composer({
             ref={areaRef}
             rows={1}
             className="block max-h-[168px] min-h-[44px] w-full resize-none bg-transparent px-3.5 pb-2 pt-3 pr-11 text-[13px] leading-relaxed text-gray-100 outline-none placeholder:text-gray-500"
-            placeholder={voice.listening ? "Listening…" : "Describe an edit…"}
+            placeholder={noProvider ? "Choose an AI provider in settings first" : voice.listening ? "Listening…" : "Describe an edit…"}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -176,7 +183,7 @@ export default function Composer({
             className="ml-1 flex min-w-0 items-center gap-1.5 rounded-full border border-edge bg-panel px-2.5 py-0.5 text-[11px] text-gray-300 hover:bg-edge"
           >
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[status]}`} />
-            <span className="truncate">{model || "no model"}</span>
+            <span className="truncate">{noProvider ? "no provider" : model || "no model"}</span>
           </button>
 
           <span className="flex-1" />
@@ -187,7 +194,7 @@ export default function Composer({
             onClick={(e) => setSettings(settings ? null : e.currentTarget.getBoundingClientRect())}
             aria-label="Chat settings"
             aria-expanded={!!settings}
-            title="Settings: Ollama connection, model, voice"
+            title="Settings: AI model, voice"
           >
             <Icon>
               <circle cx="12" cy="12" r="3" />

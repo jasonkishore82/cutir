@@ -3,37 +3,50 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; }
-body { @apply bg-bg text-gray-200 antialiased; font-family: Inter, system-ui, sans-serif; margin: 0; overflow: hidden; }
+html { color-scheme: dark; }
+body {
+  @apply text-gray-200 antialiased;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+  margin: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+/* blue aura: soft light pools behind the floating panels (used on body and on full-screen views) */
+.aura {
+  background:
+    radial-gradient(1100px 520px at 50% -8%, rgb(60 130 255 / 0.30), transparent 70%),
+    radial-gradient(700px 420px at 108% 108%, rgb(120 190 255 / 0.16), transparent 70%),
+    radial-gradient(600px 420px at -6% 104%, rgb(60 110 255 / 0.14), transparent 70%),
+    #04060c;
+  background-attachment: fixed;
+}
 input, select, textarea, button { @apply outline-none; }
-.shimmer {
-  background: linear-gradient(90deg, #8b93a3 0%, #8b93a3 35%, #9fd4ff 50%, #8b93a3 65%, #8b93a3 100%);
-  background-size: 250% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: shimmer 1.8s linear infinite;
+button { transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s; }
+button:focus-visible, [role="tab"]:focus-visible, [role="menuitem"]:focus-visible { outline: 2px solid rgb(91 157 255 / 0.75); outline-offset: 2px; }
+::selection { background: rgb(91 157 255 / 0.35); }
+* { scrollbar-width: thin; scrollbar-color: #2f3a50 transparent; }
+
+.field {
+  @apply w-full rounded-lg border border-edge bg-black/30 px-2.5 py-1.5 text-sm text-gray-100 placeholder:text-gray-600 transition-colors;
 }
-@keyframes shimmer {
-  from { background-position: 100% 0; }
-  to { background-position: -100% 0; }
+.field:hover { border-color: #2f3a50; }
+.field:focus { @apply border-accent/70; box-shadow: 0 0 0 3px rgb(91 157 255 / 0.18); }
+select.field {
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b8b93' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
 }
-@media (prefers-reduced-motion: reduce) {
-  .shimmer { animation: none; color: #8b93a3; background: none; }
-}
-.field { @apply w-full rounded bg-bg border border-edge px-2 py-1 text-sm focus:border-accent; }
-.label { @apply block text-[11px] uppercase tracking-wide text-gray-500 mb-1; }
+.label { @apply mb-1.5 block text-[11px] font-medium text-gray-400; }
 
 /* animated candy-stripe fill for running progress bars */
 .progress-stripes {
-  /* moving stripes over the blue gradient fill (the gradient layer stays put) */
-  background-image:
-    linear-gradient(45deg, rgba(255,255,255,.25) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 75%, transparent 75%),
-    linear-gradient(90deg, #0ea5e9, #7dd3fc);
-  background-size: 14px 14px, 100% 100%;
-  background-position: 0 0, 0 0;
+  background-image: linear-gradient(45deg, rgba(255,255,255,.25) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.25) 50%, rgba(255,255,255,.25) 75%, transparent 75%);
+  background-size: 14px 14px;
   animation: stripes 0.8s linear infinite;
 }
-@keyframes stripes { to { background-position: 14px 0, 0 0; } }
+@keyframes stripes { to { background-position: 14px 0; } }
 @media (prefers-reduced-motion: reduce) { .progress-stripes { animation: none; } }
 
 /* timeline: a scrollbar that is always visible (styling the pseudo-elements also disables auto-hiding overlay scrollbars) */
@@ -41,4 +54,37 @@ input, select, textarea, button { @apply outline-none; }
 .timeline-scroll::-webkit-scrollbar { height: 14px; }
 .timeline-scroll::-webkit-scrollbar-track { background: #0f1115; border-top: 1px solid #262c36; }
 .timeline-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 7px; border: 3px solid #0f1115; }
-.timeline-scroll::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+.timeline-scroll::-webkit-scrollbar-thumb:hover { background: #5b9dff; }
+
+/* sliders: thin track, white thumb */
+input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 9999px; background: #243049; cursor: pointer; }
+input[type="range"]:disabled { opacity: 0.4; cursor: default; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 9999px; background: #fff; border: 0; box-shadow: 0 1px 4px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(0 0 0 / 0.15); }
+input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 9999px; background: #fff; border: 0; box-shadow: 0 1px 4px rgb(0 0 0 / 0.6); }
+input[type="range"]:focus-visible { outline: 2px solid rgb(91 157 255 / 0.75); outline-offset: 4px; }
+
+/* colour wells: round swatches */
+input[type="color"] { -webkit-appearance: none; appearance: none; width: 30px; height: 30px; padding: 0; border: 2px solid #2f3a50; border-radius: 9999px; background: none; cursor: pointer; }
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 9999px; }
+input[type="color"]::-moz-color-swatch { border: 0; border-radius: 9999px; }
+
+input[type="checkbox"] { accent-color: #5b9dff; }
+
+/* primary buttons: white to blue gradient with a blue glow */
+.btn-primary {
+  background: linear-gradient(180deg, #ffffff 0%, #bcd7ff 38%, #5b9dff 100%);
+  color: #06122b;
+  font-weight: 600;
+  box-shadow: 0 0 26px rgb(91 157 255 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.85);
+}
+.btn-primary:hover:not(:disabled) { filter: brightness(1.06); box-shadow: 0 0 34px rgb(91 157 255 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.9); }
+.btn-primary:disabled { opacity: 0.45; box-shadow: none; }
+
+/* headings: white fading to light blue */
+.text-gradient {
+  background: linear-gradient(180deg, #ffffff 30%, #9cc2ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

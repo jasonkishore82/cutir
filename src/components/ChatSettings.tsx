@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useChat } from "../store/chat";
+import { useActiveConfig, useSettings } from "../store/settings";
 import { useVoice } from "../store/voice";
 import { loadVoices, sttSupported, ttsSupported } from "../lib/voice";
 import { browserProvider } from "../lib/voice/tts";
@@ -43,7 +44,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function Toggle({ label, hint, checked, onChange, disabled }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <label className={`flex cursor-pointer items-start gap-2 ${disabled ? "opacity-40" : ""}`}>
-      <input type="checkbox" className="mt-0.5 accent-[#38bdf8]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <input type="checkbox" className="mt-0.5 accent-[#5b9dff]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span>
         <span className="text-gray-200">{label}</span>
         {hint && <span className="block text-[11px] text-gray-500">{hint}</span>}
@@ -52,12 +53,13 @@ function Toggle({ label, hint, checked, onChange, disabled }: { label: string; h
   );
 }
 
-/** The gear popup: Ollama connection, model, voice, and chat actions. Floats above the composer. */
+/** The gear popup: AI model shortcut, voice, and chat actions. Floats above the composer. */
 export default function ChatSettings({ anchor, onClose }: { anchor: DOMRect; onClose: () => void }) {
-  const { baseUrl, model, models, noToolModels, status, statusDetail } = useChat();
-  const { setBaseUrl, setModel, refreshModels, clear } = useChat.getState();
+  const { status, statusDetail } = useChat();
+  const { clear } = useChat.getState();
+  const { provider, model } = useActiveConfig();
+  const noProvider = provider.id === "none";
   const voice = useVoice();
-  const [urlDraft, setUrlDraft] = useState(baseUrl);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,11 +76,6 @@ export default function ChatSettings({ anchor, onClose }: { anchor: DOMRect; onC
       window.removeEventListener("keydown", key, true);
     };
   }, [onClose]);
-
-  const commitUrl = () => {
-    const u = urlDraft.trim();
-    if (u && u !== baseUrl) setBaseUrl(u);
-  };
 
   // voices for the chosen language first
   const base = voice.lang.slice(0, 2).toLowerCase();
@@ -103,38 +100,23 @@ export default function ChatSettings({ anchor, onClose }: { anchor: DOMRect; onC
       className="fixed z-[250] space-y-3 overflow-y-auto rounded-xl border border-edge bg-panel p-4 text-xs shadow-2xl"
       style={style}
     >
-      <Section title="Connection (Ollama)">
+      <Section title="AI model">
         <div className="flex items-center gap-2">
           <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${DOT[status]}`} title={statusDetail || status} />
-          <input
-            className="field"
-            value={urlDraft}
-            onChange={(e) => setUrlDraft(e.target.value)}
-            onBlur={commitUrl}
-            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget.blur(), commitUrl())}
-            placeholder="http://localhost:11434"
-            aria-label="Ollama URL"
-          />
-        </div>
-        {status === "offline" && <p className="text-[11px] text-red-400">{statusDetail}</p>}
-      </Section>
-
-      <Section title="Model">
-        <div className="flex gap-2">
-          <select className="field flex-1" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
-            {!models.length && <option value="">{status === "online" ? "no models installed" : "no models"}</option>}
-            {models.map((m) => (
-              <option key={m} value={m}>
-                {m}
-                {noToolModels.includes(m) ? "  (no tools)" : ""}
-              </option>
-            ))}
-          </select>
-          <button className="rounded border border-edge px-2 hover:bg-edge" onClick={() => refreshModels()} title="Refresh models" aria-label="Refresh models">
-            ↻
+          <span className="min-w-0 flex-1 truncate text-gray-300">
+            {noProvider ? "No provider chosen" : `${provider.name} · ${model || "no model"}`}
+          </span>
+          <button
+            className="shrink-0 rounded border border-edge px-2 py-1 hover:bg-edge"
+            onClick={() => {
+              useSettings.getState().openDialog("ai");
+              onClose();
+            }}
+          >
+            Change
           </button>
         </div>
-        {status === "online" && !models.length && <p className="text-[11px] text-yellow-400">{statusDetail}</p>}
+        {status === "offline" && !noProvider && <p className="text-[11px] text-red-400">{statusDetail}</p>}
       </Section>
 
       <Section title="Voice">
@@ -171,7 +153,7 @@ export default function ChatSettings({ anchor, onClose }: { anchor: DOMRect; onC
             </label>
             <label className="block">
               <span className="label">Speed: {voice.rate.toFixed(1)}x</span>
-              <input type="range" min={0.7} max={1.6} step={0.1} value={voice.rate} className="w-full accent-[#38bdf8]" onChange={(e) => voice.set({ rate: Number(e.target.value) })} />
+              <input type="range" min={0.7} max={1.6} step={0.1} value={voice.rate} className="w-full accent-[#5b9dff]" onChange={(e) => voice.set({ rate: Number(e.target.value) })} />
             </label>
             <button
               className="rounded border border-edge px-2 py-1 hover:bg-edge"

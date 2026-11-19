@@ -1,3 +1,4 @@
+import { Icon } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import { useProject } from "../store/project";
 import { ASPECT_SIZES } from "../lib/renderer";
@@ -58,23 +59,23 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
   const btn = "px-3 py-1.5 text-xs rounded border border-edge hover:bg-edge disabled:opacity-40 disabled:hover:bg-transparent";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => !running && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => !running && onClose()}>
       <div
         role="dialog"
         aria-label="Export"
-        className="w-[440px] max-w-[92vw] rounded-lg border border-edge bg-panel p-4 space-y-4"
+        className="w-[440px] max-w-[92vw] rounded-2xl border border-white/10 bg-panel p-5 space-y-4 shadow-2xl shadow-black/60"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">Export</h2>
           <button className="text-gray-500 hover:text-gray-100 text-lg leading-none" onClick={onClose} disabled={running} aria-label="Close">
-            ×
+            <Icon name="close" className="h-4 w-4" />
           </button>
         </div>
 
         <div className="space-y-2">
           <div className="flex items-center gap-3 text-xs text-gray-400">
-            <span>{w}×{h}</span>
+            <span>{w} x {h}</span>
             <label className="flex items-center gap-1">
               FPS
               <select
@@ -87,7 +88,7 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
                 <option value={60}>60</option>
               </select>
             </label>
-            <span>{duration > 0 ? `${mmss(duration)} · ${frames} frames` : "no duration yet"}</span>
+            <span>{duration > 0 ? `${mmss(duration)}, ${frames} frames` : "no duration yet"}</span>
           </div>
           {long && (
             <p className="text-[11px] text-yellow-400">

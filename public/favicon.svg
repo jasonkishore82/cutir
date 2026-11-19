@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <rect width="64" height="64" rx="14" fill="#0f1115"/>
   <!-- board body -->
-  <rect x="11" y="27" width="42" height="26" rx="3" fill="#38bdf8"/>
+  <rect x="11" y="27" width="42" height="26" rx="3" fill="#5b9dff"/>
   <rect x="11" y="27" width="42" height="6" fill="#161a21" opacity="0.25"/>
   <!-- clapper arm (tilted open) -->
   <g transform="rotate(-14 11 27)">

@@ -61,9 +61,9 @@ export default function SyncProgress() {
   return (
     <div className="space-y-1.5" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(value * 100)}>
       <div className="flex items-center justify-between text-[11px] text-gray-400">
-        <span className="truncate">{running ? `${LABELS[stage]}…` : "Done"}</span>
+        <span className="truncate">{running ? LABELS[stage] : "Done"}</span>
         <span className="ml-2 shrink-0 tabular-nums">
-          {Math.round(value * 100)}%{running ? ` · ${mmss(elapsed)}` : ""}
+          {Math.round(value * 100)}%{running ? `, ${mmss(elapsed)}` : ""}
         </span>
       </div>
       <div className="h-2 overflow-hidden rounded-full border border-edge bg-bg">

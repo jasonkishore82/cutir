@@ -66,7 +66,7 @@ export function parseSubtitleFile(name: string, text: string): LyricLine[] {
 /* ---------- export: .srt and .ass (karaoke) ---------- */
 
 import { wrapText } from "./renderer";
-import { effectiveStyle, layerIdOf, type Project, type TextStyle } from "../store/project";
+import { effectiveStyle, layerIdOf, resolveLayerStyle, type Project, type TextStyle } from "../store/project";
 
 const p2 = (n: number, w = 2) => String(n).padStart(w, "0");
 
@@ -126,7 +126,7 @@ export function toAss(p: Project): string {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    ...p.layers.map((layer, i) => styleLine(`L${i}`, { ...p.style, ...layer.style })),
+    ...p.layers.map((layer, i) => styleLine(`L${i}`, resolveLayerStyle(p, layer))),
     "",
     "[Events]",
     "Format: Layer, Start, End, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -157,7 +157,12 @@ export function toAss(p: Project): string {
             .join(" ")
         )
         .join("\\N");
-      return `Dialogue: ${li},${assStamp(l.start)},${assStamp(l.end)},L${li},,0,0,0,,${body}`;
+      // a line placed freely on the canvas keeps its position, size and rotation in ASS
+      const tf = s.transform;
+      const place = tf && tf.x !== undefined && tf.y !== undefined
+        ? `{\\an5\\pos(${Math.round(tf.x * W)},${Math.round(tf.y * H)})\\frz${-Math.round(tf.rotation * 10) / 10}\\fscx${Math.round(tf.scale * 100)}\\fscy${Math.round(tf.scale * 100)}}`
+        : "";
+      return `Dialogue: ${li},${assStamp(l.start)},${assStamp(l.end)},L${li},,0,0,0,,${place}${body}`;
     });
 
   return [...head, ...events, ""].join("\n");
