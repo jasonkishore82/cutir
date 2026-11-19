@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import LeftPanel from "./components/LeftPanel";
 import Preview from "./components/Preview";
 import Timeline from "./components/Timeline";
@@ -6,7 +6,7 @@ import ChatPanel from "./components/ChatPanel";
 import ExportDialog from "./components/ExportDialog";
 import Home from "./components/Home";
 import MenuBar from "./components/MenuBar";
-import SettingsDialog from "./components/SettingsDialog";
+import SettingsScreen from "./components/SettingsScreen";
 import SectionTabs, { type SectionId } from "./components/SectionTabs";
 import { Icon } from "./components/ui";
 import { startAutosave, useProject } from "./store/project";
@@ -221,8 +221,15 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
+  const resetLayoutRef = useRef<() => void>(() => {});
   const iconBtn = "grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-white/[0.07] hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400";
   const panel = "overflow-hidden rounded-2xl border border-white/[0.07] bg-panel/80 shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-xl";
+
+  useEffect(() => {
+    const on = () => resetLayoutRef.current();
+    window.addEventListener("cutir:reset-layout", on);
+    return () => window.removeEventListener("cutir:reset-layout", on);
+  }, []);
 
   const resetLayout = () => {
     setLeftW(300);
@@ -236,8 +243,14 @@ export default function App() {
       }
     }
   };
+  resetLayoutRef.current = resetLayout;
 
-  if (screen === "home") return <Home />;
+  if (screen === "home") return (
+    <>
+      <Home />
+      <SettingsScreen />
+    </>
+  );
 
   return (
     <div className="flex h-full flex-col p-2">
@@ -297,7 +310,7 @@ export default function App() {
       </div>
 
       {exporting && <ExportDialog onClose={() => setExporting(false)} />}
-      <SettingsDialog />
+      <SettingsScreen />
 
       <TimelineResizeHandle height={tlH} set={setTlH} />
       <footer style={{ height: tlH }} className={`${panel} shrink-0`}>

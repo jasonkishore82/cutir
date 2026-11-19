@@ -6,17 +6,19 @@ html, body, #root { height: 100%; }
 html { color-scheme: dark; }
 body {
   @apply text-gray-200 antialiased;
-  /* blue aura: soft light pools behind the floating panels */
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+  margin: 0;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+/* blue aura: soft light pools behind the floating panels (used on body and on full-screen views) */
+.aura {
   background:
     radial-gradient(1100px 520px at 50% -8%, rgb(60 130 255 / 0.30), transparent 70%),
     radial-gradient(700px 420px at 108% 108%, rgb(120 190 255 / 0.16), transparent 70%),
     radial-gradient(600px 420px at -6% 104%, rgb(60 110 255 / 0.14), transparent 70%),
     #04060c;
   background-attachment: fixed;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
-  margin: 0;
-  overflow: hidden;
-  -webkit-font-smoothing: antialiased;
 }
 input, select, textarea, button { @apply outline-none; }
 button { transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s; }

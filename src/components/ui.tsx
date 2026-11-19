@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 export type IconName =
   | "media" | "lyrics" | "style" | "motion" | "undo" | "redo" | "ai" | "play" | "pause" | "skipBack"
-  | "loop" | "back" | "export" | "plus" | "music" | "image" | "close" | "refresh" | "settings" | "dots" | "check" | "history" | "edit" | "archive" | "trash";
+  | "loop" | "back" | "export" | "plus" | "music" | "image" | "close" | "refresh" | "settings" | "dots" | "check" | "history" | "edit" | "archive" | "trash" | "sliders" | "storage" | "keyboard";
 
 const PATHS: Record<IconName, ReactNode> = {
   media: <><rect x="3" y="4" width="18" height="16" rx="3" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 9" /></>,
@@ -31,6 +31,9 @@ const PATHS: Record<IconName, ReactNode> = {
   history: <><path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></>,
   edit: <><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M13.5 6.5l4 4" /></>,
   archive: <><rect x="3" y="4" width="18" height="5" rx="1.5" /><path d="M5 9v9a2 2 0 002 2h10a2 2 0 002-2V9" /><path d="M10 13h4" /></>,
+  sliders: <><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>,
+  storage: <><ellipse cx="12" cy="6" rx="8" ry="3" /><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" /></>,
+  keyboard: <><rect x="2.5" y="6" width="19" height="12" rx="2.5" /><path d="M6.5 10h.01M10 10h.01M14 10h.01M17.5 10h.01M7 14h10" /></>,
   trash: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3" />,
 };
 

@@ -11,6 +11,7 @@ import {
   type Project,
 } from "./project";
 import { useChat } from "./chat";
+import { useSettings } from "./settings";
 import { copyProjectFiles, deleteFile, deleteProjectFiles, loadFile, saveFile } from "../lib/assetdb";
 import { makeThumbnail } from "../lib/thumbnail";
 
@@ -208,6 +209,7 @@ export const useLibrary = create<Library>((set, get) => {
       const project = await hydrate(id);
       if (cur !== id) useChat.getState().loadProject(id); // chats belong to the project they were started in
       useProject.getState().loadProject(project);
+      useProject.setState({ chatOpen: useSettings.getState().showAiOnOpen });
       set({ currentId: id, screen: "editor" });
     },
 

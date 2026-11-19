@@ -71,6 +71,8 @@ type ChatState = {
 
   loadProject: (id: string | null) => void;
   saveProject: () => void;
+  /** Delete the saved conversations of every project and start the open one fresh. */
+  clearHistory: () => void;
 };
 
 export const NEW_TITLE = "New chat";
@@ -432,6 +434,18 @@ ${a.data}
       } catch {
         /* storage full or blocked: history stays in memory only */
       }
+    },
+
+    clearHistory: () => {
+      aborts.forEach((a) => a.abort());
+      aborts.clear();
+      try {
+        Object.keys(localStorage).filter((k) => k.startsWith("cutir:chats:")).forEach((k) => localStorage.removeItem(k));
+      } catch {
+        /* storage unavailable */
+      }
+      const c = newConv();
+      set({ convs: { [c.id]: c }, openIds: [c.id], activeId: c.id, running: {} });
     },
 
     loadProject: (id) => {

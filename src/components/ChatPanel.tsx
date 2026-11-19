@@ -6,13 +6,6 @@ import { Icon } from "./ui";
 import Thinking from "./Thinking";
 import SyncProgress from "./SyncProgress";
 
-const DOT: Record<string, string> = {
-  online: "bg-green-500",
-  offline: "bg-red-500",
-  checking: "bg-yellow-400 animate-pulse",
-  unknown: "bg-gray-500",
-};
-
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
 /** One timeline entry: dot on the left rail, optional right-aligned timestamp, no bubble. */
@@ -266,11 +259,11 @@ function HistoryMenu({ convs, openIds, running, onClose }: { convs: Record<strin
 const EMPTY: ChatEntry[] = [];
 
 export default function ChatPanel() {
-  const { models, noToolModels, status, statusDetail, convs, openIds, activeId, running } = useChat();
-  const { setModel, refreshModels, send, stop, newChat } = useChat.getState();
+  const { status, statusDetail, convs, openIds, activeId, running } = useChat();
+  const { refreshModels, send, stop, newChat } = useChat.getState();
   const messages = convs[activeId]?.messages ?? EMPTY;
   const busy = !!running[activeId];
-  const { provider, baseUrl, apiKey, model } = useActiveConfig();
+  const { provider, baseUrl, apiKey } = useActiveConfig();
   const noProvider = provider.id === "none";
   const [draft, setDraft] = useState("");
   const [atts, setAtts] = useState<Attachment[]>([]);
@@ -371,7 +364,7 @@ export default function ChatPanel() {
             {noProvider ? (
               <div className="flex w-full max-w-[260px] flex-col items-center gap-3">
                 <p className="text-sm text-gray-400">Choose an AI provider to use the assistant.</p>
-                <button className="btn-primary rounded-lg px-4 py-2 text-xs" onClick={() => useSettings.getState().openDialog()}>
+                <button className="btn-primary rounded-lg px-4 py-2 text-xs" onClick={() => useSettings.getState().openDialog("ai")}>
                   Choose provider
                 </button>
               </div>
@@ -460,8 +453,12 @@ export default function ChatPanel() {
 
       {/* composer: text, attachments, model and send in one rounded box */}
       <div className="shrink-0 p-3 pt-0">
-        {status === "offline" && !noProvider && <p className="mb-2 text-[11px] leading-snug text-red-400">{statusDetail}</p>}
-        {status === "online" && !models.length && <p className="mb-2 text-[11px] text-yellow-400">{statusDetail}</p>}
+        {status === "offline" && !noProvider && (
+          <p className="mb-2 text-[11px] leading-snug text-red-400">
+            {statusDetail}{" "}
+            <button className="underline hover:text-red-300" onClick={() => useSettings.getState().openDialog("ai")}>Open settings</button>
+          </p>
+        )}
         {atts.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {atts.map((a, i) => (
@@ -504,28 +501,7 @@ export default function ChatPanel() {
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
               </svg>
             </button>
-            <button
-              className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-left text-xs text-gray-400 hover:bg-white/10 hover:text-gray-100"
-              onClick={() => useSettings.getState().openDialog()}
-              title="Change provider, API key or model"
-              aria-label="AI settings"
-            >
-              <span className={`h-2 w-2 shrink-0 rounded-full ${noProvider ? "bg-gray-600" : DOT[status]}`} title={statusDetail || status} />
-              <span className="truncate">{noProvider ? "No provider" : model ? `${provider.name}, ${model}` : provider.name}</span>
-            </button>
-            {!noProvider && models.length > 0 && (
-              <select
-                className="h-7 max-w-[120px] shrink-0 cursor-pointer rounded-md bg-transparent px-1 text-xs text-gray-500 hover:bg-white/10"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                aria-label="Model"
-              >
-                {model && !models.includes(model) && <option value={model}>{model}</option>}
-                {models.map((m) => (
-                  <option key={m} value={m}>{m}{noToolModels.includes(m) ? "  (no tools)" : ""}</option>
-                ))}
-              </select>
-            )}
+            <span className="flex-1" />
             {busy ? (
               <button className="h-7 shrink-0 rounded-lg border border-red-700 px-3 text-xs text-red-300 hover:bg-red-950" onClick={stop}>Stop</button>
             ) : (

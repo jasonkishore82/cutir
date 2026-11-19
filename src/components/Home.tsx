@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./ui";
+import { useSettings } from "../store/settings";
 import { useLibrary, type ProjectEntry } from "../store/library";
 import type { Aspect } from "../store/project";
 
@@ -282,6 +283,10 @@ export default function Home() {
             <span>All projects</span> <span className="ml-auto text-xs text-gray-500">{entries.length}</span>
           </div>
         </nav>
+
+        <button className={`${side} mt-2 text-gray-400 hover:bg-white/[0.06] hover:text-gray-100`} onClick={() => useSettings.getState().openDialog()}>
+          <span>Settings</span>
+        </button>
 
         <p className="mt-auto text-[11px] leading-relaxed text-gray-600">
           Projects are saved in this browser.

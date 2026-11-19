@@ -75,7 +75,10 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
       id: "settings",
       label: "Settings",
       items: [
-        { label: "AI models and API keys", onSelect: () => useSettings.getState().openDialog() },
+        { label: "AI models and API keys", onSelect: () => useSettings.getState().openDialog("ai") },
+        { label: "Editor preferences", onSelect: () => useSettings.getState().openDialog("editor") },
+        { label: "Storage", onSelect: () => useSettings.getState().openDialog("storage") },
+        { label: "Keyboard shortcuts", onSelect: () => useSettings.getState().openDialog("shortcuts") },
         "sep",
         { label: provider.id === "none" ? "No AI provider selected" : `Using ${provider.name}${model ? `, ${model}` : ""}`, info: true, disabled: true },
       ],
