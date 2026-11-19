@@ -20,6 +20,12 @@ media library (id, name, kind, duration). Refer to clips by **id** and to media 
   `fit`; `volume` for audio; `enabled` to switch a clip off.
 - **Tracks:** `add_track`, `set_track` (mute, solo, lock, hide, target, rename).
 - **Markers and range:** `add_marker`, `set_range` (in / out).
+- **Effects:** `add_effect` (blur, glow, vignette, drop-shadow, mask, chroma-key, crop, transform, sharpen, invert,
+  mirror, noise, pixelate, animate for in/out motion) with optional `params`; `set_effect` / `remove_effect` to
+  change or drop one. Effects apply in order; check the look with `render_frame`.
+- **Transitions:** `add_transition` with `type` (cross-dissolve, dip-to-colour, wipe, push, slide, zoom,
+  blur-dissolve, spin), `from` / `to` clip ids for a cut (or only one for a fade at an edge), `duration`, `align`;
+  `all_cuts: true` for every cut on a track. Linked sound gets a crossfade automatically.
 
 Locked tracks are never changed: if an edit does nothing, check for locks. Media that is missing or needs
 permission shows a status in `list_media`; ask the user to relink it in the Media library.

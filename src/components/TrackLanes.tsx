@@ -9,6 +9,9 @@ import { getTime, seek } from "../lib/transport";
 import * as E from "../timeline/engine";
 import { variantFor } from "../lib/proxy";
 import { DEFAULT_PROXY } from "../model/types";
+import { getTransition, transitionWindow } from "../lib/effects";
+import * as FX from "../timeline/effects";
+import { EFFECT_MIME, TRANSITION_MIME } from "./EffectsPanel";
 import { CURSOR, MODE_HINT, beatSnapOn, editCtx, editTimeline, sourceOf, tlNow, useTimelineUi, withPoolMedia } from "../timeline/ui";
 
 /** Drag type used by the media pool. */
@@ -45,6 +48,8 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
   const gesture = useRef<Gesture | null>(null);
 
   const tracks = useMemo(() => E.displayOrder(tl).filter((t) => t.kind !== "subtitle"), [tl]);
+  const clipMap = useMemo(() => new Map(tl.clips.map((c) => [c.id, c])), [tl]);
+  const selTr = useTimelineUi((s) => s.selectedTransition);
   const video = tracks.filter((t) => t.kind === "video");
   const audio = tracks.filter((t) => t.kind === "audio");
   const sortedByTrack = useMemo(() => {
@@ -287,6 +292,11 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
   };
   const onDragOver = (e: React.DragEvent) => {
     const types = e.dataTransfer.types;
+    if (types.includes(EFFECT_MIME) || types.includes(TRANSITION_MIME)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      return;
+    }
     if (!types.includes(POOL_MIME) && !types.includes("Files")) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
@@ -297,6 +307,25 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
   const onDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setGhost(null);
+    // an effect: onto the clip under the pointer, or onto every clip of the track
+    const fxId = e.dataTransfer.getData(EFFECT_MIME);
+    if (fxId) {
+      const clipEl = (e.target as HTMLElement).closest("[data-clip-id]") as HTMLElement | null;
+      const doc = useProject.getState().doc;
+      const track = trackAt(local(e).y);
+      const ids = clipEl ? [clipEl.dataset.clipId!] : track ? E.clipsOn(tlNow(), track.id).map((c) => c.id) : [];
+      const targets = FX.effectTargets(tlNow(), doc, ids);
+      if (targets.length) editTimeline((t) => FX.addEffect(t, targets, fxId));
+      return;
+    }
+    // a transition: onto the nearest cut or clip edge of the track
+    const trType = e.dataTransfer.getData(TRANSITION_MIME);
+    if (trType) {
+      const track = trackAt(local(e).y);
+      const place = track && FX.placeAt(tlNow(), track.id, local(e).t, 16 / pps);
+      if (track && place) editTimeline((t) => FX.addTransition(t, { trackId: track.id, ...place, type: track.kind === "audio" ? "crossfade" : trType }));
+      return;
+    }
     let item = dropSource(e);
     if (!item && e.dataTransfer.files.length) {
       const added = await useMedia.getState().addFiles(Array.from(e.dataTransfer.files));
@@ -412,6 +441,7 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
             return (
               <div
                 key={c.id}
+                data-clip-id={c.id}
                 role="button"
                 aria-pressed={on}
                 aria-label={`${c.name ?? media?.name ?? "clip"}, ${c.start.toFixed(2)} to ${E.clipEnd(c).toFixed(2)} seconds`}
@@ -457,6 +487,30 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
               </div>
             );
           })}
+          {(tl.cutTransitions ?? [])
+            .filter((tr) => tr.trackId === t.id)
+            .map((tr) => {
+              const w = transitionWindow(tr, clipMap);
+              if (!w) return null;
+              const on = selTr === tr.id;
+              const name = tr.type === "crossfade" ? "Crossfade" : getTransition(tr.type)?.name ?? tr.type;
+              return (
+                <button
+                  key={tr.id}
+                  className={`absolute bottom-1 z-[3] h-3 overflow-hidden rounded-sm border text-[8px] leading-[10px] ${on ? "border-yellow-300 bg-yellow-400/70 text-black" : "border-white/60 bg-black/60 text-white"}`}
+                  style={{ left: w[0] * pps, width: Math.max(6, (w[1] - w[0]) * pps) }}
+                  title={`${name}, ${tr.duration.toFixed(2)} s. Click to edit in the Effects tab; right-click to remove.`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => useTimelineUi.setState({ selectedTransition: tr.id })}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    editTimeline((x) => FX.removeTransition(x, tr.id));
+                  }}
+                >
+                  {name}
+                </button>
+              );
+            })}
           {ghost?.trackId === t.id && (
             <div className="pointer-events-none absolute inset-y-1 rounded border-2 border-dashed border-accent bg-accent/20 px-1 text-[10px] text-accent" style={{ left: ghost.start * pps, width: Math.max(4, ghost.len * pps) }}>
               {ghost.name}

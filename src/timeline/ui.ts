@@ -18,9 +18,13 @@ type TimelineUi = {
   /** Live feedback while dragging: the snap guide and the current pointer mode. */
   guide: number | null;
   mode: PointerMode | null;
+  /** Effect being hovered in the Effects panel: previewed on the selected clips in the viewer, never saved. */
+  previewEffect: string | null;
+  /** Transition selected on the timeline (edited in the Effects panel). */
+  selectedTransition: string | null;
 };
 
-export const useTimelineUi = create<TimelineUi>(() => ({ tool: "select", snapping: true, beatSnap: true, selected: [], sourceId: null, guide: null, mode: null }));
+export const useTimelineUi = create<TimelineUi>(() => ({ tool: "select", snapping: true, beatSnap: true, selected: [], sourceId: null, guide: null, mode: null, previewEffect: null, selectedTransition: null }));
 
 export const TOOL_KEYS: Record<string, Tool> = { KeyA: "select", KeyT: "trim", KeyB: "blade", KeyH: "hand", KeyZ: "zoom" };
 

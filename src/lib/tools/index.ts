@@ -8,12 +8,13 @@ import { syncTools } from "./sync";
 import { layerTools } from "./layers";
 import { animationTools, motionTools, transformTools } from "./motion";
 import { timelineTools } from "./timeline";
+import { effectTools } from "./effects";
 import { kineticTools } from "./kinetic";
 import { activeTimeline, IDS } from "../../model/convert";
 import { useMedia } from "../../store/media";
 
 /** The one list of tools. Add a tool to a group file; it is picked up everywhere from here. */
-export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools, ...kineticTools]);
+export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools, ...kineticTools, ...effectTools]);
 
 export const TOOL_NAMES = registry.all.map((t) => t.name);
 
@@ -30,7 +31,7 @@ const MOTION_WORDS =
 
 /** Words that bring in the timeline tools (clips on video and audio tracks, markers, in/out). */
 const TIMELINE_WORDS =
-  /\b(clips?|tracks?|video|footage|b-?roll|audio|sound|music|voice.?over|image|photo|picture|trim|ripple|blade|cut|split|marker|in.?point|out.?point|insert|overwrite|append|timeline|volume|mute|solo|library|media)\b/i;
+  /\b(clips?|tracks?|video|footage|b-?roll|audio|sound|music|voice.?over|image|photo|picture|trim|ripple|blade|cut|split|marker|in.?point|out.?point|insert|overwrite|append|timeline|volume|mute|solo|library|media|effects?|blur|glow|vignette|shadow|mask|chroma|green.?screen|keying|invert|mirror|flip|noise|grain|pixel\w*|sharpen|crop|dissolve|wipe|dip|fade|transitions?)\b/i;
 
 /** Words that bring in the kinetic tools (single words, emphasis, beats, energy). */
 const KINETIC_WORDS =

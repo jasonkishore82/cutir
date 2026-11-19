@@ -1,6 +1,6 @@
 import { Icon, type IconName } from "./ui";
 
-export type SectionId = "import" | "media" | "lyrics" | "style" | "motion";
+export type SectionId = "import" | "media" | "lyrics" | "style" | "motion" | "effects";
 
 export const SECTIONS: { id: SectionId; label: string; icon: IconName; title: string }[] = [
   { id: "import", label: "Import", icon: "import", title: "Import" },
@@ -8,6 +8,7 @@ export const SECTIONS: { id: SectionId; label: string; icon: IconName; title: st
   { id: "lyrics", label: "Lyrics", icon: "lyrics", title: "Lyrics" },
   { id: "style", label: "Style", icon: "style", title: "Text style" },
   { id: "motion", label: "Motion", icon: "motion", title: "Motion" },
+  { id: "effects", label: "Effects", icon: "effects", title: "Effects and transitions" },
 ];
 
 /** Top-bar section switcher: decides what the inspector on the left shows. */

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { activeTimeline } from "../model/convert";
+import { transitionWindow } from "../lib/effects";
 import type { Clip, ProjectDoc, Timeline } from "../model/types";
 
 /**
@@ -159,6 +160,30 @@ export function affectedRanges(prev: ProjectDoc, next: ProjectDoc): Range[] | "a
     const margin = c1?.text || c2?.text ? TEXT_MARGIN : 0;
     if (c1) ranges.push(clipRange(c1, margin));
     if (c2) ranges.push(clipRange(c2, margin));
+    // a clip at a transition also shows inside the transition's window, past its own edge
+    for (const [tl, clips, c] of [[a, before, c1], [b, after, c2]] as const) {
+      if (!c) continue;
+      for (const tr of tl.cutTransitions ?? []) {
+        if (tr.from !== c.id && tr.to !== c.id) continue;
+        const w = transitionWindow(tr, clips);
+        if (w) ranges.push(w);
+      }
+    }
+  }
+
+  // transitions added, removed or changed: their windows (as they were and as they are)
+  const trBefore = new Map((a.cutTransitions ?? []).map((t) => [t.id, t]));
+  const trAfter = new Map((b.cutTransitions ?? []).map((t) => [t.id, t]));
+  for (const id of new Set([...trBefore.keys(), ...trAfter.keys()])) {
+    const t1 = trBefore.get(id);
+    const t2 = trAfter.get(id);
+    if (t1 === t2 || json(t1) === json(t2)) continue;
+    const audio = (t: typeof t1, tl: Timeline) => !t || tl.tracks.find((x) => x.id === t.trackId)?.kind === "audio";
+    if (audio(t1, a) && audio(t2, b)) continue; // crossfades do not change pictures
+    const w1 = t1 && transitionWindow(t1, before);
+    const w2 = t2 && transitionWindow(t2, after);
+    if (w1) ranges.push(w1);
+    if (w2) ranges.push(w2);
   }
   return mergeRanges(ranges);
 }

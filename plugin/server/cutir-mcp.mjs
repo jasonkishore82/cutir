@@ -2485,7 +2485,7 @@ function handleIntersectionResults$1(result, left, right) {
 	result.value = merged.data;
 	return result;
 }
-const $ZodRecord = /*@__PURE__*/ $constructor$1("$ZodRecord", (inst, def) => {
+const $ZodRecord$1 = /*@__PURE__*/ $constructor$1("$ZodRecord", (inst, def) => {
 	$ZodType$1.init(inst, def);
 	const memo = globalConfig$1.memoizer;
 	memo?.attach(inst);
@@ -4883,7 +4883,7 @@ const ZodType$1 = /*@__PURE__*/ $constructor$1("ZodType", (inst, def) => {
 		return intersection$1(this, arg);
 	},
 	transform(tx) {
-		return pipe$1(this, transform$1(tx));
+		return pipe$1(this, transform$2(tx));
 	},
 	default(d) {
 		return _default$1(this, d);
@@ -5470,22 +5470,22 @@ function intersection$1(left, right) {
 		right
 	});
 }
-const ZodRecord = /*@__PURE__*/ $constructor$1("ZodRecord", (inst, def) => {
+const ZodRecord$1 = /*@__PURE__*/ $constructor$1("ZodRecord", (inst, def) => {
 	_ensureDefaultMemoizer$1();
-	$ZodRecord.init(inst, def);
+	$ZodRecord$1.init(inst, def);
 	ZodType$1.init(inst, def);
 	inst._zod.processJSONSchema = (ctx, json, params) => recordProcessor$1(inst, ctx, json, params);
 	inst.keyType = def.keyType;
 	inst.valueType = def.valueType;
 });
-function record(keyType, valueType, params) {
-	if (!valueType || !valueType._zod) return new ZodRecord({
+function record$1(keyType, valueType, params) {
+	if (!valueType || !valueType._zod) return new ZodRecord$1({
 		type: "record",
 		keyType: string$1(),
 		valueType: keyType,
 		...normalizeParams$1(valueType)
 	});
-	return new ZodRecord({
+	return new ZodRecord$1({
 		type: "record",
 		keyType,
 		valueType,
@@ -5574,7 +5574,7 @@ const ZodTransform$1 = /*@__PURE__*/ $constructor$1("ZodTransform", (inst, def) 
 		return payload;
 	};
 });
-function transform$1(fn) {
+function transform$2(fn) {
 	return new ZodTransform$1({
 		type: "transform",
 		transform: fn
@@ -5721,7 +5721,7 @@ function superRefine$1(fn, params) {
 function preprocess(fn, schema) {
 	return new ZodPreprocess({
 		type: "pipe",
-		in: transform$1(fn),
+		in: transform$2(fn),
 		out: schema
 	});
 }
@@ -6024,9 +6024,9 @@ const ElicitationCapabilitySchema = preprocess((value) => {
 	}
 	return value;
 }, intersection$1(object$1({
-	form: intersection$1(object$1({ applyDefaults: boolean$2().optional() }), record(string$1(), unknown$1())).optional(),
+	form: intersection$1(object$1({ applyDefaults: boolean$2().optional() }), record$1(string$1(), unknown$1())).optional(),
 	url: AssertObjectSchema.optional()
-}), record(string$1(), unknown$1()).optional()));
+}), record$1(string$1(), unknown$1()).optional()));
 /**
 * Task capabilities for clients, indicating which request types support task creation.
 */
@@ -6081,7 +6081,7 @@ const ClientCapabilitiesSchema = object$1({
 	/**
 	* Experimental, non-standard capabilities that the client supports.
 	*/
-	experimental: record(string$1(), AssertObjectSchema).optional(),
+	experimental: record$1(string$1(), AssertObjectSchema).optional(),
 	/**
 	* Present if the client supports sampling from an LLM.
 	*/
@@ -6115,7 +6115,7 @@ listChanged: boolean$2().optional() }).optional(),
 	/**
 	* Extensions that the client supports. Keys are extension identifiers (vendor-prefix/extension-name).
 	*/
-	extensions: record(string$1(), AssertObjectSchema).optional()
+	extensions: record$1(string$1(), AssertObjectSchema).optional()
 });
 const InitializeRequestParamsSchema = BaseRequestParamsSchema.extend({
 	/**
@@ -6139,7 +6139,7 @@ const ServerCapabilitiesSchema = object$1({
 	/**
 	* Experimental, non-standard capabilities that the server supports.
 	*/
-	experimental: record(string$1(), AssertObjectSchema).optional(),
+	experimental: record$1(string$1(), AssertObjectSchema).optional(),
 	/**
 	* Present if the server supports sending log messages to the client.
 	*/
@@ -6184,7 +6184,7 @@ listChanged: boolean$2().optional() }).optional(),
 	/**
 	* Extensions that the server supports. Keys are extension identifiers (vendor-prefix/extension-name).
 	*/
-	extensions: record(string$1(), AssertObjectSchema).optional()
+	extensions: record$1(string$1(), AssertObjectSchema).optional()
 });
 /**
 * After receiving an initialize request from the client, the server sends this response.
@@ -6365,7 +6365,7 @@ const ResourceContentsSchema = object$1({
 	* See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
 	* for notes on _meta usage.
 	*/
-	_meta: record(string$1(), unknown$1()).optional()
+	_meta: record$1(string$1(), unknown$1()).optional()
 });
 const TextResourceContentsSchema = ResourceContentsSchema.extend({ 
 /**
@@ -6609,7 +6609,7 @@ const GetPromptRequestParamsSchema = BaseRequestParamsSchema.extend({
 	/**
 	* Arguments to use for templating the prompt.
 	*/
-	arguments: record(string$1(), string$1()).optional()
+	arguments: record$1(string$1(), string$1()).optional()
 });
 /**
 * Used by the client to get a prompt provided by the server.
@@ -6635,7 +6635,7 @@ const TextContentSchema = object$1({
 	* See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
 	* for notes on _meta usage.
 	*/
-	_meta: record(string$1(), unknown$1()).optional()
+	_meta: record$1(string$1(), unknown$1()).optional()
 });
 /**
 * An image provided to or from an LLM.
@@ -6658,7 +6658,7 @@ const ImageContentSchema = object$1({
 	* See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
 	* for notes on _meta usage.
 	*/
-	_meta: record(string$1(), unknown$1()).optional()
+	_meta: record$1(string$1(), unknown$1()).optional()
 });
 /**
 * An Audio provided to or from an LLM.
@@ -6681,7 +6681,7 @@ const AudioContentSchema = object$1({
 	* See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
 	* for notes on _meta usage.
 	*/
-	_meta: record(string$1(), unknown$1()).optional()
+	_meta: record$1(string$1(), unknown$1()).optional()
 });
 /**
 * A tool call request from an assistant (LLM).
@@ -6703,12 +6703,12 @@ const ToolUseContentSchema = object$1({
 	* Arguments to pass to the tool.
 	* Must conform to the tool's inputSchema.
 	*/
-	input: record(string$1(), unknown$1()),
+	input: record$1(string$1(), unknown$1()),
 	/**
 	* See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
 	* for notes on _meta usage.
 	*/
-	_meta: record(string$1(), unknown$1()).optional()
+	_meta: record$1(string$1(), unknown$1()).optional()
 });
 /**
 * The contents of a resource, embedded into a prompt or tool call result.
@@ -6724,7 +6724,7 @@ const EmbeddedResourceSchema = object$1({
 	* See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
 	* for notes on _meta usage.
 	*/
-	_meta: record(string$1(), unknown$1()).optional()
+	_meta: record$1(string$1(), unknown$1()).optional()
 });
 /**
 * A content block that can be used in prompts and tool results.
@@ -6842,7 +6842,7 @@ const ToolSchema = object$1({
 	*/
 	inputSchema: object$1({
 		type: literal("object"),
-		properties: record(string$1(), AssertObjectSchema).optional(),
+		properties: record$1(string$1(), AssertObjectSchema).optional(),
 		required: array$1(string$1()).optional()
 	}).catchall(unknown$1()),
 	/**
@@ -6852,7 +6852,7 @@ const ToolSchema = object$1({
 	*/
 	outputSchema: object$1({
 		type: literal("object"),
-		properties: record(string$1(), AssertObjectSchema).optional(),
+		properties: record$1(string$1(), AssertObjectSchema).optional(),
 		required: array$1(string$1()).optional()
 	}).catchall(unknown$1()).optional(),
 	/**
@@ -6867,7 +6867,7 @@ const ToolSchema = object$1({
 	* See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
 	* for notes on _meta usage.
 	*/
-	_meta: record(string$1(), unknown$1()).optional()
+	_meta: record$1(string$1(), unknown$1()).optional()
 });
 /**
 * Sent from the client to request a list of tools the server has.
@@ -6893,7 +6893,7 @@ const CallToolResultSchema = ResultSchema.extend({
 	*
 	* If the Tool defines an outputSchema, this field MUST be present in the result, and contain a JSON object that matches the schema.
 	*/
-	structuredContent: record(string$1(), unknown$1()).optional(),
+	structuredContent: record$1(string$1(), unknown$1()).optional(),
 	/**
 	* Whether the tool call ended in an error.
 	*
@@ -6922,7 +6922,7 @@ const CallToolRequestParamsSchema = TaskAugmentedRequestParamsSchema.extend({
 	/**
 	* Arguments to pass to the tool.
 	*/
-	arguments: record(string$1(), unknown$1()).optional()
+	arguments: record$1(string$1(), unknown$1()).optional()
 });
 /**
 * Used by the client to invoke a tool provided by the server.
@@ -7064,7 +7064,7 @@ const ToolResultContentSchema = object$1({
 	* See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
 	* for notes on _meta usage.
 	*/
-	_meta: record(string$1(), unknown$1()).optional()
+	_meta: record$1(string$1(), unknown$1()).optional()
 });
 /**
 * Basic content types for sampling responses (without tool use).
@@ -7096,7 +7096,7 @@ const SamplingMessageSchema = object$1({
 	* See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
 	* for notes on _meta usage.
 	*/
-	_meta: record(string$1(), unknown$1()).optional()
+	_meta: record$1(string$1(), unknown$1()).optional()
 });
 /**
 * Parameters for a `sampling/createMessage` request.
@@ -7339,7 +7339,7 @@ const ElicitRequestParamsSchema = union$1([TaskAugmentedRequestParamsSchema.exte
 	*/
 	requestedSchema: object$1({
 		type: literal("object"),
-		properties: record(string$1(), PrimitiveSchemaDefinitionSchema),
+		properties: record$1(string$1(), PrimitiveSchemaDefinitionSchema),
 		required: array$1(string$1()).optional()
 	})
 }), TaskAugmentedRequestParamsSchema.extend({
@@ -7410,7 +7410,7 @@ const ElicitResultSchema = ResultSchema.extend({
 	* Per MCP spec, content is "typically omitted" for decline/cancel actions.
 	* We normalize null to undefined for leniency while maintaining type compatibility.
 	*/
-	content: preprocess((val) => val === null ? void 0 : val, record(string$1(), union$1([
+	content: preprocess((val) => val === null ? void 0 : val, record$1(string$1(), union$1([
 		string$1(),
 		number$3(),
 		boolean$2(),
@@ -7459,7 +7459,7 @@ const CompleteRequestParamsSchema = BaseRequestParamsSchema.extend({
 	/**
 	* Previously-resolved variables in a URI template or prompt.
 	*/
-arguments: record(string$1(), string$1()).optional() }).optional()
+arguments: record$1(string$1(), string$1()).optional() }).optional()
 });
 /**
 * A request from the client to the server, to ask for completion options.
@@ -7501,7 +7501,7 @@ const RootSchema = object$1({
 	* See [MCP specification](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/47339c03c143bb4ec01a26e721a1b8fe66634ebe/docs/specification/draft/basic/index.mdx#general-fields)
 	* for notes on _meta usage.
 	*/
-	_meta: record(string$1(), unknown$1()).optional()
+	_meta: record$1(string$1(), unknown$1()).optional()
 });
 /**
 * Sent from the server to request a list of root URIs from the client.
@@ -24663,6 +24663,138 @@ function handleIntersectionResults(result, left, right) {
 	result.value = merged.data;
 	return result;
 }
+const $ZodRecord = /*@__PURE__*/ $constructor("$ZodRecord", (inst, def) => {
+	$ZodType.init(inst, def);
+	const memo = globalConfig.memoizer;
+	memo?.attach(inst);
+	inst._zod.parse = (payload, ctx) => {
+		const input = payload.value;
+		if (!isPlainObject(input)) {
+			payload.issues.push({
+				expected: "record",
+				code: "invalid_type",
+				input,
+				inst
+			});
+			return payload;
+		}
+		const proms = [];
+		const values = def.keyType._zod.values;
+		if (values && !def.partial) {
+			payload.value = memo ? memo.alloc(inst, payload, {}, ctx) : {};
+			const recordKeys = /* @__PURE__ */ new Set();
+			for (const key of values) if (typeof key === "string" || typeof key === "number" || typeof key === "symbol") {
+				recordKeys.add(typeof key === "number" ? key.toString() : key);
+				if (key === "__proto__") continue;
+				const keyResult = def.keyType._zod.run({
+					value: key,
+					issues: []
+				}, ctx);
+				if (keyResult instanceof Promise) throw new Error("Async schemas not supported in object keys currently");
+				if (keyResult.issues.length) {
+					payload.issues.push({
+						code: "invalid_key",
+						origin: "record",
+						issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx, config())),
+						input: key,
+						path: [key],
+						inst
+					});
+					continue;
+				}
+				const outKey = keyResult.value;
+				if (outKey === "__proto__") continue;
+				const result = def.valueType._zod.run({
+					value: input[key],
+					issues: []
+				}, ctx);
+				if (result instanceof Promise) proms.push(result.then((result) => {
+					if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+					payload.value[outKey] = result.value;
+				}));
+				else {
+					if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+					payload.value[outKey] = result.value;
+				}
+			}
+			let unrecognized;
+			for (const key in input) if (!recordKeys.has(key)) {
+				if (def.mode === "loose") {
+					if (key === "__proto__") continue;
+					payload.value[key] = input[key];
+				} else {
+					unrecognized = unrecognized ?? [];
+					unrecognized.push(key);
+				}
+			}
+			if (unrecognized && unrecognized.length > 0) payload.issues.push({
+				code: "unrecognized_keys",
+				input,
+				inst,
+				keys: unrecognized,
+				continue: true
+			});
+		} else {
+			payload.value = memo ? memo.alloc(inst, payload, {}, ctx) : {};
+			let unrecognized;
+			for (const key of Reflect.ownKeys(input)) {
+				if (key === "__proto__") continue;
+				if (!Object.prototype.propertyIsEnumerable.call(input, key)) continue;
+				let keyResult = def.keyType._zod.run({
+					value: key,
+					issues: []
+				}, ctx);
+				if (keyResult instanceof Promise) throw new Error("Async schemas not supported in object keys currently");
+				if (typeof key === "string" && number$2.test(key) && keyResult.issues.length) {
+					const retryResult = def.keyType._zod.run({
+						value: Number(key),
+						issues: []
+					}, ctx);
+					if (retryResult instanceof Promise) throw new Error("Async schemas not supported in object keys currently");
+					if (retryResult.issues.length === 0) keyResult = retryResult;
+				}
+				if (keyResult.issues.length) {
+					if (def.mode === "loose") payload.value[key] = input[key];
+					else if (values) {
+						unrecognized = unrecognized ?? [];
+						unrecognized.push(key);
+					} else payload.issues.push({
+						code: "invalid_key",
+						origin: "record",
+						issues: keyResult.issues.map((iss) => finalizeIssue(iss, ctx, config())),
+						input: key,
+						path: [key],
+						inst
+					});
+					continue;
+				}
+				const outKey = keyResult.value;
+				if (outKey === "__proto__") continue;
+				const result = def.valueType._zod.run({
+					value: input[key],
+					issues: []
+				}, ctx);
+				if (result instanceof Promise) proms.push(result.then((result) => {
+					if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+					payload.value[outKey] = result.value;
+				}));
+				else {
+					if (result.issues.length) payload.issues.push(...prefixIssues(key, result.issues));
+					payload.value[outKey] = result.value;
+				}
+			}
+			if (unrecognized && unrecognized.length > 0) payload.issues.push({
+				code: "unrecognized_keys",
+				input,
+				inst,
+				keys: unrecognized,
+				continue: true
+			});
+		}
+		if (proms.length) return Promise.all(proms).then(() => payload);
+		return payload;
+	};
+});
 const $ZodEnum = /*@__PURE__*/ $constructor("$ZodEnum", (inst, def) => {
 	$ZodType.init(inst, def);
 	const values = getEnumValues(def.entries);
@@ -27046,7 +27178,7 @@ const ZodType = /*@__PURE__*/ $constructor("ZodType", (inst, def) => {
 		return intersection(this, arg);
 	},
 	transform(tx) {
-		return pipe(this, transform(tx));
+		return pipe(this, transform$1(tx));
 	},
 	default(d) {
 		return _default(this, d);
@@ -27605,6 +27737,28 @@ function intersection(left, right) {
 		right
 	});
 }
+const ZodRecord = /*@__PURE__*/ $constructor("ZodRecord", (inst, def) => {
+	_ensureDefaultMemoizer();
+	$ZodRecord.init(inst, def);
+	ZodType.init(inst, def);
+	inst._zod.processJSONSchema = (ctx, json, params) => recordProcessor(inst, ctx, json, params);
+	inst.keyType = def.keyType;
+	inst.valueType = def.valueType;
+});
+function record(keyType, valueType, params) {
+	if (!valueType || !valueType._zod) return new ZodRecord({
+		type: "record",
+		keyType: string(),
+		valueType: keyType,
+		...normalizeParams(valueType)
+	});
+	return new ZodRecord({
+		type: "record",
+		keyType,
+		valueType,
+		...normalizeParams(params)
+	});
+}
 const ZodEnum = /*@__PURE__*/ $constructor("ZodEnum", (inst, def) => {
 	$ZodEnum.init(inst, def);
 	ZodType.init(inst, def);
@@ -27670,7 +27824,7 @@ const ZodTransform = /*@__PURE__*/ $constructor("ZodTransform", (inst, def) => {
 		return payload;
 	};
 });
-function transform(fn) {
+function transform$1(fn) {
 	return new ZodTransform({
 		type: "transform",
 		transform: fn
@@ -27881,6 +28035,34 @@ const EASINGS = {
 	back: easeOutBack,
 	elastic: (t) => t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - .75) * (2 * Math.PI) / 3) + 1
 };
+const IDENTITY = {
+	opacity: 1,
+	dx: 0,
+	dy: 0,
+	scale: 1,
+	rotation: 0,
+	blur: 0,
+	reveal: 1,
+	flash: 0,
+	swap: 0
+};
+const toFx = (p) => ({
+	...IDENTITY,
+	...p
+});
+function combineFx(a, b) {
+	return {
+		opacity: a.opacity * b.opacity,
+		dx: a.dx + b.dx,
+		dy: a.dy + b.dy,
+		scale: a.scale * b.scale,
+		rotation: a.rotation + b.rotation,
+		blur: Math.max(a.blur, b.blur),
+		reveal: Math.min(a.reveal, b.reveal),
+		flash: Math.max(a.flash, b.flash),
+		swap: Math.max(a.swap, b.swap)
+	};
+}
 const SLIDE = .06;
 const SLIDE_X = .1;
 const sign = (p) => p === "in" ? 1 : -1;
@@ -28007,7 +28189,8 @@ const EFFECTS = {
 		})
 	}
 };
-Object.keys(EFFECTS).filter((n) => EFFECTS[n].out);
+const IN_EFFECTS = Object.keys(EFFECTS);
+const OUT_EFFECTS = IN_EFFECTS.filter((n) => EFFECTS[n].out);
 Object.keys(EASINGS);
 EASINGS["ease-in-out"];
 // ../src/lib/keyframes.ts
@@ -28267,11 +28450,11 @@ const color = string().transform((s) => {
 	const k = s.trim().toLowerCase().replace(/\s+/g, "");
 	return COLOR_NAMES[k] ?? k;
 }).pipe(string().regex(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i, "must be a hex color like #ff8800 or a basic color name"));
-const num = (min, max) => number().min(min).max(max);
-const bool = union([boolean(), _enum(["true", "false"]).transform((v) => v === "true")]);
+const num$1 = (min, max) => number().min(min).max(max);
+const bool$1 = union([boolean(), _enum(["true", "false"]).transform((v) => v === "true")]);
 /** 1-based line number */
 const idx = number().int().min(1);
-const seconds = num(0, 36e3);
+const seconds = num$1(0, 36e3);
 const Position = _enum([
 	"top",
 	"center",
@@ -28316,20 +28499,20 @@ const Aspect = _enum([
 ]);
 const StylePatch = object({
 	fontFamily: string().min(1),
-	fontSize: num(8, 400),
+	fontSize: num$1(8, 400),
 	color,
-	uppercase: bool,
-	letterSpacing: num(-20, 100),
-	lineHeight: num(.5, 4),
+	uppercase: bool$1,
+	letterSpacing: num$1(-20, 100),
+	lineHeight: num$1(.5, 4),
 	maxCharsPerLine: number().int().min(4).max(120),
 	shadow: object({
-		blur: num(0, 100),
-		offsetX: num(-100, 100),
-		offsetY: num(-100, 100),
-		opacity: num(0, 1)
+		blur: num$1(0, 100),
+		offsetX: num$1(-100, 100),
+		offsetY: num$1(-100, 100),
+		opacity: num$1(0, 1)
 	}).partial().strict(),
 	outline: object({
-		width: num(0, 40),
+		width: num$1(0, 40),
 		color
 	}).partial().strict(),
 	position: Position
@@ -28463,7 +28646,7 @@ const lineTools = [
 		params: object({
 			from_index: idx,
 			to_index: idx,
-			seconds: num(-3600, 3600)
+			seconds: num$1(-3600, 3600)
 		}),
 		apply: (p, a) => {
 			const from = Math.min(a.from_index, a.to_index);
@@ -28711,9 +28894,9 @@ const styleTools = [
 				"loop"
 			]).default("in"),
 			name: string().optional().describe("effect name"),
-			durationMs: num(0, 3e3).optional(),
+			durationMs: num$1(0, 3e3).optional(),
 			easing: EasingName.optional(),
-			speed: num(.25, 4).optional()
+			speed: num$1(.25, 4).optional()
 		}),
 		normalize: (args) => args && typeof args === "object" && !("slot" in args) ? {
 			slot: "in",
@@ -28771,7 +28954,7 @@ const sceneTools = [defineTool({
 	params: object({
 		type: _enum(["gradient", "asset"]),
 		colors: array(color).min(2).max(6).optional(),
-		angle: num(0, 360).optional()
+		angle: num$1(0, 360).optional()
 	}).superRefine((a, ctx) => {
 		if (a.type === "gradient" && !a.colors) ctx.addIssue({
 			code: "custom",
@@ -29039,7 +29222,7 @@ function need(p, ref) {
 }
 const styleFields = {
 	position: Position.optional(),
-	fontSize: num(8, 400).optional(),
+	fontSize: num$1(8, 400).optional(),
 	color: color.optional()
 };
 const pickStyle = (a) => {
@@ -29556,8 +29739,8 @@ const moveText = defineTool({
 	params: object({
 		index: optIndex,
 		place: _enum(PLACES).optional(),
-		x: num(0, 100).optional().describe("percent from the left"),
-		y: num(0, 100).optional().describe("percent from the top")
+		x: num$1(0, 100).optional().describe("percent from the left"),
+		y: num$1(0, 100).optional().describe("percent from the top")
 	}),
 	normalize: (a) => {
 		const o = tidy$2(a, {
@@ -29590,7 +29773,7 @@ const scaleText = defineTool({
 	description: "Make text bigger or smaller as a whole. scale 1 = normal, 2 = double, 0.5 = half.",
 	params: object({
 		index: optIndex,
-		scale: num(.1, 8)
+		scale: num$1(.1, 8)
 	}),
 	normalize: (a) => {
 		const o = tidy$2(a, {
@@ -29615,7 +29798,7 @@ const rotateText = defineTool({
 	description: "Tilt text by an angle in degrees (positive = clockwise, 0 = straight).",
 	params: object({
 		index: optIndex,
-		degrees: num(-360, 360)
+		degrees: num$1(-360, 360)
 	}),
 	normalize: (a) => tidy$2(a, {
 		angle: "degrees",
@@ -29678,7 +29861,7 @@ const slotTool = (slot) => defineTool({
 	params: object({
 		index: optIndex,
 		effect: _enum(EFFECT_NAMES$1),
-		durationMs: num(0, 3e3).optional(),
+		durationMs: num$1(0, 3e3).optional(),
 		easing: EasingName.optional()
 	}),
 	normalize: (a) => {
@@ -29713,7 +29896,7 @@ const setAnimationLoop = defineTool({
 	params: object({
 		index: optIndex,
 		effect: Loop,
-		speed: num(.25, 4).optional()
+		speed: num$1(.25, 4).optional()
 	}),
 	normalize: (a) => {
 		const o = tidy$2(a, {
@@ -29734,11 +29917,11 @@ const setAnimationLoop = defineTool({
 	}
 });
 const KeyProps = object({
-	x: num(-100, 100).describe("move across, percent of width (+ = right)"),
-	y: num(-100, 100).describe("move down, percent of height (+ = down)"),
-	scale: num(.05, 8),
-	rotation: num(-720, 720).describe("degrees"),
-	opacity: num(0, 1)
+	x: num$1(-100, 100).describe("move across, percent of width (+ = right)"),
+	y: num$1(-100, 100).describe("move down, percent of height (+ = down)"),
+	scale: num$1(.05, 8),
+	rotation: num$1(-720, 720).describe("degrees"),
+	opacity: num$1(0, 1)
 }).partial();
 const addKeyframe = defineTool({
 	name: "add_keyframe",
@@ -29747,7 +29930,7 @@ const addKeyframe = defineTool({
 	hint: "props {x,y (percent offsets), scale (1 = normal), rotation (deg), opacity (0-1)}; two keyframes make the text move between them",
 	params: object({
 		index: idx,
-		time: num(0, 600),
+		time: num$1(0, 600),
 		props: KeyProps,
 		easing: EasingName.optional()
 	}),
@@ -29825,7 +30008,7 @@ const setTransition = defineTool({
 			"slide-push",
 			"zoom-through"
 		]),
-		ms: num(50, 3e3).optional()
+		ms: num$1(50, 3e3).optional()
 	}),
 	normalize: (a) => {
 		const o = tidy$2(a, {
@@ -29929,13 +30112,13 @@ const motionTools = [
 ];
 // ../src/timeline/engine.ts
 init_convert();
-const EPS$1 = 1e-6;
+const EPS$2 = 1e-6;
 const clipEnd = (c) => c.start + c.duration;
 const tidy$1 = (n) => Math.round(n * 1e6) / 1e6;
 const frameLen = (ctx) => 1 / ctx.fps;
-let seq = 0;
+let seq$1 = 0;
 /** New ids for clips, tracks and markers created by edits. */
-const newId = (p) => `${p}-${Date.now().toString(36)}${(seq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+const newId$1 = (p) => `${p}-${Date.now().toString(36)}${(seq$1++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const trackOf = (tl, id) => tl.tracks.find((t) => t.id === id);
 const isLocked = (tl, trackId) => !!trackOf(tl, trackId)?.locked;
 const editable = (c) => !c.fill;
@@ -29962,7 +30145,7 @@ function addTrack(tl, kind, name) {
 	const n = tl.tracks.filter((t) => t.kind === kind).length + 1;
 	const prefix = kind === "video" ? "V" : kind === "audio" ? "A" : "S";
 	const track = {
-		id: newId("t"),
+		id: newId$1("t"),
 		kind,
 		name: name ?? `${prefix}${n}`,
 		muted: false,
@@ -30023,7 +30206,7 @@ function splitAt(c, t) {
 		sourceOut: tidy$1(c.sourceIn + (t - c.start) * c.speed)
 	}, {
 		...c,
-		id: newId("c"),
+		id: newId$1("c"),
 		start: tidy$1(t),
 		duration: tidy$1(clipEnd(c) - t),
 		sourceIn: tidy$1(c.sourceIn + (t - c.start) * c.speed)
@@ -30034,16 +30217,16 @@ function splitAt(c, t) {
 * range is split around it. Clips in `except` are left alone. Used by overwrite, move and lift.
 */
 function clearRange(tl, trackId, a, b, except = /* @__PURE__ */ new Set()) {
-	if (b - a <= EPS$1 || isLocked(tl, trackId)) return tl;
+	if (b - a <= EPS$2 || isLocked(tl, trackId)) return tl;
 	const out = [];
 	let changed = false;
 	for (const c of tl.clips) {
-		if (c.trackId !== trackId || !editable(c) || except.has(c.id) || clipEnd(c) <= a + EPS$1 || c.start >= b - EPS$1) {
+		if (c.trackId !== trackId || !editable(c) || except.has(c.id) || clipEnd(c) <= a + EPS$2 || c.start >= b - EPS$2) {
 			out.push(c);
 			continue;
 		}
 		changed = true;
-		if (c.start >= a - EPS$1 && clipEnd(c) <= b + EPS$1) continue;
+		if (c.start >= a - EPS$2 && clipEnd(c) <= b + EPS$2) continue;
 		if (c.start < a && clipEnd(c) > b) {
 			const [left, rest] = splitAt(c, a);
 			const [, right] = splitAt(rest, b);
@@ -30085,7 +30268,7 @@ function moveClips$1(tl, ids, dt, trackShift = 0, shiftKind) {
 		if (!target || target.locked) return tl;
 		dest.set(c.id, target.id);
 	}
-	if (Math.abs(d) < EPS$1 && group.every((c) => dest.get(c.id) === c.trackId)) return tl;
+	if (Math.abs(d) < EPS$2 && group.every((c) => dest.get(c.id) === c.trackId)) return tl;
 	const moving = new Set(group.map((c) => c.id));
 	let next = {
 		...tl,
@@ -30128,7 +30311,7 @@ function rippleDelete(tl, ids) {
 		clips: tl.clips.filter((c) => !gone.has(c.id)).map((c) => {
 			const removed = byTrack.get(c.trackId);
 			if (!removed || !editable(c)) return c;
-			const shift = removed.filter((r) => clipEnd(r) <= c.start + EPS$1).reduce((s, r) => s + r.duration, 0);
+			const shift = removed.filter((r) => clipEnd(r) <= c.start + EPS$2).reduce((s, r) => s + r.duration, 0);
 			return shift ? {
 				...c,
 				start: tidy$1(c.start - shift)
@@ -30146,14 +30329,14 @@ function blade(tl, t, ids) {
 	const out = [];
 	let changed = false;
 	for (const c of tl.clips) {
-		if (!(editable(c) && !c.text && !isLocked(tl, c.trackId) && (!only || only.has(c.id)) && t > c.start + EPS$1 && t < clipEnd(c) - EPS$1)) {
+		if (!(editable(c) && !c.text && !isLocked(tl, c.trackId) && (!only || only.has(c.id)) && t > c.start + EPS$2 && t < clipEnd(c) - EPS$2)) {
 			out.push(c);
 			continue;
 		}
 		changed = true;
 		const [left, right] = splitAt(c, t);
 		if (c.linkId) {
-			if (!newLinks.has(c.linkId)) newLinks.set(c.linkId, newId("l"));
+			if (!newLinks.has(c.linkId)) newLinks.set(c.linkId, newId$1("l"));
 			right.linkId = newLinks.get(c.linkId);
 		}
 		out.push(left, right);
@@ -30194,7 +30377,7 @@ function trimEdge(tl, id, edge, dt, ripple, ctx) {
 		hi = Math.min(hi, b);
 	}
 	const d = tidy$1(Math.min(hi, Math.max(lo, dt)));
-	if (Math.abs(d) < EPS$1 || lo > hi) return tl;
+	if (Math.abs(d) < EPS$2 || lo > hi) return tl;
 	const touched = new Set(group.map((c) => c.id));
 	const tracks = new Set(group.map((c) => c.trackId));
 	const shift = edge === "end" ? d : -d;
@@ -30221,7 +30404,7 @@ function trimEdge(tl, id, edge, dt, ripple, ctx) {
 			}
 			if (ripple && tracks.has(c.trackId) && editable(c)) {
 				const ref = group.find((g) => g.trackId === c.trackId);
-				if (c.start >= clipEnd(ref) - EPS$1) return {
+				if (c.start >= clipEnd(ref) - EPS$2) return {
 					...c,
 					start: tidy$1(c.start + shift)
 				};
@@ -30248,16 +30431,16 @@ function sourceClips(src, at, targets, speed = 1) {
 	const out = [];
 	const pic = src.kind === "audio" ? void 0 : targets.video;
 	const snd = src.kind === "audio" ? targets.audio : src.withAudio ? targets.audio : void 0;
-	const linkId = pic && snd ? newId("l") : void 0;
+	const linkId = pic && snd ? newId$1("l") : void 0;
 	if (pic) out.push({
 		...base,
-		id: newId("c"),
+		id: newId$1("c"),
 		trackId: pic,
 		linkId
 	});
 	if (snd) out.push({
 		...base,
-		id: newId("c"),
+		id: newId$1("c"),
 		trackId: snd,
 		linkId
 	});
@@ -30298,7 +30481,7 @@ function insertEdit(tl, src, at, targets) {
 	let next = blade(tl, at);
 	next = {
 		...next,
-		clips: next.clips.map((c) => editable(c) && !isLocked(next, c.trackId) && c.start >= at - EPS$1 ? {
+		clips: next.clips.map((c) => editable(c) && !isLocked(next, c.trackId) && c.start >= at - EPS$2 ? {
 			...c,
 			start: tidy$1(c.start + len)
 		} : c)
@@ -30317,7 +30500,7 @@ function placeOnTop(tl, src, at, targets) {
 	const len = src.out - src.in;
 	const of = tl.tracks.filter((t) => t.kind === kind);
 	const from = Math.max(0, of.findIndex((t) => t.id === (kind === "video" ? targets.video : targets.audio)));
-	const free = of.slice(from).find((t) => !t.locked && !tl.clips.some((c) => c.trackId === t.id && editable(c) && c.start < at + len - EPS$1 && clipEnd(c) > at + EPS$1));
+	const free = of.slice(from).find((t) => !t.locked && !tl.clips.some((c) => c.trackId === t.id && editable(c) && c.start < at + len - EPS$2 && clipEnd(c) > at + EPS$2));
 	let next = tl;
 	let trackId = free?.id;
 	if (!trackId) {
@@ -30337,7 +30520,7 @@ function appendEdit(tl, src, targets) {
 }
 function addMarker(tl, time, m = {}) {
 	const marker = {
-		id: newId("mk"),
+		id: newId$1("mk"),
 		time: tidy$1(Math.max(0, time)),
 		name: m.name ?? "",
 		color: m.color ?? "#5b9dff",
@@ -30384,7 +30567,9 @@ create(() => ({
 	selected: [],
 	sourceId: null,
 	guide: null,
-	mode: null
+	mode: null,
+	previewEffect: null,
+	selectedTransition: null
 }));
 /** The document's media entry for a pool item (added when the item is first used on a timeline). */
 const poolMediaId = (poolId) => `pm-${poolId}`;
@@ -31402,8 +31587,8 @@ init_media();
 * They work on the whole document (`applyDoc`), apply as one undo step like every tool, and never change locked
 * tracks. Clips are referred to by id (see the project summary); media by its library name or id.
 */
-const on = (doc, fn) => onActive(doc, fn);
-const tl = (doc) => activeTimeline(doc);
+const on$1 = (doc, fn) => onActive(doc, fn);
+const tl$1 = (doc) => activeTimeline(doc);
 /** A library item by id or (case-insensitive, extension optional) name. */
 function findMedia(ref) {
 	const items = useMedia.getState().items;
@@ -31429,7 +31614,7 @@ function clipIds(t, ids) {
 	if (missing.length) throw new Error(`no clip ${missing.join(", ")} on the timeline (clip ids are in the project summary)`);
 	return ids;
 }
-const ids = union([string(), array(string())]).transform((v) => Array.isArray(v) ? v : [v]).describe("clip id or list of clip ids");
+const ids$1 = union([string(), array(string())]).transform((v) => Array.isArray(v) ? v : [v]).describe("clip id or list of clip ids");
 const timelineTools = [
 	defineTool({
 		name: "add_clip",
@@ -31465,7 +31650,7 @@ const timelineTools = [
 			if (src.out <= src.in) throw new Error("out must be after in");
 			const kind = item.kind === "audio" ? "audio" : "video";
 			let placed = [];
-			const next = on(withPoolMedia(doc, item), (t) => {
+			const next = on$1(withPoolMedia(doc, item), (t) => {
 				const track = findTrack(t, a.track, kind);
 				if (track.kind !== kind) throw new Error(`${item.name} needs a ${kind} track, ${track.name} is a ${track.kind} track`);
 				const targets = kind === "video" ? {
@@ -31491,17 +31676,17 @@ const timelineTools = [
 		params: object({
 			clip: string(),
 			edge: _enum(["start", "end"]),
-			by: num(-36e3, 36e3).optional(),
+			by: num$1(-36e3, 36e3).optional(),
 			to: seconds.optional(),
 			ripple: boolean().default(false)
 		}),
 		applyDoc: (doc, a) => {
-			const t = tl(doc);
+			const t = tl$1(doc);
 			const c = t.clips.find((x) => x.id === clipIds(t, [a.clip])[0]);
 			const cur = a.edge === "start" ? c.start : clipEnd(c);
 			const dt = a.to !== void 0 ? a.to - cur : a.by ?? 0;
 			return {
-				doc: on(doc, (x) => trimEdge(x, c.id, a.edge, dt, a.ripple, {
+				doc: on$1(doc, (x) => trimEdge(x, c.id, a.edge, dt, a.ripple, {
 					fps: doc.settings.fps,
 					mediaDuration: (id) => doc.media.find((m) => m.id === id)?.duration
 				})),
@@ -31514,13 +31699,13 @@ const timelineTools = [
 		group: "timeline",
 		description: "Move clips (and their linked sound) by seconds, or so the first starts at a time; optionally onto another track of the same kind.",
 		params: object({
-			clips: ids,
-			by: num(-36e3, 36e3).optional(),
+			clips: ids$1,
+			by: num$1(-36e3, 36e3).optional(),
 			to: seconds.optional(),
 			track: string().optional()
 		}),
 		applyDoc: (doc, a) => {
-			const t = tl(doc);
+			const t = tl$1(doc);
 			const list = clipIds(t, a.clips);
 			const group = t.clips.filter((c) => list.includes(c.id));
 			const first = Math.min(...group.map((c) => c.start));
@@ -31535,7 +31720,7 @@ const timelineTools = [
 				shift = order.indexOf(from) - order.indexOf(to);
 				kind = from.kind;
 			}
-			const next = on(doc, (x) => moveClips$1(x, list, dt, shift, kind));
+			const next = on$1(doc, (x) => moveClips$1(x, list, dt, shift, kind));
 			if (next === doc) throw new Error("nothing moved: a clip or the destination track is locked, or it is already there");
 			return {
 				doc: next,
@@ -31549,10 +31734,10 @@ const timelineTools = [
 		description: "Cut (blade) clips at a time: the given clips, or every clip under that time on unlocked tracks.",
 		params: object({
 			time: seconds,
-			clips: ids.optional()
+			clips: ids$1.optional()
 		}),
 		applyDoc: (doc, a) => ({
-			doc: on(doc, (x) => blade(x, a.time, a.clips ? clipIds(x, a.clips) : void 0)),
+			doc: on$1(doc, (x) => blade(x, a.time, a.clips ? clipIds(x, a.clips) : void 0)),
 			summary: `cut at ${a.time}s`
 		})
 	}),
@@ -31561,11 +31746,11 @@ const timelineTools = [
 		group: "timeline",
 		description: "Delete clips (with their linked sound). ripple closes the gaps they leave.",
 		params: object({
-			clips: ids,
+			clips: ids$1,
 			ripple: boolean().default(false)
 		}),
 		applyDoc: (doc, a) => ({
-			doc: on(doc, (x) => a.ripple ? rippleDelete(x, clipIds(x, a.clips)) : deleteClips$1(x, clipIds(x, a.clips))),
+			doc: on$1(doc, (x) => a.ripple ? rippleDelete(x, clipIds(x, a.clips)) : deleteClips$1(x, clipIds(x, a.clips))),
 			summary: `${a.clips.length} clip(s) deleted${a.ripple ? " (ripple)" : ""}`
 		})
 	}),
@@ -31574,12 +31759,12 @@ const timelineTools = [
 		group: "timeline",
 		description: "Place a video or image clip in the frame (x, y in percent, 50/50 = centre; scale 1 = fitted; rotation in degrees; opacity 0-1), or set an audio clip's volume (0-2), speed or whether it is enabled.",
 		params: object({
-			clips: ids,
-			x: num(-100, 200).optional(),
-			y: num(-100, 200).optional(),
-			scale: num(.01, 10).optional(),
-			rotation: num(-360, 360).optional(),
-			opacity: num(0, 1).optional(),
+			clips: ids$1,
+			x: num$1(-100, 200).optional(),
+			y: num$1(-100, 200).optional(),
+			scale: num$1(.01, 10).optional(),
+			rotation: num$1(-360, 360).optional(),
+			opacity: num$1(0, 1).optional(),
 			blend: _enum([
 				"normal",
 				"multiply",
@@ -31595,11 +31780,11 @@ const timelineTools = [
 				"cover",
 				"fill"
 			]).optional(),
-			volume: num(0, 2).optional(),
+			volume: num$1(0, 2).optional(),
 			enabled: boolean().optional()
 		}),
 		applyDoc: (doc, a) => {
-			const t = tl(doc);
+			const t = tl$1(doc);
 			const list = new Set(clipIds(t, a.clips));
 			const tf = {};
 			if (a.x !== void 0) tf.x = a.x / 100;
@@ -31612,7 +31797,7 @@ const timelineTools = [
 				"fit"
 			]) if (a[k] !== void 0) tf[k] = a[k];
 			return {
-				doc: on(doc, (x) => ({
+				doc: on$1(doc, (x) => ({
 					...x,
 					clips: x.clips.map((c) => {
 						if (!list.has(c.id) || isLocked(x, c.trackId)) return c;
@@ -31641,7 +31826,7 @@ const timelineTools = [
 		applyDoc: (doc, a) => {
 			let id = "";
 			return {
-				doc: on(doc, (x) => {
+				doc: on$1(doc, (x) => {
 					const r = addTrack(x, a.kind, a.name);
 					id = r.id;
 					return r.tl;
@@ -31664,14 +31849,14 @@ const timelineTools = [
 			target: boolean().optional()
 		}),
 		applyDoc: (doc, a) => {
-			const t = tl(doc);
+			const t = tl$1(doc);
 			const k = a.track.toLowerCase();
 			const tr = t.tracks.find((x) => x.id === a.track) ?? t.tracks.find((x) => x.name.toLowerCase() === k);
 			if (!tr || tr.kind === "subtitle") throw new Error(`no video or audio track "${a.track}"`);
 			const { track: _t, target, ...patch } = a;
 			const clean = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== void 0));
-			let next = on(doc, (x) => setTrack(x, tr.id, clean));
-			if (target) next = on(next, (x) => setTarget(x, tr.id));
+			let next = on$1(doc, (x) => setTrack(x, tr.id, clean));
+			if (target) next = on$1(next, (x) => setTarget(x, tr.id));
 			return {
 				doc: next,
 				summary: `track ${tr.name}: ${Object.keys(clean).concat(target ? ["target"] : []).join(", ")}`
@@ -31690,7 +31875,7 @@ const timelineTools = [
 			clip: string().optional()
 		}),
 		applyDoc: (doc, a) => ({
-			doc: on(doc, (x) => addMarker(x, a.time, {
+			doc: on$1(doc, (x) => addMarker(x, a.time, {
 				name: a.name,
 				color: a.color,
 				note: a.note,
@@ -31709,9 +31894,1394 @@ const timelineTools = [
 			clear: boolean().default(false)
 		}),
 		applyDoc: (doc, a) => ({
-			doc: on(doc, (x) => a.clear ? setRange(x, null, null) : setRange(x, a.in, a.out)),
+			doc: on$1(doc, (x) => a.clear ? setRange(x, null, null) : setRange(x, a.in, a.out)),
 			summary: a.clear ? "in/out cleared" : `in/out ${a.in ?? "-"} to ${a.out ?? "-"}`
 		})
+	})
+];
+// ../src/lib/effects/gpu.ts
+/** "#rrggbb" -> [r, g, b] in 0..1. */
+function rgb(hex) {
+	const h = String(hex ?? "#000000").replace("#", "");
+	const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h.padEnd(6, "0");
+	return [
+		0,
+		2,
+		4
+	].map((i) => parseInt(full.slice(i, i + 2), 16) / 255);
+}
+// ../src/lib/effects/util.ts
+/** Read a number param (falls back when missing or not a number). */
+const num = (p, k, d = 0) => typeof p[k] === "number" && Number.isFinite(p[k]) ? p[k] : d;
+const str = (p, k, d = "") => typeof p[k] === "string" ? p[k] : d;
+const bool = (p, k, d = false) => typeof p[k] === "boolean" ? p[k] : d;
+const pt = (p, k, d = {
+	x: .5,
+	y: .5
+}) => {
+	const v = p[k];
+	return {
+		x: typeof v?.x === "number" ? v.x : d.x,
+		y: typeof v?.y === "number" ? v.y : d.y
+	};
+};
+/** Draw src into dst through a canvas filter string (blur, invert, ...). */
+function filtered(src, dst, filter) {
+	dst.ctx.save();
+	dst.ctx.filter = filter;
+	dst.ctx.drawImage(src.canvas, 0, 0);
+	dst.ctx.restore();
+}
+/** Sizes in params are in 1080p pixels; scale them to the frame. */
+const px = (v, l) => v * Math.min(l.w, l.h) / 1080;
+/** "#rrggbb" -> [r, g, b] in 0..255. */
+function rgb255(hex) {
+	const h = hex.replace("#", "");
+	const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h.padEnd(6, "0");
+	return [
+		0,
+		2,
+		4
+	].map((i) => parseInt(full.slice(i, i + 2), 16));
+}
+// ../src/lib/effects/builtins/transform.ts
+/** Move, scale and rotate the clip's picture on top of its placement. */
+const transform = {
+	id: "transform",
+	name: "Transform",
+	category: "Transform",
+	description: "Move, scale and rotate the picture",
+	params: [
+		{
+			key: "x",
+			label: "Move across",
+			type: "number",
+			min: -100,
+			max: 100,
+			step: .5,
+			default: 0,
+			unit: "%"
+		},
+		{
+			key: "y",
+			label: "Move down",
+			type: "number",
+			min: -100,
+			max: 100,
+			step: .5,
+			default: 0,
+			unit: "%"
+		},
+		{
+			key: "scale",
+			label: "Size",
+			type: "number",
+			min: 1,
+			max: 400,
+			default: 100,
+			unit: "%"
+		},
+		{
+			key: "rotation",
+			label: "Rotation",
+			type: "angle",
+			default: 0
+		}
+	],
+	render(src, dst, p) {
+		const { w, h } = src;
+		const s = num(p, "scale", 100) / 100;
+		dst.ctx.save();
+		dst.ctx.translate(w / 2 + num(p, "x") / 100 * w, h / 2 + num(p, "y") / 100 * h);
+		dst.ctx.rotate(num(p, "rotation") * Math.PI / 180);
+		dst.ctx.scale(s, s);
+		dst.ctx.drawImage(src.canvas, -w / 2, -h / 2);
+		dst.ctx.restore();
+	}
+};
+// ../src/lib/effects/builtins/crop.ts
+/** Cut away the edges of the frame. */
+const crop = {
+	id: "crop",
+	name: "Crop",
+	category: "Transform",
+	description: "Trim the left, right, top and bottom edges",
+	params: [
+		{
+			key: "left",
+			label: "Left",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 0,
+			unit: "%"
+		},
+		{
+			key: "right",
+			label: "Right",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 0,
+			unit: "%"
+		},
+		{
+			key: "top",
+			label: "Top",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 0,
+			unit: "%"
+		},
+		{
+			key: "bottom",
+			label: "Bottom",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 0,
+			unit: "%"
+		},
+		{
+			key: "feather",
+			label: "Soft edge",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 0,
+			unit: "px"
+		}
+	],
+	render(src, dst, p, env) {
+		const { w, h } = src;
+		const x0 = num(p, "left") / 100 * w;
+		const x1 = w - num(p, "right") / 100 * w;
+		const y0 = num(p, "top") / 100 * h;
+		const y1 = h - num(p, "bottom") / 100 * h;
+		if (x1 <= x0 || y1 <= y0) return;
+		const f = px(num(p, "feather"), src);
+		if (f <= .5) {
+			dst.ctx.save();
+			dst.ctx.beginPath();
+			dst.ctx.rect(x0, y0, x1 - x0, y1 - y0);
+			dst.ctx.clip();
+			dst.ctx.drawImage(src.canvas, 0, 0);
+			dst.ctx.restore();
+			return;
+		}
+		const m = env.scratch();
+		m.ctx.filter = `blur(${f}px)`;
+		m.ctx.fillStyle = "#fff";
+		m.ctx.fillRect(x0 + f, y0 + f, Math.max(0, x1 - x0 - 2 * f), Math.max(0, y1 - y0 - 2 * f));
+		dst.ctx.drawImage(src.canvas, 0, 0);
+		dst.ctx.globalCompositeOperation = "destination-in";
+		dst.ctx.drawImage(m.canvas, 0, 0);
+		dst.ctx.globalCompositeOperation = "source-over";
+	}
+};
+// ../src/lib/effects/builtins/blur.ts
+const blur = {
+	id: "blur",
+	name: "Blur",
+	category: "Blur and sharpen",
+	description: "Soften the whole picture",
+	params: [{
+		key: "radius",
+		label: "Amount",
+		type: "number",
+		min: 0,
+		max: 100,
+		default: 8,
+		unit: "px"
+	}],
+	render: (src, dst, p) => filtered(src, dst, `blur(${px(num(p, "radius", 8), src)}px)`)
+};
+// ../src/lib/effects/builtins/sharpen.ts
+/** Unsharp mask on the GPU; without WebGL2 a gentle contrast boost stands in. */
+const sharpen = {
+	id: "sharpen",
+	name: "Sharpen",
+	category: "Blur and sharpen",
+	description: "Crisper edges and detail",
+	params: [{
+		key: "amount",
+		label: "Amount",
+		type: "number",
+		min: 0,
+		max: 300,
+		default: 80,
+		unit: "%"
+	}],
+	render: (src, dst, p) => filtered(src, dst, `contrast(${1 + num(p, "amount", 80) / 400})`),
+	gpu: {
+		uniforms: (p) => ({ uAmount: num(p, "amount", 80) / 100 }),
+		fragment: `
+void main() {
+  vec2 px = 1.0 / uSize;
+  vec4 c = texture(uTex, vUv);
+  vec4 n = texture(uTex, vUv + vec2(px.x, 0.0)) + texture(uTex, vUv - vec2(px.x, 0.0)) + texture(uTex, vUv + vec2(0.0, px.y)) + texture(uTex, vUv - vec2(0.0, px.y));
+  outColor = vec4(clamp(c.rgb + (c.rgb * 4.0 - n.rgb) * uAmount, 0.0, 1.0), c.a);
+}`
+	}
+};
+// ../src/lib/effects/builtins/glow.ts
+/** Soft light around the picture: a blurred copy added on top. */
+const glow = {
+	id: "glow",
+	name: "Glow",
+	category: "Stylize",
+	description: "Soft light spilling around the picture",
+	params: [{
+		key: "radius",
+		label: "Size",
+		type: "number",
+		min: 0,
+		max: 120,
+		default: 24,
+		unit: "px"
+	}, {
+		key: "intensity",
+		label: "Strength",
+		type: "number",
+		min: 0,
+		max: 200,
+		default: 60,
+		unit: "%"
+	}],
+	render(src, dst, p) {
+		dst.ctx.drawImage(src.canvas, 0, 0);
+		dst.ctx.save();
+		dst.ctx.globalCompositeOperation = "lighter";
+		dst.ctx.globalAlpha = Math.min(1, num(p, "intensity", 60) / 100);
+		dst.ctx.filter = `blur(${px(num(p, "radius", 24), src)}px)`;
+		dst.ctx.drawImage(src.canvas, 0, 0);
+		dst.ctx.restore();
+	}
+};
+// ../src/lib/effects/builtins/vignette.ts
+/** Darker (or coloured) corners, only where the picture is. */
+const vignette = {
+	id: "vignette",
+	name: "Vignette",
+	category: "Stylize",
+	description: "Darken the corners",
+	params: [
+		{
+			key: "amount",
+			label: "Amount",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 50,
+			unit: "%"
+		},
+		{
+			key: "size",
+			label: "Clear centre",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 55,
+			unit: "%"
+		},
+		{
+			key: "color",
+			label: "Colour",
+			type: "color",
+			default: "#000000"
+		}
+	],
+	render(src, dst, p) {
+		const { w, h } = src;
+		dst.ctx.drawImage(src.canvas, 0, 0);
+		const r = Math.hypot(w, h) / 2;
+		const g = dst.ctx.createRadialGradient(w / 2, h / 2, r * num(p, "size", 55) / 100, w / 2, h / 2, r);
+		g.addColorStop(0, "rgba(0,0,0,0)");
+		g.addColorStop(1, str(p, "color", "#000000"));
+		dst.ctx.save();
+		dst.ctx.globalCompositeOperation = "source-atop";
+		dst.ctx.globalAlpha = num(p, "amount", 50) / 100;
+		dst.ctx.fillStyle = g;
+		dst.ctx.fillRect(0, 0, w, h);
+		dst.ctx.restore();
+	}
+};
+// ../src/lib/effects/builtins/dropShadow.ts
+const dropShadow = {
+	id: "drop-shadow",
+	name: "Drop shadow",
+	category: "Stylize",
+	description: "A shadow behind the picture",
+	params: [
+		{
+			key: "distance",
+			label: "Distance",
+			type: "number",
+			min: 0,
+			max: 200,
+			default: 18,
+			unit: "px"
+		},
+		{
+			key: "angle",
+			label: "Direction",
+			type: "angle",
+			default: 135
+		},
+		{
+			key: "blur",
+			label: "Softness",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 20,
+			unit: "px"
+		},
+		{
+			key: "opacity",
+			label: "Opacity",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 60,
+			unit: "%"
+		},
+		{
+			key: "color",
+			label: "Colour",
+			type: "color",
+			default: "#000000"
+		}
+	],
+	render(src, dst, p) {
+		const a = num(p, "angle", 135) * Math.PI / 180;
+		const d = px(num(p, "distance", 18), src);
+		const [r, g, b] = rgb255(str(p, "color", "#000000"));
+		dst.ctx.save();
+		dst.ctx.shadowColor = `rgba(${r},${g},${b},${num(p, "opacity", 60) / 100})`;
+		dst.ctx.shadowBlur = px(num(p, "blur", 20), src);
+		dst.ctx.shadowOffsetX = Math.cos(a) * d;
+		dst.ctx.shadowOffsetY = Math.sin(a) * d;
+		dst.ctx.drawImage(src.canvas, 0, 0);
+		dst.ctx.restore();
+	}
+};
+// ../src/lib/effects/builtins/mask.ts
+/** Show the picture only inside (or outside) a rectangle or ellipse, with a soft edge. */
+const mask = {
+	id: "mask",
+	name: "Mask",
+	category: "Transform",
+	description: "Keep a rectangle or ellipse of the picture",
+	params: [
+		{
+			key: "shape",
+			label: "Shape",
+			type: "choice",
+			default: "ellipse",
+			options: [{
+				value: "ellipse",
+				label: "Ellipse"
+			}, {
+				value: "rectangle",
+				label: "Rectangle"
+			}]
+		},
+		{
+			key: "center",
+			label: "Centre",
+			type: "point",
+			default: {
+				x: .5,
+				y: .5
+			}
+		},
+		{
+			key: "width",
+			label: "Width",
+			type: "number",
+			min: 1,
+			max: 200,
+			default: 60,
+			unit: "%"
+		},
+		{
+			key: "height",
+			label: "Height",
+			type: "number",
+			min: 1,
+			max: 200,
+			default: 60,
+			unit: "%"
+		},
+		{
+			key: "feather",
+			label: "Soft edge",
+			type: "number",
+			min: 0,
+			max: 200,
+			default: 30,
+			unit: "px"
+		},
+		{
+			key: "invert",
+			label: "Invert",
+			type: "boolean",
+			default: false
+		}
+	],
+	render(src, dst, p, env) {
+		const { w, h } = src;
+		const c = pt(p, "center");
+		const mw = num(p, "width", 60) / 100 * w;
+		const mh = num(p, "height", 60) / 100 * h;
+		const m = env.scratch();
+		const f = px(num(p, "feather", 30), src);
+		if (f > .5) m.ctx.filter = `blur(${f}px)`;
+		m.ctx.fillStyle = "#fff";
+		m.ctx.beginPath();
+		if (str(p, "shape", "ellipse") === "rectangle") m.ctx.rect(c.x * w - mw / 2, c.y * h - mh / 2, mw, mh);
+		else m.ctx.ellipse(c.x * w, c.y * h, mw / 2, mh / 2, 0, 0, Math.PI * 2);
+		m.ctx.fill();
+		dst.ctx.drawImage(src.canvas, 0, 0);
+		dst.ctx.globalCompositeOperation = bool(p, "invert") ? "destination-out" : "destination-in";
+		dst.ctx.drawImage(m.canvas, 0, 0);
+		dst.ctx.globalCompositeOperation = "source-over";
+	}
+};
+// ../src/lib/effects/builtins/chromaKey.ts
+/** Make a colour (green or blue screen) transparent, with a soft edge and spill removal. */
+const chromaKey = {
+	id: "chroma-key",
+	name: "Chroma key",
+	category: "Keying",
+	description: "Remove a green or blue screen",
+	params: [
+		{
+			key: "key",
+			label: "Key colour",
+			type: "color",
+			default: "#00ff00"
+		},
+		{
+			key: "tolerance",
+			label: "Tolerance",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 35,
+			unit: "%"
+		},
+		{
+			key: "softness",
+			label: "Softness",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 15,
+			unit: "%"
+		},
+		{
+			key: "spill",
+			label: "Spill removal",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 50,
+			unit: "%"
+		}
+	],
+	gpu: {
+		uniforms: (p) => ({
+			uKey: rgb(p.key ?? "#00ff00"),
+			uTol: num(p, "tolerance", 35) / 100,
+			uSoft: num(p, "softness", 15) / 100,
+			uSpill: num(p, "spill", 50) / 100
+		}),
+		fragment: `
+vec2 cc(vec3 c) { return vec2(-0.169 * c.r - 0.331 * c.g + 0.5 * c.b, 0.5 * c.r - 0.419 * c.g - 0.081 * c.b); }
+void main() {
+  vec4 c = texture(uTex, vUv);
+  float d = distance(cc(c.rgb), cc(uKey)) / 0.7;
+  float a = smoothstep(uTol, uTol + max(uSoft, 0.001), d);
+  vec3 col = c.rgb;
+  if (uKey.g > max(uKey.r, uKey.b)) col.g = mix(col.g, min(col.g, max(col.r, col.b)), uSpill);
+  outColor = vec4(col, c.a * a);
+}`
+	},
+	render(src, dst, p) {
+		const [kr, kg, kb] = rgb(str(p, "key", "#00ff00"));
+		const tol = num(p, "tolerance", 35) / 100;
+		const soft = Math.max(.001, num(p, "softness", 15) / 100);
+		const spill = num(p, "spill", 50) / 100;
+		const cb = (r, g, b) => [-.169 * r - .331 * g + .5 * b, .5 * r - .419 * g - .081 * b];
+		const [kx, ky] = cb(kr, kg, kb);
+		const img = src.ctx.getImageData(0, 0, src.w, src.h);
+		const d = img.data;
+		const greenKey = kg > Math.max(kr, kb);
+		for (let i = 0; i < d.length; i += 4) {
+			const r = d[i] / 255;
+			const g = d[i + 1] / 255;
+			const b = d[i + 2] / 255;
+			const [x, y] = cb(r, g, b);
+			const t = Math.min(1, Math.max(0, (Math.hypot(x - kx, y - ky) / .7 - tol) / soft));
+			d[i + 3] = d[i + 3] * t * t * (3 - 2 * t);
+			if (greenKey) d[i + 1] = (g + (Math.min(g, Math.max(r, b)) - g) * spill) * 255;
+		}
+		dst.ctx.putImageData(img, 0, 0);
+	}
+};
+// ../src/lib/effects/builtins/invert.ts
+const invert = {
+	id: "invert",
+	name: "Invert",
+	category: "Colour",
+	description: "Negative colours",
+	params: [{
+		key: "amount",
+		label: "Amount",
+		type: "number",
+		min: 0,
+		max: 100,
+		default: 100,
+		unit: "%"
+	}],
+	render: (src, dst, p) => filtered(src, dst, `invert(${num(p, "amount", 100) / 100})`)
+};
+// ../src/lib/effects/builtins/mirror.ts
+const mirror = {
+	id: "mirror",
+	name: "Mirror",
+	category: "Distort",
+	description: "Flip the picture",
+	params: [{
+		key: "axis",
+		label: "Flip",
+		type: "choice",
+		default: "horizontal",
+		options: [
+			{
+				value: "horizontal",
+				label: "Left-right"
+			},
+			{
+				value: "vertical",
+				label: "Upside down"
+			},
+			{
+				value: "both",
+				label: "Both"
+			}
+		]
+	}],
+	render(src, dst, p) {
+		const axis = str(p, "axis", "horizontal");
+		const sx = axis === "vertical" ? 1 : -1;
+		const sy = axis === "horizontal" ? 1 : -1;
+		dst.ctx.save();
+		dst.ctx.translate(sx < 0 ? src.w : 0, sy < 0 ? src.h : 0);
+		dst.ctx.scale(sx, sy);
+		dst.ctx.drawImage(src.canvas, 0, 0);
+		dst.ctx.restore();
+	}
+};
+// ../src/lib/effects/builtins/noise.ts
+/** Film grain: random speckles, moving every frame unless frozen. */
+const noise = {
+	id: "noise",
+	name: "Noise",
+	category: "Stylize",
+	description: "Film grain",
+	params: [
+		{
+			key: "amount",
+			label: "Amount",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 20,
+			unit: "%"
+		},
+		{
+			key: "mono",
+			label: "Black and white grain",
+			type: "boolean",
+			default: true
+		},
+		{
+			key: "animated",
+			label: "Moving grain",
+			type: "boolean",
+			default: true
+		}
+	],
+	gpu: {
+		uniforms: (p, env) => ({
+			uAmount: num(p, "amount", 20) / 100,
+			uMono: bool(p, "mono", true) ? 1 : 0,
+			uSeed: bool(p, "animated", true) ? Math.floor(env.time * 30) : 0
+		}),
+		fragment: `
+float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec4 c = texture(uTex, vUv);
+  vec2 p = floor(vUv * uSize) + uSeed * 17.0;
+  vec3 n = uMono > 0.5 ? vec3(h(p)) : vec3(h(p), h(p + 1.3), h(p + 2.7));
+  outColor = vec4(clamp(c.rgb + (n - 0.5) * uAmount, 0.0, 1.0), c.a);
+}`
+	},
+	render(src, dst, p, env) {
+		dst.ctx.drawImage(src.canvas, 0, 0);
+		const n = env.scratch();
+		const img = n.ctx.createImageData(n.w, n.h);
+		const d = img.data;
+		const amt = num(p, "amount", 20) / 100;
+		const mono = bool(p, "mono", true);
+		let s = (bool(p, "animated", true) ? Math.floor(env.time * 30) : 0) * 9301 + 49297;
+		const rnd = () => (s = s * 16807 % 2147483647) / 2147483647;
+		for (let i = 0; i < d.length; i += 4) {
+			const v = rnd() * 255;
+			d[i] = v;
+			d[i + 1] = mono ? v : rnd() * 255;
+			d[i + 2] = mono ? v : rnd() * 255;
+			d[i + 3] = 255 * amt;
+		}
+		n.ctx.putImageData(img, 0, 0);
+		dst.ctx.save();
+		dst.ctx.globalCompositeOperation = "source-atop";
+		dst.ctx.globalAlpha = .5;
+		dst.ctx.drawImage(n.canvas, 0, 0);
+		dst.ctx.restore();
+	}
+};
+// ../src/lib/effects/builtins/pixelate.ts
+const pixelate = {
+	id: "pixelate",
+	name: "Pixelate",
+	category: "Distort",
+	description: "Big square pixels",
+	params: [{
+		key: "size",
+		label: "Block size",
+		type: "number",
+		min: 2,
+		max: 200,
+		default: 24,
+		unit: "px"
+	}],
+	render(src, dst, p, env) {
+		const block = Math.max(1, px(num(p, "size", 24), src));
+		const small = env.scratch();
+		const sw = Math.max(1, Math.round(src.w / block));
+		const sh = Math.max(1, Math.round(src.h / block));
+		small.ctx.imageSmoothingEnabled = false;
+		small.ctx.drawImage(src.canvas, 0, 0, sw, sh);
+		dst.ctx.save();
+		dst.ctx.imageSmoothingEnabled = false;
+		dst.ctx.drawImage(small.canvas, 0, 0, sw, sh, 0, 0, src.w, src.h);
+		dst.ctx.restore();
+	}
+};
+// ../src/lib/effects/builtins/animate.ts
+/**
+* The lyric In / Out animations (fade, pop, slide, zoom, blur, rotate...) as an effect, so any clip can use them.
+* It reuses the lyric renderer's own effect definitions; whole-block effects only (word and letter effects need text).
+*/
+const block = (n) => EFFECTS[n].mode === "block";
+const opts = (names) => names.filter(block).map((n) => ({
+	value: n,
+	label: EFFECTS[n].label
+}));
+const EASE = Object.keys(EASINGS).map((e) => ({
+	value: e,
+	label: e
+}));
+const animate = {
+	id: "animate",
+	name: "Animate in / out",
+	category: "Animation",
+	description: "The lyric entrance and exit animations, for any clip",
+	params: [
+		{
+			key: "in",
+			label: "In",
+			type: "choice",
+			default: "fade",
+			options: opts(IN_EFFECTS)
+		},
+		{
+			key: "inMs",
+			label: "In length",
+			type: "number",
+			min: 0,
+			max: 3e3,
+			step: 50,
+			default: 400,
+			unit: "ms"
+		},
+		{
+			key: "out",
+			label: "Out",
+			type: "choice",
+			default: "fade",
+			options: opts(OUT_EFFECTS)
+		},
+		{
+			key: "outMs",
+			label: "Out length",
+			type: "number",
+			min: 0,
+			max: 3e3,
+			step: 50,
+			default: 400,
+			unit: "ms"
+		},
+		{
+			key: "easing",
+			label: "Easing",
+			type: "choice",
+			default: "ease-out",
+			options: EASE
+		}
+	],
+	render(src, dst, p, env) {
+		const ease = EASINGS[str(p, "easing", "ease-out")] ?? EASINGS.linear;
+		const dIn = Math.min(num(p, "inMs", 400) / 1e3, env.clipDuration / 2);
+		const dOut = Math.min(num(p, "outMs", 400) / 1e3, env.clipDuration / 2);
+		const pin = dIn > 0 ? ease(Math.min(1, Math.max(0, env.time / dIn))) : 1;
+		const pout = dOut > 0 ? 1 - ease(1 - Math.min(1, Math.max(0, (env.clipDuration - env.time) / dOut))) : 1;
+		const inName = str(p, "in", "fade");
+		const outName = str(p, "out", "fade");
+		const fx = combineFx(toFx(EFFECTS[inName] && block(inName) ? EFFECTS[inName].fx(pin, "in") : {}), toFx(EFFECTS[outName] && block(outName) ? EFFECTS[outName].fx(pout, "out") : {}));
+		if (fx.opacity <= 0) return;
+		const { w, h } = src;
+		dst.ctx.save();
+		dst.ctx.globalAlpha = Math.min(1, fx.opacity);
+		if (fx.blur > .05) dst.ctx.filter = `blur(${px(fx.blur, src)}px)`;
+		dst.ctx.translate(w / 2 + fx.dx * h, h / 2 + fx.dy * h);
+		dst.ctx.rotate(fx.rotation * Math.PI / 180);
+		dst.ctx.scale(fx.scale, fx.scale);
+		dst.ctx.drawImage(src.canvas, -w / 2, -h / 2);
+		dst.ctx.restore();
+	}
+};
+// ../src/lib/effects/transitions/builtins.ts
+/**
+* Built-in transitions (phase 17). `a` is the outgoing clip, `b` the incoming one; either is null at a clip edge.
+* `p` runs 0 -> 1 and is already eased.
+*/
+const draw = (out, l, alpha = 1) => {
+	if (!l || alpha <= 0) return;
+	out.save();
+	out.globalAlpha = Math.min(1, alpha);
+	out.drawImage(l.canvas, 0, 0);
+	out.restore();
+};
+const DIRS = [
+	{
+		value: "left",
+		label: "To the left"
+	},
+	{
+		value: "right",
+		label: "To the right"
+	},
+	{
+		value: "up",
+		label: "Up"
+	},
+	{
+		value: "down",
+		label: "Down"
+	}
+];
+const dirVec = (d) => d === "right" ? [1, 0] : d === "up" ? [0, -1] : d === "down" ? [0, 1] : [-1, 0];
+const crossDissolve = {
+	id: "cross-dissolve",
+	name: "Cross dissolve",
+	description: "One picture fades into the next",
+	params: [],
+	render(out, a, b, p) {
+		draw(out, a, b ? 1 : 1 - p);
+		draw(out, b, p);
+	}
+};
+const dipToColour = {
+	id: "dip-to-colour",
+	name: "Dip to colour",
+	description: "Fade to a colour (black by default), then into the next clip",
+	params: [{
+		key: "color",
+		label: "Colour",
+		type: "color",
+		default: "#000000"
+	}],
+	render(out, a, b, p, params, env) {
+		out.save();
+		out.fillStyle = str(params, "color", "#000000");
+		if (p < .5) {
+			draw(out, a);
+			out.globalAlpha = p * 2;
+		} else {
+			draw(out, b);
+			out.globalAlpha = (1 - p) * 2;
+		}
+		out.fillRect(0, 0, env.w, env.h);
+		out.restore();
+	}
+};
+const wipe = {
+	id: "wipe",
+	name: "Wipe",
+	description: "A moving edge reveals the next clip",
+	params: [{
+		key: "direction",
+		label: "Direction",
+		type: "choice",
+		default: "left",
+		options: DIRS
+	}, {
+		key: "softness",
+		label: "Soft edge",
+		type: "number",
+		min: 0,
+		max: 200,
+		default: 20,
+		unit: "px"
+	}],
+	render(out, a, b, p, params, env) {
+		draw(out, a);
+		if (!b) return;
+		const [dx, dy] = dirVec(str(params, "direction", "left"));
+		const soft = px(num(params, "softness", 20), env);
+		const m = env.scratch();
+		const gx = dx < 0 ? env.w * (1 - p) : dx > 0 ? 0 : 0;
+		const gy = dy < 0 ? env.h * (1 - p) : 0;
+		const gw = dx ? env.w * p : env.w;
+		const gh = dy ? env.h * p : env.h;
+		if (soft > .5) m.ctx.filter = `blur(${soft}px)`;
+		m.ctx.fillStyle = "#fff";
+		m.ctx.fillRect(dx < 0 ? gx : dx > 0 ? 0 : 0, dy < 0 ? gy : 0, gw, gh);
+		m.ctx.filter = "none";
+		m.ctx.globalCompositeOperation = "source-in";
+		m.ctx.drawImage(b.canvas, 0, 0);
+		out.drawImage(m.canvas, 0, 0);
+	}
+};
+const push = {
+	id: "push",
+	name: "Push",
+	description: "The next clip pushes the current one out of the frame",
+	params: [{
+		key: "direction",
+		label: "Direction",
+		type: "choice",
+		default: "left",
+		options: DIRS
+	}],
+	render(out, a, b, p, params, env) {
+		const [dx, dy] = dirVec(str(params, "direction", "left"));
+		const ox = dx * env.w * p;
+		const oy = dy * env.h * p;
+		if (a) out.drawImage(a.canvas, ox, oy);
+		if (b) out.drawImage(b.canvas, ox - dx * env.w, oy - dy * env.h);
+	}
+};
+const slide = {
+	id: "slide",
+	name: "Slide",
+	description: "The next clip slides in over the current one",
+	params: [{
+		key: "direction",
+		label: "Direction",
+		type: "choice",
+		default: "left",
+		options: DIRS
+	}],
+	render(out, a, b, p, params, env) {
+		const [dx, dy] = dirVec(str(params, "direction", "left"));
+		draw(out, a);
+		if (b) out.drawImage(b.canvas, -dx * env.w * (1 - p), -dy * env.h * (1 - p));
+	}
+};
+const scaled = (out, l, s, alpha, rot = 0) => {
+	if (!l || alpha <= 0) return;
+	out.save();
+	out.globalAlpha = Math.min(1, alpha);
+	out.translate(l.w / 2, l.h / 2);
+	out.rotate(rot);
+	out.scale(s, s);
+	out.drawImage(l.canvas, -l.w / 2, -l.h / 2);
+	out.restore();
+};
+const BUILTIN_TRANSITIONS = [
+	crossDissolve,
+	dipToColour,
+	wipe,
+	push,
+	slide,
+	{
+		id: "zoom",
+		name: "Zoom",
+		description: "Zoom through into the next clip",
+		params: [{
+			key: "amount",
+			label: "Zoom",
+			type: "number",
+			min: 10,
+			max: 300,
+			default: 60,
+			unit: "%"
+		}],
+		render(out, a, b, p, params) {
+			const z = num(params, "amount", 60) / 100;
+			scaled(out, a, 1 + z * p, 1 - p);
+			scaled(out, b, 1 / (1 + z * (1 - p)), p);
+		}
+	},
+	{
+		id: "blur-dissolve",
+		name: "Blur dissolve",
+		description: "Blur out, dissolve, blur back in",
+		params: [{
+			key: "radius",
+			label: "Blur",
+			type: "number",
+			min: 0,
+			max: 100,
+			default: 30,
+			unit: "px"
+		}],
+		render(out, a, b, p, params, env) {
+			const r = px(num(params, "radius", 30), env) * Math.sin(Math.PI * p);
+			out.save();
+			if (r > .3) out.filter = `blur(${r}px)`;
+			draw(out, a, 1 - p);
+			draw(out, b, p);
+			out.restore();
+		}
+	},
+	{
+		id: "spin",
+		name: "Spin",
+		description: "Spin out of one clip and into the next",
+		params: [{
+			key: "turns",
+			label: "Turns",
+			type: "number",
+			min: .25,
+			max: 3,
+			step: .25,
+			default: .5
+		}],
+		render(out, a, b, p, params) {
+			const turn = num(params, "turns", .5) * Math.PI * 2;
+			scaled(out, a, 1 - .5 * p, 1 - p, turn * p);
+			scaled(out, b, .5 + .5 * p, p, -turn * (1 - p));
+		}
+	}
+];
+// ../src/lib/effects/index.ts
+/**
+* The effect and transition registry (phase 17). Built-ins register here at load; plugins call the same
+* `registerEffect` / `registerTransition`. Everything else (inspector, keyframes, chat tools, the compositor) reads
+* the registry, so a new effect appears everywhere once registered.
+*/
+const effects = /* @__PURE__ */ new Map();
+const transitions = /* @__PURE__ */ new Map();
+function registerEffect(def) {
+	if (!/^[a-z0-9-]+$/.test(def.id)) throw new Error(`effect id "${def.id}" must be lowercase letters, digits and dashes`);
+	effects.set(def.id, def);
+}
+function registerTransition(def) {
+	if (!/^[a-z0-9-]+$/.test(def.id)) throw new Error(`transition id "${def.id}" must be lowercase letters, digits and dashes`);
+	transitions.set(def.id, def);
+}
+for (const e of [
+	transform,
+	crop,
+	blur,
+	sharpen,
+	glow,
+	vignette,
+	dropShadow,
+	mask,
+	chromaKey,
+	invert,
+	mirror,
+	noise,
+	pixelate,
+	animate
+]) registerEffect(e);
+for (const t of BUILTIN_TRANSITIONS) registerTransition(t);
+const getEffect = (id) => effects.get(id);
+const getTransition = (id) => transitions.get(id);
+const listEffects = () => [...effects.values()];
+const listTransitions = () => [...transitions.values()];
+const defaultParams = (specs) => Object.fromEntries(specs.map((s) => [s.key, structuredClone(s.default)]));
+let seq = 0;
+const newId = (p) => `${p}-${Date.now().toString(36)}${(seq++).toString(36)}`;
+/** A new effect for a clip's stack, with default params (overridden by `params`). */
+function newEffect(type, params = {}) {
+	const def = getEffect(type);
+	if (!def) throw new Error(`no effect "${type}". Effects: ${listEffects().map((e) => e.id).join(", ")}`);
+	return {
+		id: newId("fx"),
+		type,
+		enabled: true,
+		params: {
+			...defaultParams(def.params),
+			...cleanParams(def.params, params)
+		}
+	};
+}
+/** Keep only known params, clamped to their ranges, coerced to their types. */
+function cleanParams(specs, params) {
+	const out = {};
+	for (const s of specs) {
+		if (!(s.key in params)) continue;
+		const v = params[s.key];
+		if (s.type === "number") {
+			const n = Number(v);
+			if (Number.isFinite(n)) out[s.key] = Math.min(s.max, Math.max(s.min, n));
+		} else if (s.type === "angle") {
+			const n = Number(v);
+			if (Number.isFinite(n)) out[s.key] = n;
+		} else if (s.type === "boolean") out[s.key] = v === true || v === "true";
+		else if (s.type === "choice") {
+			if (s.options.some((o) => o.value === v)) out[s.key] = v;
+		} else if (s.type === "color") {
+			if (typeof v === "string" && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(v)) out[s.key] = v;
+		} else if (s.type === "point") {
+			const o = v;
+			if (o && Number.isFinite(Number(o.x)) && Number.isFinite(Number(o.y))) out[s.key] = {
+				x: Number(o.x),
+				y: Number(o.y)
+			};
+		} else if (s.type === "curve" && Array.isArray(v)) out[s.key] = v;
+	}
+	return out;
+}
+/** A new transition between two clips (or at one clip's edge), with the transition's default params. */
+function newTransition(trackId, type, from, to, duration = .5, align = "center") {
+	const def = getTransition(type);
+	if (!def && type !== "crossfade") throw new Error(`no transition "${type}". Transitions: ${listTransitions().map((t) => t.id).join(", ")}`);
+	return {
+		id: newId("tr"),
+		trackId,
+		from,
+		to,
+		type,
+		duration,
+		align,
+		easing: "ease-in-out",
+		params: def ? defaultParams(def.params) : {}
+	};
+}
+// ../src/timeline/effects.ts
+/**
+* Effect stacks and transitions on a timeline (phase 17). Pure: each returns a new Timeline (or the same one when
+* nothing changes), so every edit is one undoable operation. Locked tracks are never changed.
+*/
+const EPS$1 = .05;
+/** Clips that can carry picture effects: video and image clips on unlocked tracks. */
+function effectTargets(tl, doc, ids) {
+	return ids.filter((id) => {
+		const c = tl.clips.find((x) => x.id === id);
+		if (!c || c.fill || c.text || !c.mediaId || isLocked(tl, c.trackId)) return false;
+		const kind = doc.media.find((m) => m.id === c.mediaId)?.kind;
+		return kind === "video" || kind === "image";
+	});
+}
+const mapClips = (tl, ids, fn) => {
+	let changed = false;
+	const clips = tl.clips.map((c) => {
+		if (!ids.has(c.id) || isLocked(tl, c.trackId)) return c;
+		const n = fn(c);
+		if (n !== c) changed = true;
+		return n;
+	});
+	return changed ? {
+		...tl,
+		clips
+	} : tl;
+};
+/** Add an effect (with optional params) to the end of each clip's stack. */
+function addEffect(tl, ids, type, params = {}) {
+	return mapClips(tl, new Set(ids), (c) => ({
+		...c,
+		effects: [...c.effects, newEffect(type, params)]
+	}));
+}
+/** Change an effect's params, enabled state or keyframes. Params are checked against the effect's spec. */
+function updateEffect(tl, clipId, fxId, patch) {
+	return mapClips(tl, /* @__PURE__ */ new Set([clipId]), (c) => ({
+		...c,
+		effects: c.effects.map((e) => {
+			if (e.id !== fxId) return e;
+			const def = getEffect(e.type);
+			const next = { ...e };
+			if (patch.params) next.params = {
+				...e.params,
+				...def ? cleanParams(def.params, patch.params) : patch.params
+			};
+			if (patch.enabled !== void 0) next.enabled = patch.enabled;
+			if (patch.keys === null) delete next.keys;
+			else if (patch.keys) next.keys = patch.keys;
+			return next;
+		})
+	}));
+}
+const removeEffect = (tl, clipId, fxId) => mapClips(tl, /* @__PURE__ */ new Set([clipId]), (c) => ({
+	...c,
+	effects: c.effects.filter((e) => e.id !== fxId)
+}));
+/** Copies of a stack (new ids), for paste and presets. Unknown effects are left out. */
+const copyStack = (stack) => stack.filter((e) => getEffect(e.type)).map((e) => ({
+	...newEffect(e.type, e.params),
+	enabled: e.enabled,
+	...e.keys ? { keys: structuredClone(e.keys) } : {}
+}));
+/** Replace (or append to) the stacks of clips with copies of `stack`. */
+function applyStackTo(tl, ids, stack, mode = "replace") {
+	return mapClips(tl, new Set(ids), (c) => ({
+		...c,
+		effects: mode === "replace" ? copyStack(stack) : [...c.effects, ...copyStack(stack)]
+	}));
+}
+/** The clip linked to `id` on an audio track (its sound), if any. */
+function soundOf(tl, id) {
+	const c = id ? tl.clips.find((x) => x.id === id) : void 0;
+	if (!c?.linkId) return void 0;
+	return tl.clips.find((x) => x.id !== c.id && x.linkId === c.linkId && tl.tracks.find((t) => t.id === x.trackId)?.kind === "audio");
+}
+/**
+* Add a transition at the cut between `from` and `to` (or at one clip's edge when the other is missing). Any
+* transition already there is replaced. On a video track, a crossfade is added for the clips' linked sound too
+* (when the sound clips meet at the same cut); it can then be edited or removed on its own.
+*/
+function addTransition(tl, o) {
+	if (isLocked(tl, o.trackId) || !o.from && !o.to) return tl;
+	const same = (x, trackId, from, to) => x.trackId === trackId && x.from === from && x.to === to;
+	let list = (tl.cutTransitions ?? []).filter((x) => !same(x, o.trackId, o.from, o.to));
+	list = [...list, newTransition(o.trackId, o.type, o.from, o.to, o.duration ?? .5, o.align ?? "center")];
+	if (tl.tracks.find((t) => t.id === o.trackId)?.kind === "video") {
+		const sa = soundOf(tl, o.from);
+		const sb = soundOf(tl, o.to);
+		const trackId = (sa ?? sb)?.trackId;
+		const meet = sa && sb ? sa.trackId === sb.trackId && Math.abs(sa.start + sa.duration - sb.start) < EPS$1 : !!(sa ?? sb);
+		if (trackId && meet && !isLocked(tl, trackId)) {
+			list = list.filter((x) => !same(x, trackId, sa?.id, sb?.id));
+			list.push(newTransition(trackId, "crossfade", sa?.id, sb?.id, o.duration ?? .5, o.align ?? "center"));
+		}
+	}
+	return {
+		...tl,
+		cutTransitions: list
+	};
+}
+function updateTransition(tl, id, patch) {
+	const tr = tl.cutTransitions?.find((x) => x.id === id);
+	if (!tr || isLocked(tl, tr.trackId)) return tl;
+	const next = {
+		...tr,
+		...patch
+	};
+	if (patch.type && patch.type !== tr.type) {
+		const def = getTransition(patch.type);
+		next.params = def ? Object.fromEntries(def.params.map((p) => [p.key, p.default])) : {};
+	}
+	if (patch.params) {
+		const def = getTransition(next.type);
+		next.params = {
+			...tr.params,
+			...def ? cleanParams(def.params, patch.params) : patch.params
+		};
+	}
+	if (patch.duration !== void 0) next.duration = Math.max(.04, Math.min(10, patch.duration));
+	return {
+		...tl,
+		cutTransitions: tl.cutTransitions.map((x) => x.id === id ? next : x)
+	};
+}
+function removeTransition(tl, id) {
+	const tr = tl.cutTransitions?.find((x) => x.id === id);
+	if (!tr || isLocked(tl, tr.trackId)) return tl;
+	return {
+		...tl,
+		cutTransitions: tl.cutTransitions.filter((x) => x.id !== id)
+	};
+}
+// ../src/lib/tools/effects.ts
+init_convert();
+/**
+* Effect and transition tools (phase 17), for the in-app chat and the MCP server. Clips are referred to by id
+* (get_project / the project summary lists them). Every call is one undo step; locked tracks are never changed.
+*/
+const ids = union([string(), array(string())]).transform((v) => Array.isArray(v) ? v : [v]).describe("clip id or list of clip ids");
+const tl = (doc) => activeTimeline(doc);
+const on = (doc, fn) => onActive(doc, fn);
+const effectNames = () => listEffects().map((e) => `${e.id} (${e.params.map((p) => p.key).join(", ") || "no params"})`).join("; ");
+const transitionNames = () => listTransitions().map((t) => t.id).join(", ");
+/** "drop shadow", "Chroma Key", "dropShadow" -> "drop-shadow". */
+const tidyId = (v) => typeof v === "string" ? v.trim().replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase().replace(/[\s_]+/g, "-") : v;
+const addEffectTool = defineTool({
+	name: "add_effect",
+	group: "timeline",
+	description: "Add an effect to video or image clips (applied after the effects they already have).",
+	hint: "",
+	params: object({
+		clips: ids,
+		effect: string().min(1),
+		params: record(string(), unknown()).optional()
+	}),
+	normalize: (a) => a && typeof a === "object" ? {
+		...a,
+		effect: tidyId(a.effect ?? a.type)
+	} : a,
+	applyDoc: (doc, a) => {
+		if (!getEffect(a.effect)) throw new Error(`no effect "${a.effect}". Effects: ${effectNames()}`);
+		const targets = effectTargets(tl(doc), doc, a.clips);
+		if (!targets.length) throw new Error("none of those clips can take a picture effect (video or image clips on unlocked tracks)");
+		return {
+			doc: on(doc, (t) => addEffect(t, targets, a.effect, a.params ?? {})),
+			summary: `${getEffect(a.effect).name} added to ${targets.length} clip(s)`
+		};
+	}
+});
+Object.defineProperty(addEffectTool, "hint", { get: () => `effects: ${effectNames()}` });
+const setEffectTool = defineTool({
+	name: "set_effect",
+	group: "timeline",
+	description: "Change an effect on a clip: its params, or switch it on or off. effect = the effect's id in the clip's stack, or its type (the first one of that type).",
+	params: object({
+		clip: string(),
+		effect: string(),
+		params: record(string(), unknown()).optional(),
+		enabled: boolean().optional()
+	}),
+	applyDoc: (doc, a) => {
+		const c = tl(doc).clips.find((x) => x.id === a.clip);
+		if (!c) throw new Error(`no clip ${a.clip}`);
+		const fx = c.effects.find((e) => e.id === a.effect) ?? c.effects.find((e) => e.type === tidyId(a.effect));
+		if (!fx) throw new Error(`clip ${a.clip} has no effect "${a.effect}". Its effects: ${c.effects.map((e) => `${e.id} (${e.type})`).join(", ") || "none"}`);
+		return {
+			doc: on(doc, (t) => updateEffect(t, c.id, fx.id, {
+				params: a.params,
+				enabled: a.enabled
+			})),
+			summary: `${fx.type} on ${c.id} updated`
+		};
+	}
+});
+const removeEffectTool = defineTool({
+	name: "remove_effect",
+	group: "timeline",
+	description: "Remove an effect from a clip (by its id in the stack, or by type), or all effects with all: true.",
+	params: object({
+		clip: string(),
+		effect: string().optional(),
+		all: boolean().default(false)
+	}),
+	applyDoc: (doc, a) => {
+		const c = tl(doc).clips.find((x) => x.id === a.clip);
+		if (!c) throw new Error(`no clip ${a.clip}`);
+		if (a.all) return {
+			doc: on(doc, (t) => applyStackTo(t, [c.id], [])),
+			summary: `all effects removed from ${c.id}`
+		};
+		const fx = c.effects.find((e) => e.id === a.effect) ?? c.effects.find((e) => e.type === tidyId(a.effect));
+		if (!fx) throw new Error(`clip ${a.clip} has no effect "${a.effect}"`);
+		return {
+			doc: on(doc, (t) => removeEffect(t, c.id, fx.id)),
+			summary: `${fx.type} removed from ${c.id}`
+		};
+	}
+});
+const addTransitionTool = defineTool({
+	name: "add_transition",
+	group: "timeline",
+	description: "Add a transition between two touching clips on a track (from = the clip before the cut, to = the clip after), or at one clip's edge (only from: out at its end; only to: in at its start). Linked sound gets a crossfade. all_cuts: true adds it at every cut on from's track.",
+	params: object({
+		type: string().min(1),
+		from: string().optional(),
+		to: string().optional(),
+		duration: num$1(.04, 10).default(.5),
+		align: _enum([
+			"start",
+			"center",
+			"end"
+		]).default("center"),
+		easing: EasingName.optional(),
+		all_cuts: boolean().default(false)
+	}),
+	normalize: (a) => a && typeof a === "object" ? {
+		...a,
+		type: tidyId(a.type)
+	} : a,
+	applyDoc: (doc, a) => {
+		if (!getTransition(a.type)) throw new Error(`no transition "${a.type}". Transitions: ${transitionNames()}`);
+		const t0 = tl(doc);
+		const ref = t0.clips.find((x) => x.id === (a.from ?? a.to));
+		if (!ref) throw new Error("give from and/or to (clip ids from the project summary)");
+		let next = doc;
+		let count = 0;
+		const add = (from, to) => {
+			next = on(next, (t) => addTransition(t, {
+				trackId: ref.trackId,
+				from,
+				to,
+				type: a.type,
+				duration: a.duration,
+				align: a.align
+			}));
+			count++;
+		};
+		if (a.all_cuts) {
+			const clips = clipsOn(t0, ref.trackId);
+			clips.forEach((c, i) => {
+				const n = clips[i + 1];
+				if (n && Math.abs(c.start + c.duration - n.start) < .05) add(c.id, n.id);
+			});
+			if (!count) throw new Error("there are no touching clips on that track");
+		} else {
+			const to = a.to && t0.clips.find((x) => x.id === a.to);
+			if (a.to && !to) throw new Error(`no clip ${a.to}`);
+			add(a.from, a.to);
+		}
+		if (a.easing) {
+			const trs = activeTimeline(next).cutTransitions ?? [];
+			next = on(next, (t) => trs.reduce((acc, tr) => tr.type === a.type ? updateTransition(acc, tr.id, { easing: a.easing }) : acc, t));
+		}
+		return {
+			doc: next,
+			summary: `${getTransition(a.type).name} added${count > 1 ? ` at ${count} cuts` : ""}`
+		};
+	}
+});
+Object.defineProperty(addTransitionTool, "hint", { get: () => `type one of ${transitionNames()}; align start | center | end` });
+const effectTools = [
+	addEffectTool,
+	setEffectTool,
+	removeEffectTool,
+	addTransitionTool,
+	defineTool({
+		name: "remove_transition",
+		group: "timeline",
+		description: "Remove a transition by its id, or the transitions touching a clip.",
+		params: object({
+			id: string().optional(),
+			clip: string().optional()
+		}),
+		applyDoc: (doc, a) => {
+			const gone = (tl(doc).cutTransitions ?? []).filter((x) => a.id && x.id === a.id || a.clip && (x.from === a.clip || x.to === a.clip));
+			if (!gone.length) throw new Error("no matching transition");
+			return {
+				doc: on(doc, (t) => gone.reduce((acc, g) => removeTransition(acc, g.id), t)),
+				summary: `${gone.length} transition(s) removed`
+			};
+		}
 	})
 ];
 // ../src/lib/emphasis.ts
@@ -31905,14 +33475,14 @@ const setWordStyle = defineTool({
 		word: wordRef,
 		color: color.optional(),
 		emphasis: number().int().min(0).max(3).optional(),
-		scale: num(.1, 8).optional(),
-		x: num(-100, 100).optional().describe("nudge across, percent of width"),
-		y: num(-100, 100).optional().describe("nudge down, percent of height"),
-		rotation: num(-360, 360).optional(),
+		scale: num$1(.1, 8).optional(),
+		x: num$1(-100, 100).optional().describe("nudge across, percent of width"),
+		y: num$1(-100, 100).optional().describe("nudge down, percent of height"),
+		rotation: num$1(-360, 360).optional(),
 		font: string().min(1).optional(),
 		in: Effect.optional(),
 		out: Effect.optional(),
-		reset: bool.optional()
+		reset: bool$1.optional()
 	}),
 	normalize: (a) => {
 		const o = tidy(a, {
@@ -32085,8 +33655,8 @@ const setBeatReaction = defineTool({
 	hint: "effect one of none,pulse,flash,shake,nudge,colour-swap,jump-cut; strength 0-2 (1 = normal); downbeatsOnly = only the first beat of each bar; lines or layer, leave both out for all lines",
 	params: object({
 		effect: _enum(BEAT_NAMES),
-		strength: num(0, 2).optional(),
-		downbeatsOnly: bool.optional(),
+		strength: num$1(0, 2).optional(),
+		downbeatsOnly: bool$1.optional(),
 		lines: lineList.optional(),
 		layer: layerRef.optional()
 	}),
@@ -32133,7 +33703,7 @@ const setEnergy = defineTool({
 	description: "How much the song's loudness drives the motion: 0 = steady, 1 = calm in quiet parts and intense in loud choruses.",
 	hint: "amount 0-1 (0.5 = half); lines or layer, leave both out for all lines",
 	params: object({
-		amount: num(0, 1),
+		amount: num$1(0, 1),
 		lines: lineList.optional(),
 		layer: layerRef.optional()
 	}),
@@ -32225,7 +33795,7 @@ const snapToBeats = defineTool({
 			"end",
 			"both"
 		]).default("start"),
-		downbeatsOnly: bool.optional()
+		downbeatsOnly: bool$1.optional()
 	}),
 	normalize: (a) => {
 		const o = tidy(a, {
@@ -32286,8 +33856,8 @@ const kineticTools = [
 		description: "Find the tempo and every beat of the song and put the beats on the timeline (needed for beat reactions and snap_to_beats). Give tempo (and firstDownbeat) to set them by hand when detection gets a song wrong.",
 		hint: "no arguments to detect; or tempo in BPM and firstDownbeat in seconds for a steady grid",
 		params: object({
-			tempo: num(30, 300).optional().describe("beats per minute, to set the grid by hand"),
-			firstDownbeat: num(0, 600).optional().describe("seconds to the first downbeat (with tempo)"),
+			tempo: num$1(30, 300).optional().describe("beats per minute, to set the grid by hand"),
+			firstDownbeat: num$1(0, 600).optional().describe("seconds to the first downbeat (with tempo)"),
 			beatsPerBar: number().int().min(1).max(12).optional()
 		}),
 		normalize: (a) => tidy(a, {
@@ -32348,7 +33918,8 @@ const registry = createRegistry([
 	...transformTools,
 	...motionTools,
 	...timelineTools,
-	...kineticTools
+	...kineticTools,
+	...effectTools
 ]);
 registry.all.map((t) => t.name);
 /** Tool definitions in Ollama's format, generated from the zod schemas. Pass groups to send a subset. */

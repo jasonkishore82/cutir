@@ -4,6 +4,7 @@ import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
 import KeyframesCard from "./KeyframesCard";
 import ClipCard from "./ClipCard";
+import EffectsPanel from "./EffectsPanel";
 import TemplatesCard from "./TemplatesCard";
 import TransitionsCard from "./TransitionsCard";
 import WordCard, { FONTS } from "./WordCard";
@@ -354,6 +355,8 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
           <StyleActions />
         </>
       )}
+
+      {tab === "effects" && <EffectsPanel />}
 
       {tab === "motion" && (
         <>

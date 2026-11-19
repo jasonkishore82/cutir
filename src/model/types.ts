@@ -117,7 +117,37 @@ export type TextPayload = {
   wordOverrides?: Record<number, WordOverride>;
 };
 
-export type ClipEffect = { id: string; type: string; enabled: boolean; params: Record<string, unknown> };
+/** A keyframe of one numeric effect parameter; `t` is seconds from the clip's start. */
+export type ParamKey = { t: number; v: number; easing?: Easing };
+
+/** One effect in a clip's stack (phase 17). `type` names an effect in src/lib/effects; params follow its spec. */
+export type ClipEffect = {
+  id: string;
+  type: string;
+  enabled: boolean;
+  params: Record<string, unknown>;
+  /** Keyframes per numeric param (the param's own value is used where there are none). */
+  keys?: Record<string, ParamKey[]>;
+};
+
+/**
+ * A transition at a cut between two clips on a track (`from` -> `to`), or at one clip's edge (only `from`: out to
+ * nothing; only `to`: in from nothing). Works on video tracks (pictures) and audio tracks (a crossfade).
+ */
+export type ClipTransition = {
+  id: string;
+  trackId: string;
+  from?: string;
+  to?: string;
+  /** A transition id from src/lib/effects (audio tracks use "crossfade"). */
+  type: string;
+  /** Seconds. */
+  duration: number;
+  /** Where the transition sits relative to the cut: ending at it, centred on it, or starting at it. */
+  align: "start" | "center" | "end";
+  easing: Easing;
+  params: Record<string, unknown>;
+};
 
 export type Clip = {
   id: string;
@@ -200,6 +230,8 @@ export type Timeline = {
   textStyle: TextStyle;
   /** Default hand-over between consecutive text clips. */
   transition: Transition;
+  /** Transitions at cuts and clip edges on video and audio tracks (phase 17). */
+  cutTransitions?: ClipTransition[];
 };
 
 export type ProjectDoc = {

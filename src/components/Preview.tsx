@@ -5,7 +5,9 @@ import { useProject } from "../store/project";
 import { ensureFont } from "../lib/fonts";
 import { ASPECT_RATIO, type MediaSource } from "../lib/renderer";
 import { getTime, pause, seek, setFallbackDuration, setLoop, setSongMuted, setSource, shuttle, tick, toggle, usePlayback } from "../lib/transport";
-import { activeVisuals, needsAt, renderFrame, visualMediaIds } from "../render/compositor";
+import { activeVisuals, needsAt, renderFrame, visualMediaIds, type PreviewEffect } from "../render/compositor";
+import { defaultParams, getEffect } from "../lib/effects";
+import { useTimelineUi } from "../timeline/ui";
 import { closeUnused, exactFrames, liveFrames, reopenPlayback, setFileResolver, sourceStates, stats } from "../render/sources";
 import { FrameCache, affectedRanges, useCacheInfo } from "../render/cache";
 import { fileFor, onVariantsChanged, proxySettings, variantFor } from "../lib/proxy";
@@ -21,6 +23,23 @@ setFileResolver(async (mediaId, purpose) => {
   const pool = poolOf(mediaId);
   return pool ? fileFor(pool, purpose) : null; // proxies for playback when allowed; originals for export
 });
+
+/* ---------- effect hover preview (phase 17) ---------- */
+
+let previewKey = "";
+let previewValue: PreviewEffect | undefined;
+/** The effect hovered in the Effects panel, applied to the selected clips (viewer only, never saved or cached). */
+function previewEffect(): PreviewEffect | undefined {
+  const ui = useTimelineUi.getState();
+  const id = ui.previewEffect;
+  const key = id && ui.selected.length ? `${id}|${ui.selected.join(",")}` : "";
+  if (key !== previewKey) {
+    previewKey = key;
+    const def = id ? getEffect(id) : undefined;
+    previewValue = key && def ? { clipIds: new Set(ui.selected), effect: { id: "preview", type: def.id, enabled: true, params: defaultParams(def.params) } } : undefined;
+  }
+  return previewValue;
+}
 
 /* ---------- render cache (phase 16) ---------- */
 
@@ -254,14 +273,15 @@ export default function Preview() {
       liveBg = bg;
       const cset = cacheSettings(st.doc);
       const fi = Math.round(t * st.doc.settings.fps);
-      const cached = cset.mode !== "off" ? frameCache.get(fi) : undefined;
+      const preview = previewEffect();
+      const cached = cset.mode !== "off" && !preview ? frameCache.get(fi) : undefined;
       if (cached) {
         ctx.drawImage(cached, 0, 0);
         missing = 0;
       } else {
         const dropped0 = stats.dropped;
-        missing = renderFrame(ctx, st.doc, st.project, t, canvas.width, canvas.height, { bg }, liveFrames(live));
-        const heavy = cset.mode !== "off" && activeVisuals(activeTimeline(st.doc), st.doc, t).length > 0;
+        missing = renderFrame(ctx, st.doc, st.project, t, canvas.width, canvas.height, { bg }, liveFrames(live), preview);
+        const heavy = !preview && cset.mode !== "off" && activeVisuals(activeTimeline(st.doc), st.doc, t).length > 0;
         if (heavy) {
           if (live && (missing > 0 || stats.dropped > dropped0)) slowFrames.add(fi); // did not play in real time
           const keep = cset.mode === "always" || slowFrames.has(fi);
