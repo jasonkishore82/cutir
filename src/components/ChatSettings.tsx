@@ -44,7 +44,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function Toggle({ label, hint, checked, onChange, disabled }: { label: string; hint?: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <label className={`flex cursor-pointer items-start gap-2 ${disabled ? "opacity-40" : ""}`}>
-      <input type="checkbox" className="mt-0.5 accent-[#5b9dff]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <input type="checkbox" className="mt-0.5 accent-accent" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span>
         <span className="text-gray-200">{label}</span>
         {hint && <span className="block text-[11px] text-gray-500">{hint}</span>}
@@ -153,7 +153,7 @@ export default function ChatSettings({ anchor, onClose }: { anchor: DOMRect; onC
             </label>
             <label className="block">
               <span className="label">Speed: {voice.rate.toFixed(1)}x</span>
-              <input type="range" min={0.7} max={1.6} step={0.1} value={voice.rate} className="w-full accent-[#5b9dff]" onChange={(e) => voice.set({ rate: Number(e.target.value) })} />
+              <input type="range" min={0.7} max={1.6} step={0.1} value={voice.rate} className="w-full accent-accent" onChange={(e) => voice.set({ rate: Number(e.target.value) })} />
             </label>
             <button
               className="rounded border border-edge px-2 py-1 hover:bg-edge"

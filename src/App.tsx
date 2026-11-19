@@ -224,7 +224,7 @@ export default function App() {
 
   const resetLayoutRef = useRef<() => void>(() => {});
   const iconBtn = "grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-white/[0.07] hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400";
-  const panel = "overflow-hidden rounded-2xl border border-white/[0.07] bg-panel/80 shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-xl";
+  const panel = "overflow-hidden rounded-2xl border border-white/[0.07] bg-panel/80 shadow-panel backdrop-blur-xl";
 
   useEffect(() => {
     const on = () => resetLayoutRef.current();

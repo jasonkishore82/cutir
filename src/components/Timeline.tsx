@@ -279,7 +279,7 @@ function LayerHeader({ layer, index, count, active }: { layer: Layer; index: num
               min={16}
               max={240}
               value={style.fontSize ?? st().project.style.fontSize}
-              className="w-full accent-[#5b9dff]"
+              className="w-full accent-accent"
               onChange={(e) => st().update((p) => updateLayerStyle(p, layer.id, { fontSize: Number(e.target.value) }), `layer-size:${layer.id}`)}
             />
           </label>
@@ -721,13 +721,13 @@ export default function Timeline() {
             : "Drag blocks to move (up/down changes layer), edges to resize. Double-click empty space to add text, a block to edit it."}
         </span>
         <label className="flex items-center gap-1.5 text-gray-500" title="Keep the playhead in view while playing">
-          <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="accent-[#5b9dff]" />
+          <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="accent-accent" />
           Follow
         </label>
         <button className={btn} onClick={fitToView} title="Zoom out to show the whole song">Fit</button>
         <label className="flex items-center gap-2 text-gray-500" title="Ctrl + mouse wheel also zooms">
           Zoom
-          <input type="range" min={4} max={300} value={pps} onChange={(e) => setPps(Number(e.target.value))} className="w-24 accent-[#5b9dff]" />
+          <input type="range" min={4} max={300} value={pps} onChange={(e) => setPps(Number(e.target.value))} className="w-24 accent-accent" />
         </label>
       </div>
 

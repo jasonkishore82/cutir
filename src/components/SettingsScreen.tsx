@@ -5,7 +5,8 @@ import { OllamaError } from "../lib/ollama";
 import { configFor, useSettings, type SettingsTab } from "../store/settings";
 import { useLibrary } from "../store/library";
 import { useChat } from "../store/chat";
-import { Card, Icon, type IconName } from "./ui";
+import { Card, Icon, Segmented, type IconName } from "./ui";
+import { setTheme, useTheme, type ThemeChoice } from "../lib/theme";
 
 const TABS: { id: SettingsTab; label: string; icon: IconName }[] = [
   { id: "ai", label: "AI models", icon: "ai" },
@@ -204,8 +205,21 @@ function EditorTab() {
   const showAiOnOpen = useSettings((s) => s.showAiOnOpen);
   const { setShowAiOnOpen } = useSettings.getState();
   const [done, setDone] = useState(false);
+  const theme = useTheme();
   return (
     <div className="space-y-4">
+      <Card title="Appearance" hint="System follows your computer's light or dark setting.">
+        <Segmented<ThemeChoice>
+          label="Theme"
+          value={theme}
+          onChange={setTheme}
+          options={[
+            { value: "dark", label: "Dark" },
+            { value: "light", label: "Light" },
+            { value: "system", label: "System" },
+          ]}
+        />
+      </Card>
       <Card title="AI panel">
         <label className="flex items-center gap-2 text-[13px] text-gray-300">
           <input type="checkbox" checked={showAiOnOpen} onChange={(e) => setShowAiOnOpen(e.target.checked)} />
@@ -369,7 +383,7 @@ export default function SettingsScreen() {
     requestAnimationFrame(() => document.getElementById(`settings-tab-${next.id}`)?.focus());
   };
 
-  const panel = "rounded-2xl border border-white/[0.07] bg-panel/80 shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-xl";
+  const panel = "rounded-2xl border border-white/[0.07] bg-panel/80 shadow-panel backdrop-blur-xl";
   const current = TABS.find((t) => t.id === tab) ?? TABS[0];
 
   return (

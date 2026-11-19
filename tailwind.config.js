@@ -8,12 +8,29 @@ export default {
         mono: ["\"IBM Plex Sans KR\"", "system-ui", "sans-serif"],
       },
       colors: {
-        canvas: "#04060c", // the window behind the floating panels
-        bg: "#080b12", // wells: inputs, viewer
-        panel: "#0d1118", // floating panels
-        raised: "#1a2232", // selected segments, hovered rows
-        edge: "#222b3c", // hairlines
-        accent: "#5b9dff",
+        // every UI colour is a CSS variable (index.css), so light and dark mode swap them in one place
+        canvas: "rgb(var(--canvas) / <alpha-value>)", // the window behind the floating panels
+        bg: "rgb(var(--bg) / <alpha-value>)", // wells: inputs, viewer
+        panel: "rgb(var(--panel) / <alpha-value>)", // floating panels
+        raised: "rgb(var(--raised) / <alpha-value>)", // selected segments, hovered rows
+        edge: "rgb(var(--edge) / <alpha-value>)", // hairlines
+        accent: "rgb(var(--accent) / <alpha-value>)",
+        // "white" and "black" are used for overlays and strong text: they swap in light mode
+        white: "rgb(var(--white) / <alpha-value>)",
+        black: "rgb(var(--black) / <alpha-value>)",
+        gray: {
+          50: "rgb(var(--gray-50) / <alpha-value>)",
+          100: "rgb(var(--gray-100) / <alpha-value>)",
+          200: "rgb(var(--gray-200) / <alpha-value>)",
+          300: "rgb(var(--gray-300) / <alpha-value>)",
+          400: "rgb(var(--gray-400) / <alpha-value>)",
+          500: "rgb(var(--gray-500) / <alpha-value>)",
+          600: "rgb(var(--gray-600) / <alpha-value>)",
+          700: "rgb(var(--gray-700) / <alpha-value>)",
+          800: "rgb(var(--gray-800) / <alpha-value>)",
+          900: "rgb(var(--gray-900) / <alpha-value>)",
+          950: "rgb(var(--gray-950) / <alpha-value>)",
+        },
       },
       borderRadius: {
         DEFAULT: "8px", // every plain `rounded` is softer, app-wide

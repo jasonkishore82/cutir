@@ -265,8 +265,8 @@ export default function Home() {
   return (
     <div className="flex h-full gap-2 p-2">
       {/* sidebar */}
-      <aside className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-white/[0.07] bg-panel/80 p-4 shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-xl">
-        <div className="mb-6 flex items-center gap-2.5">
+      <aside className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-white/[0.07] bg-panel/80 p-4 shadow-panel backdrop-blur-xl">
+        <div className="mb-6 flex items-center justify-center">
           <img src="/favicon.svg" alt="Cutir" className="h-8 w-8" />
         </div>
 
@@ -287,9 +287,6 @@ export default function Home() {
           <span>Settings</span>
         </button>
 
-        <p className="mt-auto text-[11px] leading-relaxed text-gray-600">
-          Projects are saved in this browser.
-        </p>
       </aside>
 
       {/* main */}
