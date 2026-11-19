@@ -3,7 +3,7 @@ import { ensureFont, markFontReady } from "../lib/fonts";
 import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
 import { SECTIONS, type SectionId } from "./SectionTabs";
-import { ActionButton, Card, Row, Segmented, Slider } from "./ui";
+import { ActionButton, Card, Icon, Row, Segmented, Slider } from "./ui";
 import { useLibrary } from "../store/library";
 import {
   layerIdOf,
@@ -20,6 +20,8 @@ const FONTS = ["Permanent Marker", "Inter", "Arial", "Georgia", "Impact", "Couri
 const ANIMATIONS: AnimationName[] = ["fade", "pop", "slide-up", "typewriter", "word-highlight"];
 const POSITIONS: Position[] = ["top", "center", "bottom"];
 const ASPECTS: Aspect[] = ["16:9", "9:16", "1:1"];
+
+const CANVAS_PX: Record<Aspect, string> = { "16:9": "1920 x 1080", "9:16": "1080 x 1920", "1:1": "1080 x 1080" };
 
 const GRADIENT_PRESETS: { name: string; colors: string[]; angle: number }[] = [
   { name: "Sunset", colors: ["#1e2a6b", "#5b3a8c", "#d4687a", "#f0a070"], angle: 135 },
@@ -136,6 +138,36 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
                   />
                 ))}
               </div>
+            </div>
+          </Card>
+
+          <Card title="Canva">
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f && (f.type.startsWith("image/") || f.type.startsWith("video/"))) loadBackground(f);
+              }}
+              className="space-y-3"
+            >
+              <a
+                href="https://www.canva.com/"
+                target="_blank"
+                rel="noreferrer"
+                className="flex w-full items-center gap-2.5 rounded-lg border border-edge bg-black/20 px-3 py-2 text-[13px] text-gray-300 hover:bg-raised hover:text-white"
+              >
+                <Icon name="export" className="h-4 w-4 shrink-0 text-gray-500" />
+                <span className="min-w-0 flex-1 truncate">Open Canva</span>
+              </a>
+              <ActionButton icon="image" onClick={() => pickFile("image/*,video/*", loadBackground)}>
+                Import Canva export
+              </ActionButton>
+              <ol className="list-decimal space-y-1 pl-4 text-[11px] leading-snug text-gray-500">
+                <li>Design at {CANVAS_PX[project.aspect]} px in Canva.</li>
+                <li>Choose Share, then Download, and pick PNG, JPG, GIF or MP4.</li>
+                <li>Import the file here, or drop it on this card.</li>
+              </ol>
             </div>
           </Card>
 
