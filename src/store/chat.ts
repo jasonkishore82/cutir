@@ -6,7 +6,7 @@ import { activeConfig, useSettings } from "./settings";
 import { cancelAlignment, isAutoSyncIntent, syncOverridesFromText } from "../lib/autosync";
 import { fontIntent, titleCaseFont } from "../lib/fonts";
 import { beginReply, endReply, speakReplyStream, spokenSummary, stopSpeaking, turnEnded } from "../lib/voice";
-import { CHAT_ONLY_PROMPT, applyCalls, buildSystemPrompt, getOllamaTools, isSmallTalk, parseActionsFromText, selectToolGroups, type CallResult, type RawCall } from "../lib/tools";
+import { CHAT_ONLY_PROMPT, applyCalls, buildSystemPrompt, getOllamaTools, isSmallTalk, limitDeletes, parseActionsFromText, quickAnswer, selectToolGroups, type CallResult, type RawCall } from "../lib/tools";
 
 /** `before` and `after` only exist for the current session: they are not saved, so old cards cannot be undone. */
 export type Applied = { results: CallResult[]; before?: Project; after?: Project; undone?: boolean };
@@ -268,6 +268,19 @@ export const useChat = create<ChatState>((set, get) => {
 
       // Clear requests ("auto sync", "use Roboto font") run directly: no model round trip, so a small model
       // cannot get them wrong, and they work even before a model is picked.
+      // simple counting questions are answered from the project itself: always right, no model needed
+      const quick = !attachments.length ? quickAnswer(text, useProject.getState().project) : null;
+      if (quick) {
+        push(cid, { role: "user", content: text, sent: text });
+        titleFrom(cid, text);
+        push(cid, { role: "assistant", content: quick });
+        beginReply();
+        endReply(quick);
+        turnEnded();
+        finish(cid);
+        return;
+      }
+
       const direct = !attachments.length ? directIntent(text) : null;
       if (direct) {
         push(cid, { role: "user", content: text, sent: text });
@@ -361,8 +374,12 @@ ${a.data}
           if (calls.length) shown = parsed.stripped;
         }
 
-        if (calls.length) {
+        // a model must not delete lines the user did not name
+        const guard = limitDeletes(text, calls);
+        calls = guard.calls;
+        if (calls.length || guard.skipped.length) {
           const applied = await applyCalls(calls);
+          applied.results.push(...guard.skipped);
           const changed = applied.results.some((r) => r.ok && !r.noop);
           const failed = applied.results.some((r) => !r.ok);
           if (changed || failed) {

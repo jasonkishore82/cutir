@@ -86,10 +86,9 @@ export const shiftTimings = defineTool({
   apply: (p, a) => {
     const from = Math.min(a.from_index, a.to_index);
     const to = Math.max(a.from_index, a.to_index);
-    lineAt(p, from);
-    lineAt(p, to);
+    const ids = new Set(Array.from({ length: to - from + 1 }, (_, k) => lineAt(p, from + k).id));
     const lines = p.lines.map((l, i) => {
-      if (i + 1 < from || i + 1 > to) return l;
+      if (!ids.has(l.id)) return l;
       const start = round2(l.start + a.seconds);
       if (start < 0) throw new Error(`line ${i + 1} would start before 0s`);
       return { ...l, start, end: round2(l.end + a.seconds), words: undefined };
@@ -111,7 +110,8 @@ export const splitLine = defineTool({
     const [k1, k2] = splitKeyframes(l.keyframes, mid - l.start);
     const first: LyricLine = { id: l.id, text: words.slice(0, a.at_word).join(" "), start: l.start, end: mid, styleOverride: l.styleOverride, layerId: l.layerId, keyframes: k1 };
     const second: LyricLine = { id: uid(), text: words.slice(a.at_word).join(" "), start: mid, end: l.end, styleOverride: l.styleOverride, layerId: l.layerId, keyframes: k2 };
-    const lines = [...p.lines.slice(0, a.index - 1), first, second, ...p.lines.slice(a.index)];
+    const at = p.lines.indexOf(l);
+    const lines = [...p.lines.slice(0, at), first, second, ...p.lines.slice(at + 1)];
     return { project: withLines(p, lines), summary: `line ${a.index} split after word ${a.at_word}` };
   },
 });
@@ -129,7 +129,7 @@ export const mergeLines = defineTool({
     const B = lineAt(p, hi);
     const start = Math.min(A.start, B.start);
     const merged: LyricLine = { ...A, text: `${A.text} ${B.text}`, start, end: Math.max(A.end, B.end), words: undefined, keyframes: mergeKeyframes(A, B, start) };
-    const lines = p.lines.filter((_, i) => i + 1 !== hi).map((l) => (l === A ? merged : l));
+    const lines = p.lines.filter((l) => l !== B).map((l) => (l === A ? merged : l));
     return { project: withLines(p, lines), summary: `lines ${lo} and ${hi} merged` };
   },
 });

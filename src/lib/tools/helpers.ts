@@ -2,14 +2,33 @@ import { lineWords, type LyricLine, type Project } from "../../store/project";
 
 export const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * Line numbers in one reply refer to the lines as they were when the reply started. Without this, "delete line 2"
+ * followed by "delete line 3" in the same reply would hit the wrong line, because the first delete renumbers the rest.
+ * applyCalls sets the snapshot for the duration of a reply.
+ */
+let snapshot: string[] | null = null;
+export function withLineNumbers<T>(ids: string[], fn: () => T): T {
+  const prev = snapshot;
+  snapshot = ids;
+  try {
+    return fn();
+  } finally {
+    snapshot = prev;
+  }
+}
+
 export function lineAt(p: Project, n: number): LyricLine {
-  const l = p.lines[n - 1];
-  if (!l)
+  const count = snapshot ? snapshot.length : p.lines.length;
+  if (!Number.isInteger(n) || n < 1 || n > count)
     throw new Error(
-      p.lines.length
-        ? `line ${n} does not exist (project has ${p.lines.length} lines)`
+      count
+        ? `line ${n} does not exist (project has ${count} lines)`
         : `line ${n} does not exist: there are no lines yet. Use add_line to create one`
     );
+  if (!snapshot) return p.lines[n - 1];
+  const l = p.lines.find((x) => x.id === snapshot![n - 1]);
+  if (!l) throw new Error(`line ${n} was already removed earlier in this reply`);
   return l;
 }
 

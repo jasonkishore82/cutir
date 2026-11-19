@@ -8,6 +8,7 @@ import { syncTools } from "./sync";
 import { layerTools } from "./layers";
 import { animationTools, motionTools, transformTools } from "./motion";
 import { timelineTools } from "./timeline";
+import { withLineNumbers } from "./helpers";
 import { effectTools } from "./effects";
 import { kineticTools } from "./kinetic";
 import { activeTimeline, IDS } from "../../model/convert";
@@ -101,7 +102,7 @@ export async function applyCalls(calls: RawCall[]): Promise<{ results: CallResul
   const store = useProject.getState();
   const before = store.project;
   const results: CallResult[] = [];
-  store.batch(() => {
+  store.batch(() => withLineNumbers(before.lines.map((l) => l.id), () => {
     for (const r of ready) {
       if ("fail" in r) {
         results.push({ ...r.call, ok: false, summary: r.fail });
@@ -132,7 +133,7 @@ export async function applyCalls(calls: RawCall[]): Promise<{ results: CallResul
         results.push({ ...r.call, ok: false, summary: `${r.def.name}: ${(err as Error).message}` });
       }
     }
-  });
+  }));
 
   return { results, before, after: useProject.getState().project };
 }
@@ -155,7 +156,7 @@ export function buildSystemPrompt(p: Project, fallbackJson: boolean, groups?: To
   const more = p.lines.length > shown.length ? `\n(+${p.lines.length - shown.length} more lines)` : "";
 
   const parts = [
-    "You are the assistant inside Cutir, a lyric video editor. ONLY call tools when the user asks to change the video. For greetings, thanks or questions, answer in one short sentence and do NOT call any tool. When editing: one edit per call (several calls are fine), only change what was asked, and never repeat values that are already set. Line numbers are 1-based, times are seconds.",
+    "You are the assistant inside Cutir, a lyric video editor. ONLY call tools when the user asks to change the video. For greetings, thanks or questions, answer in one short sentence and do NOT call any tool. Questions about the project (how many lines, what a line says) are answered from the LINES list below: it is always the current project. When editing: one edit per call (several calls are fine), only change what was asked (to delete line 2, call delete_line once with index 2; never delete lines the user did not name), and never repeat values that are already set. Line numbers are 1-based and refer to the LINES list as it is now, for every call in your reply; times are seconds.",
     `Tools: ${registry.list(groups).map(toolSignature).join(", ")}.`,
     `STYLE: ${JSON.stringify(p.style)}`,
     `BACKGROUND: ${bg}`,
@@ -163,7 +164,7 @@ export function buildSystemPrompt(p: Project, fallbackJson: boolean, groups?: To
     ...(multi
       ? [`LAYERS (drawn bottom to top): ${p.layers.map((l, i) => `${i + 1} ${l.name}${l.visible ? "" : " (hidden)"}${l.locked ? " (locked)" : ""}`).join(", ")}`]
       : []),
-    `LINES (${multi ? "index | layer | start-end | text" : "index | start-end | text"}):\n${rows || "(none)"}${more}`,
+    `LINES (${p.lines.length} in total; ${multi ? "index | layer | start-end | text" : "index | start-end | text"}):\n${rows || "(none)"}${more}`,
   ];
   // timeline tools need the clip ids, tracks and library names
   if (groups?.includes("timeline")) {
@@ -296,4 +297,71 @@ export function parseActionsFromText(text: string): { calls: RawCall[]; stripped
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   return { calls, stripped };
+}
+
+/* ---------- guards for small models ---------- */
+
+/** Line numbers the user named: "line 2", "lines 2 and 5", "lines 3-6", "line 4, 7". */
+export function namedLineNumbers(text: string): Set<number> {
+  const out = new Set<number>();
+  const re = /\blines?\s+((?:\d+\s*(?:-|–|to)\s*\d+|\d+)(?:\s*(?:,|and|&|\+)\s*(?:\d+\s*(?:-|–|to)\s*\d+|\d+))*)/gi;
+  for (const m of text.matchAll(re)) {
+    for (const part of m[1].split(/\s*(?:,|and|&|\+)\s*/i)) {
+      const r = /^(\d+)\s*(?:-|–|to)\s*(\d+)$/i.exec(part.trim());
+      if (r) {
+        const [a, b] = [Number(r[1]), Number(r[2])].sort((x, y) => x - y);
+        for (let n = a; n <= b && n - a < 500; n++) out.add(n);
+      } else if (/^\d+$/.test(part.trim())) out.add(Number(part.trim()));
+    }
+  }
+  return out;
+}
+
+/**
+ * When the user named the lines to delete, a model must not delete others (small models sometimes call delete_line
+ * for every line). Calls for lines they did not name are skipped and reported.
+ */
+export function limitDeletes(text: string, calls: RawCall[]): { calls: RawCall[]; skipped: CallResult[] } {
+  if (!/\b(delete|remove|drop|erase|get rid of)\b/i.test(text)) return { calls, skipped: [] };
+  const named = namedLineNumbers(text);
+  if (!named.size) return { calls, skipped: [] };
+  const keep: RawCall[] = [];
+  const skipped: CallResult[] = [];
+  const seen = new Set<number>();
+  for (const c of calls) {
+    if (c.tool !== "delete_line") {
+      keep.push(c);
+      continue;
+    }
+    let args = c.args as { index?: unknown } | string;
+    if (typeof args === "string") {
+      try {
+        args = JSON.parse(args);
+      } catch {
+        /* leave it */
+      }
+    }
+    const n = Number((args as { index?: unknown })?.index);
+    if (named.has(n) && !seen.has(n)) {
+      seen.add(n);
+      keep.push(c);
+    } else skipped.push({ tool: c.tool, args: c.args, ok: false, summary: `skipped delete_line ${Number.isFinite(n) ? n : "?"}: you asked to delete line${named.size > 1 ? "s" : ""} ${[...named].join(", ")} only` });
+  }
+  return { calls: keep, skipped };
+}
+
+/** Answers to simple counting questions straight from the project, so they are always right. Null otherwise. */
+export function quickAnswer(text: string, p: Project): string | null {
+  if (!/^\s*(how many|what is the number of|number of|count( the)?)\b/i.test(text) && !/\bhow many\b.*\?\s*$/i.test(text)) return null;
+  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+  if (/\b(lyric )?lines?\b/i.test(text)) {
+    const layers = p.layers.length > 1 ? ` on ${n(p.layers.length, "layer", "layers")}` : "";
+    return p.lines.length ? `There ${p.lines.length === 1 ? "is" : "are"} ${n(p.lines.length, "line", "lines")}${layers}.` : "There are no lines yet.";
+  }
+  if (/\blayers?\b/i.test(text)) return `There ${p.layers.length === 1 ? "is" : "are"} ${n(p.layers.length, "layer", "layers")}.`;
+  if (/\bwords?\b/i.test(text)) {
+    const words = p.lines.reduce((k, l) => k + l.text.split(/\s+/).filter(Boolean).length, 0);
+    return `There ${words === 1 ? "is" : "are"} ${n(words, "word", "words")} in ${n(p.lines.length, "line", "lines")}.`;
+  }
+  return null;
 }

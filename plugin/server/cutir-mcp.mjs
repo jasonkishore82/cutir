@@ -28521,9 +28521,9 @@ const StylePatch = object({
 init_project();
 const round2 = (n) => Math.round(n * 100) / 100;
 function lineAt(p, n) {
-	const l = p.lines[n - 1];
-	if (!l) throw new Error(p.lines.length ? `line ${n} does not exist (project has ${p.lines.length} lines)` : `line ${n} does not exist: there are no lines yet. Use add_line to create one`);
-	return l;
+	const count = p.lines.length;
+	if (!Number.isInteger(n) || n < 1 || n > count) throw new Error(count ? `line ${n} does not exist (project has ${count} lines)` : `line ${n} does not exist: there are no lines yet. Use add_line to create one`);
+	return p.lines[n - 1];
 }
 const withLines = (p, lines) => ({
 	...p,
@@ -28651,10 +28651,9 @@ const lineTools = [
 		apply: (p, a) => {
 			const from = Math.min(a.from_index, a.to_index);
 			const to = Math.max(a.from_index, a.to_index);
-			lineAt(p, from);
-			lineAt(p, to);
+			const ids = new Set(Array.from({ length: to - from + 1 }, (_, k) => lineAt(p, from + k).id));
 			const lines = p.lines.map((l, i) => {
-				if (i + 1 < from || i + 1 > to) return l;
+				if (!ids.has(l.id)) return l;
 				const start = round2(l.start + a.seconds);
 				if (start < 0) throw new Error(`line ${i + 1} would start before 0s`);
 				return {
@@ -28702,11 +28701,12 @@ const lineTools = [
 				layerId: l.layerId,
 				keyframes: k2
 			};
+			const at = p.lines.indexOf(l);
 			const lines = [
-				...p.lines.slice(0, a.index - 1),
+				...p.lines.slice(0, at),
 				first,
 				second,
-				...p.lines.slice(a.index)
+				...p.lines.slice(at + 1)
 			];
 			return {
 				project: withLines(p, lines),
@@ -28737,7 +28737,7 @@ const lineTools = [
 				words: void 0,
 				keyframes: mergeKeyframes(A, B, start)
 			};
-			const lines = p.lines.filter((_, i) => i + 1 !== hi).map((l) => l === A ? merged : l);
+			const lines = p.lines.filter((l) => l !== B).map((l) => l === A ? merged : l);
 			return {
 				project: withLines(p, lines),
 				summary: `lines ${lo} and ${hi} merged`
