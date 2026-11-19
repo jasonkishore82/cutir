@@ -58,11 +58,11 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
   const btn = "px-3 py-1.5 text-xs rounded border border-edge hover:bg-edge disabled:opacity-40 disabled:hover:bg-transparent";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => !running && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => !running && onClose()}>
       <div
         role="dialog"
         aria-label="Export"
-        className="w-[440px] max-w-[92vw] rounded-lg border border-edge bg-panel p-4 space-y-4"
+        className="w-[440px] max-w-[92vw] rounded-2xl border border-white/10 bg-panel p-5 space-y-4 shadow-2xl shadow-black/60"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">

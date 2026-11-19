@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLibrary, type ProjectEntry } from "../store/library";
 import type { Aspect } from "../store/project";
 
-const SERIF = { fontFamily: 'Georgia, "Times New Roman", serif' };
+const SERIF = { letterSpacing: "-0.02em" }; // headings: tight, SF-style tracking (name kept for the call sites)
 
 function ago(t: number): string {
   const s = Math.max(0, Math.round((Date.now() - t) / 1000));
@@ -34,11 +34,11 @@ function NewProjectDialog({ onClose, busy, onCreate }: { onClose: () => void; bu
   const submit = () => !busy && onCreate({ name, aspect, fps });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <div
         role="dialog"
         aria-label="New project"
-        className="w-[460px] max-w-[92vw] rounded-lg border border-edge bg-panel p-5 space-y-5"
+        className="w-[460px] max-w-[92vw] rounded-2xl border border-white/10 bg-panel p-5 space-y-5 shadow-2xl shadow-black/60"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose();
@@ -125,16 +125,16 @@ function Card({ e, thumb, onOpen }: { e: ProjectEntry; thumb?: string; onOpen: (
   const item = "block w-full px-3 py-1.5 text-left text-xs hover:bg-edge";
 
   return (
-    <div className="group relative rounded-lg border border-edge bg-panel transition hover:border-gray-600" data-testid="project-card">
+    <div className="group relative rounded-2xl border border-white/[0.06] bg-white/[0.03] shadow-lg shadow-black/30 transition hover:-translate-y-0.5 hover:border-white/20" data-testid="project-card">
       <div
         role="button"
         tabIndex={0}
         aria-label={`Open ${e.name}`}
         onClick={() => !renaming && !confirmDelete && onOpen()}
         onKeyDown={(ev) => ev.key === "Enter" && !renaming && onOpen()}
-        className="cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
+        className="cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-2xl"
       >
-        <div className="flex aspect-video items-center justify-center overflow-hidden rounded-t-lg bg-black/40">
+        <div className="flex aspect-video items-center justify-center overflow-hidden rounded-t-2xl bg-black/40">
           {thumb ? (
             <img src={thumb} alt="" className="max-h-full max-w-full object-contain" />
           ) : (
@@ -187,7 +187,7 @@ function Card({ e, thumb, onOpen }: { e: ProjectEntry; thumb?: string; onOpen: (
       </div>
 
       {confirmDelete && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-lg bg-black/85 p-4 text-center">
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-2xl bg-black/85 p-4 text-center">
           <p className="text-xs text-gray-200">
             Delete <b>{e.name}</b>? This removes its lyrics, settings and saved files. It can't be undone.
           </p>
@@ -258,18 +258,18 @@ export default function Home() {
     input.click();
   };
 
-  const side = "flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm";
+  const side = "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm";
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full gap-2 bg-canvas p-2">
       {/* sidebar */}
-      <aside className="flex w-[240px] shrink-0 flex-col border-r border-edge bg-panel p-4">
+      <aside className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-white/[0.06] bg-panel p-4 shadow-[0_8px_30px_rgb(0_0_0/0.35)]">
         <div className="mb-6 flex items-center gap-2.5">
           <img src="/favicon.svg" alt="" className="h-8 w-8" />
-          <span className="text-[26px] leading-none text-gray-100" style={SERIF}>Cutir</span>
+          <span className="text-[24px] font-semibold leading-none text-gray-50" style={SERIF}>Cutir</span>
         </div>
 
-        <button className="mb-2 rounded bg-accent px-3 py-2.5 text-sm font-medium text-black hover:brightness-110" onClick={() => setCreating(true)}>
+        <button className="mb-2 rounded-xl bg-accent px-3 py-2.5 text-sm font-medium text-black hover:brightness-110" onClick={() => setCreating(true)}>
           + New project
         </button>
         <button className={`${side} border border-edge text-gray-300 hover:bg-edge`} onClick={importFile}>
@@ -288,10 +288,10 @@ export default function Home() {
       </aside>
 
       {/* main */}
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      <main className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-white/[0.06] bg-panel/60">
         <div className="mx-auto max-w-[1100px] px-8 py-8">
           <div className="mb-6 flex flex-wrap items-center gap-3">
-            <h1 className="mr-auto text-2xl font-semibold" style={SERIF}>Projects</h1>
+            <h1 className="mr-auto text-[28px] font-semibold" style={SERIF}>Projects</h1>
             <input
               className="field !w-60"
               placeholder="Search projects"
@@ -311,9 +311,9 @@ export default function Home() {
           {entries.length === 0 ? (
             <div className="mt-24 flex flex-col items-center gap-4 text-center">
               <img src="/favicon.svg" alt="" className="h-16 w-16" />
-              <h2 className="text-3xl text-gray-100" style={SERIF}>Welcome to Cutir</h2>
+              <h2 className="text-3xl font-semibold text-gray-50" style={SERIF}>Welcome to Cutir</h2>
               <p className="max-w-sm text-sm text-gray-500">Make lyric videos from a song, your lyrics and a background. Start with a new project.</p>
-              <button className="mt-2 rounded bg-accent px-5 py-2.5 text-sm font-medium text-black hover:brightness-110" onClick={() => setCreating(true)}>
+              <button className="mt-2 rounded-xl bg-accent px-5 py-2.5 text-sm font-medium text-black hover:brightness-110" onClick={() => setCreating(true)}>
                 + New project
               </button>
             </div>

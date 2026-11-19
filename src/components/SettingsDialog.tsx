@@ -78,13 +78,13 @@ export default function SettingsDialog() {
   const toneClass = { idle: "text-gray-500", checking: "text-gray-400", ok: "text-green-400", warn: "text-yellow-400", error: "text-red-400" }[test.state];
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onMouseDown={(e) => e.target === e.currentTarget && closeDialog()}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onMouseDown={(e) => e.target === e.currentTarget && closeDialog()}>
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label="AI models and API keys"
-        className="max-h-[92vh] w-[520px] max-w-full overflow-y-auto rounded-lg border border-edge bg-panel shadow-2xl"
+        className="max-h-[92vh] w-[520px] max-w-full overflow-y-auto rounded-2xl border border-white/10 bg-panel shadow-2xl shadow-black/60"
       >
         <div className="flex items-center justify-between border-b border-edge px-4 py-3">
           <h2 className="text-sm font-medium text-gray-100">AI models &amp; API keys</h2>

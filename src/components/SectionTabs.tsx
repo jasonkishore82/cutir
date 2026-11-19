@@ -1,0 +1,48 @@
+import { Icon, type IconName } from "./ui";
+
+export type SectionId = "media" | "lyrics" | "style" | "motion";
+
+export const SECTIONS: { id: SectionId; label: string; icon: IconName; title: string; blurb: string }[] = [
+  { id: "media", label: "Media", icon: "media", title: "Media", blurb: "Your song, the background and the canvas size." },
+  { id: "lyrics", label: "Lyrics", icon: "lyrics", title: "Lyrics", blurb: "Write or import lines, then sync them to the song." },
+  { id: "style", label: "Style", icon: "style", title: "Text style", blurb: "Font, colour, shadow and outline." },
+  { id: "motion", label: "Motion", icon: "motion", title: "Motion", blurb: "Where the text sits and how it appears." },
+];
+
+/** Top-bar section switcher: decides what the inspector on the left shows. */
+export default function SectionTabs({ value, onChange }: { value: SectionId; onChange: (s: SectionId) => void }) {
+  const onKey = (e: React.KeyboardEvent) => {
+    const i = SECTIONS.findIndex((s) => s.id === value);
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const next = SECTIONS[(i + step + SECTIONS.length) % SECTIONS.length];
+    onChange(next.id);
+    requestAnimationFrame(() => document.getElementById(`tab-${next.id}`)?.focus());
+  };
+  return (
+    <div role="tablist" aria-label="Editor sections" onKeyDown={onKey} className="inline-flex gap-0.5 rounded-[10px] border border-white/[0.06] bg-white/[0.04] p-[3px]">
+      {SECTIONS.map((s) => {
+        const on = s.id === value;
+        return (
+          <button
+            key={s.id}
+            id={`tab-${s.id}`}
+            role="tab"
+            aria-selected={on}
+            aria-controls="inspector"
+            tabIndex={on ? 0 : -1}
+            onClick={() => onChange(s.id)}
+            title={s.blurb}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium ${
+              on ? "bg-raised text-white shadow shadow-black/40" : "text-gray-400 hover:text-gray-100"
+            }`}
+          >
+            <Icon name={s.icon} className={`h-3.5 w-3.5 ${on ? "text-accent" : ""}`} />
+            <span className="hidden md:inline">{s.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}

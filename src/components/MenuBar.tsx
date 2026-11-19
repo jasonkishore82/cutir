@@ -135,7 +135,7 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
       ref={rootRef}
       role="menubar"
       aria-label="Main menu"
-      className="inline-flex items-center gap-0.5 rounded-[5px] border border-edge bg-bg/70 p-0.5"
+      className="inline-flex items-center gap-0.5 rounded-[5px] border border-white/[0.08] bg-white/[0.04] p-0.5"
     >
       {menus.map((m) => {
         const isOpen = open === m.id;
@@ -166,7 +166,7 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
               <div
                 role="menu"
                 aria-label={m.label}
-                className="absolute left-0 top-full z-50 mt-1.5 min-w-[230px] rounded-md border border-edge bg-panel py-1 text-xs shadow-xl shadow-black/50"
+                className="absolute left-0 top-full z-50 mt-1.5 min-w-[240px] rounded-xl border border-white/10 bg-panel/95 p-1 text-xs shadow-2xl shadow-black/60 backdrop-blur-xl"
               >
                 {m.items.map((it, i) =>
                   it === "sep" ? (
@@ -180,7 +180,7 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
                         close();
                         it.onSelect?.();
                       }}
-                      className={`flex w-full items-center gap-3 px-3 py-1.5 text-left focus:bg-accent/20 ${
+                      className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-1.5 text-left focus:bg-accent/20 ${
                         it.info ? "text-gray-500" : "text-gray-200 hover:bg-accent/20 disabled:text-gray-600 disabled:hover:bg-transparent"
                       }`}
                     >

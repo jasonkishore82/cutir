@@ -59,7 +59,7 @@ export default function AutoSync() {
   const btn = "px-2 py-1.5 text-xs rounded border border-edge hover:bg-edge";
 
   return (
-    <div className="mt-1 space-y-2 rounded border border-edge p-2">
+    <div className="space-y-2.5">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-gray-300">Auto-sync with Python</span>
         <button className="text-[11px] text-gray-500 hover:text-gray-200" onClick={() => setOpen((o) => !o)}>

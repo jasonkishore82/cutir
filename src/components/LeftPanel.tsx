@@ -1,7 +1,9 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
 import { ensureFont, markFontReady } from "../lib/fonts";
 import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
+import { SECTIONS, type SectionId } from "./SectionTabs";
+import { ActionButton, Card, Row, Segmented, Slider } from "./ui";
 import { useLibrary } from "../store/library";
 import {
   layerIdOf,
@@ -26,40 +28,6 @@ const GRADIENT_PRESETS: { name: string; colors: string[]; angle: number }[] = [
   { name: "Mono", colors: ["#111111", "#444444"], angle: 90 },
 ];
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="p-3 border-b border-edge">
-      <h3 className="text-xs font-semibold text-gray-300 mb-2">{title}</h3>
-      <div className="space-y-2">{children}</div>
-    </section>
-  );
-}
-
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="label">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Slider(props: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
-  return (
-    <Row label={`${props.label}: ${props.value}`}>
-      <input
-        type="range"
-        className="w-full accent-[#e0709a]"
-        min={props.min}
-        max={props.max}
-        step={props.step ?? 1}
-        value={props.value}
-        onChange={(e) => props.onChange(Number(e.target.value))}
-      />
-    </Row>
-  );
-}
-
 function pickFile(accept: string, onFile: (f: File) => void) {
   const input = document.createElement("input");
   input.type = "file";
@@ -68,7 +36,7 @@ function pickFile(accept: string, onFile: (f: File) => void) {
   input.click();
 }
 
-export default function LeftPanel() {
+export default function LeftPanel({ tab }: { tab: SectionId }) {
   const project = useProject((s) => s.project);
   const activeLayerId = useProject((s) => s.activeLayerId);
   const setActiveLayer = useProject((s) => s.setActiveLayer);
@@ -129,153 +97,189 @@ export default function LeftPanel() {
     }
   };
 
-  const btn = "w-full px-2 py-1.5 text-xs rounded border border-edge hover:bg-edge text-left truncate";
+  const meta = SECTIONS.find((x) => x.id === tab) ?? SECTIONS[0];
+  const textBtn = "rounded-lg border border-edge bg-black/20 px-3 py-2 text-[13px] text-gray-300 hover:bg-raised hover:text-white";
 
   return (
-    <div className="text-sm">
-      <Section title="Audio">
-        <button className={btn} onClick={() => pickFile("audio/*,.mp3,.wav,.m4a", loadAudio)}>
-          {project.audio ? `♪ ${project.audio.name}` : "Upload audio (mp3/wav/m4a)"}
-        </button>
-      </Section>
+    <div id="inspector" role="tabpanel" aria-labelledby={`tab-${tab}`} className="space-y-3 p-3.5 text-sm">
+      <header className="px-0.5 pb-1 pt-0.5">
+        <h2 className="text-[17px] font-semibold tracking-tight text-gray-50">{meta.title}</h2>
+        <p className="mt-0.5 text-xs text-gray-500">{meta.blurb}</p>
+      </header>
 
-      <Section title="Background">
-        <button className={btn} onClick={() => pickFile("image/*,video/*", loadBackground)}>
-          {project.background.type === "asset" && project.background.asset
-            ? project.background.asset.name
-            : "Upload image / video loop"}
-        </button>
-        <div className="grid grid-cols-4 gap-1">
-          {GRADIENT_PRESETS.map((g) => (
-            <button
-              key={g.name}
-              title={g.name}
-              className="h-8 rounded border border-edge"
-              style={{ background: `linear-gradient(${g.angle}deg, ${g.colors.join(",")})` }}
-              onClick={() => (setBackground({ type: "gradient", colors: g.colors, angle: g.angle, noise: true }), useLibrary.getState().clearAsset("bg"))}
-            />
-          ))}
-        </div>
-      </Section>
+      {tab === "media" && (
+        <>
+          <Card title="Song">
+            <ActionButton icon="music" active={!!project.audio} onClick={() => pickFile("audio/*,.mp3,.wav,.m4a", loadAudio)}>
+              {project.audio ? project.audio.name : "Choose audio (mp3, wav, m4a)"}
+            </ActionButton>
+          </Card>
 
-      <Section title="Lyrics">
-        {project.layers.length > 1 && (
-          <label className="block">
-            <span className="label">Editing layer</span>
-            <select className="field" value={layer.id} onChange={(e) => setActiveLayer(e.target.value)}>
-              {project.layers.map((l) => (
-                <option key={l.id} value={l.id}>{l.name}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <textarea
-          className="field h-32 resize-y font-mono text-xs"
-          placeholder={project.layers.length > 1 ? `One line per row for "${layer.name}"` : "One lyric line per row"}
-          value={linesToText(layerLines)}
-          onChange={(e) => setLinesFromText(e.target.value)}
-        />
-        <button
-          className={btn}
-          onClick={() =>
-            pickFile(".lrc,.srt,text/plain", async (f) => {
-              const imported = parseSubtitleFile(f.name, await f.text());
-              if (!imported.length) return alert("No timed lines found in that file.");
-              // replaces the lines of the layer being edited; other layers stay as they are
-              useProject.getState().update((p) => {
-                const lid = p.layers.some((l) => l.id === useProject.getState().activeLayerId) ? useProject.getState().activeLayerId : p.layers[0].id;
-                const others = p.lines.filter((l) => layerIdOf(p, l) !== lid);
-                return orderByLayers({ ...p, lines: [...others, ...imported.map((l) => ({ ...l, layerId: lid }))] });
-              });
-            })
-          }
-        >
-          Import .lrc / .srt
-        </button>
-        <AutoSync />
-      </Section>
-
-      <Section title="Aspect ratio">
-        <div className="flex gap-1">
-          {ASPECTS.map((a) => (
-            <button
-              key={a}
-              onClick={() => setAspect(a)}
-              className={`flex-1 py-1 text-xs rounded border ${
-                project.aspect === a ? "border-accent text-accent" : "border-edge hover:bg-edge"
-              }`}
+          <Card title="Background">
+            <ActionButton
+              icon="image"
+              active={project.background.type === "asset"}
+              onClick={() => pickFile("image/*,video/*", loadBackground)}
             >
-              {a}
-            </button>
-          ))}
-        </div>
-      </Section>
+              {project.background.type === "asset" && project.background.asset ? project.background.asset.name : "Choose image or video loop"}
+            </ActionButton>
+            <div>
+              <span className="label">Or pick a gradient</span>
+              <div className="grid grid-cols-4 gap-2">
+                {GRADIENT_PRESETS.map((g) => (
+                  <button
+                    key={g.name}
+                    title={g.name}
+                    aria-label={`${g.name} gradient`}
+                    className="aspect-square rounded-xl border border-white/10 ring-offset-2 ring-offset-panel hover:ring-2 hover:ring-white/30"
+                    style={{ background: `linear-gradient(${g.angle}deg, ${g.colors.join(",")})` }}
+                    onClick={() => (setBackground({ type: "gradient", colors: g.colors, angle: g.angle, noise: true }), useLibrary.getState().clearAsset("bg"))}
+                  />
+                ))}
+              </div>
+            </div>
+          </Card>
 
-      <Section title="Text style">
-        <Row label="Font">
-          <select className="field" value={style.fontFamily} onChange={(e) => setStyle({ fontFamily: e.target.value })}>
-            {[...new Set([style.fontFamily, ...FONTS])].map((f) => (
-              <option key={f}>{f}</option>
-            ))}
-          </select>
-        </Row>
-        <button className={btn} onClick={() => pickFile(".ttf,.otf", loadFont)}>Upload font (.ttf/.otf)</button>
-        <div className="space-y-1">
-          <div className="flex gap-1">
-            <input
-              className="field"
-              value={gfont}
-              placeholder="Google font, e.g. Roboto"
-              onChange={(e) => setGfont(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && useGoogleFont()}
-              aria-label="Google Fonts name"
+          <Card title="Canvas" hint="The shape of your video.">
+            <Segmented label="Aspect ratio" value={project.aspect} options={ASPECTS} onChange={(a) => setAspect(a)} />
+          </Card>
+        </>
+      )}
+
+      {tab === "lyrics" && (
+        <>
+          <Card title="Lines" hint="One line of lyrics per row.">
+            {project.layers.length > 1 && (
+              <Row label="Editing layer">
+                <select className="field" value={layer.id} onChange={(e) => setActiveLayer(e.target.value)}>
+                  {project.layers.map((l) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </Row>
+            )}
+            <textarea
+              className="field h-40 resize-y font-mono text-xs leading-relaxed"
+              placeholder={project.layers.length > 1 ? `One line per row for "${layer.name}"` : "Type or paste your lyrics here…"}
+              value={linesToText(layerLines)}
+              onChange={(e) => setLinesFromText(e.target.value)}
             />
-            <button className="px-2 text-xs rounded border border-edge hover:bg-edge disabled:opacity-40" onClick={useGoogleFont} disabled={!gfont.trim() || gfontBusy}>
-              {gfontBusy ? "…" : "Use"}
+            <button
+              className={`${textBtn} w-full text-left`}
+              onClick={() =>
+                pickFile(".lrc,.srt,text/plain", async (f) => {
+                  const imported = parseSubtitleFile(f.name, await f.text());
+                  if (!imported.length) return alert("No timed lines found in that file.");
+                  // replaces the lines of the layer being edited; other layers stay as they are
+                  useProject.getState().update((p) => {
+                    const lid = p.layers.some((l) => l.id === useProject.getState().activeLayerId) ? useProject.getState().activeLayerId : p.layers[0].id;
+                    const others = p.lines.filter((l) => layerIdOf(p, l) !== lid);
+                    return orderByLayers({ ...p, lines: [...others, ...imported.map((l) => ({ ...l, layerId: lid }))] });
+                  });
+                })
+              }
+            >
+              Import .lrc / .srt file…
             </button>
-          </div>
-          {gfontMsg && <p className={`text-[11px] ${gfontMsg.ok ? "text-green-400" : "text-red-400"}`}>{gfontMsg.text}</p>}
-        </div>
+          </Card>
 
-        <Slider label="Size" value={style.fontSize} min={24} max={240} onChange={(v) => setStyle({ fontSize: v })} />
-        <div className="flex items-center gap-3">
-          <Row label="Color">
-            <input type="color" value={style.color} onChange={(e) => setStyle({ color: e.target.value })} />
-          </Row>
-          <label className="flex items-center gap-1 text-xs mt-4">
-            <input type="checkbox" checked={style.uppercase} onChange={(e) => setStyle({ uppercase: e.target.checked })} />
-            Uppercase
-          </label>
-        </div>
-        <Slider label="Letter spacing" value={style.letterSpacing} min={-5} max={30} onChange={(v) => setStyle({ letterSpacing: v })} />
-        <Slider label="Line height" value={style.lineHeight} min={0.8} max={2} step={0.05} onChange={(v) => setStyle({ lineHeight: v })} />
-        <Slider label="Max chars / line" value={style.maxCharsPerLine} min={8} max={60} onChange={(v) => setStyle({ maxCharsPerLine: v })} />
-      </Section>
+          <Card title="Sync">
+            <AutoSync />
+          </Card>
+        </>
+      )}
 
-      <Section title="Shadow">
-        <Slider label="Blur" value={style.shadow.blur} min={0} max={60} onChange={(v) => setStyle({ shadow: { ...style.shadow, blur: v } }, "shadow")} />
-        <Slider label="Offset Y" value={style.shadow.offsetY} min={-40} max={40} onChange={(v) => setStyle({ shadow: { ...style.shadow, offsetY: v } }, "shadow")} />
-        <Slider label="Opacity" value={style.shadow.opacity} min={0} max={1} step={0.05} onChange={(v) => setStyle({ shadow: { ...style.shadow, opacity: v } }, "shadow")} />
-      </Section>
+      {tab === "style" && (
+        <>
+          <Card title="Font">
+            <Row label="Typeface">
+              <select className="field" value={style.fontFamily} onChange={(e) => setStyle({ fontFamily: e.target.value })}>
+                {[...new Set([style.fontFamily, ...FONTS])].map((f) => (
+                  <option key={f}>{f}</option>
+                ))}
+              </select>
+            </Row>
+            <div className="space-y-1.5">
+              <div className="flex gap-1.5">
+                <input
+                  className="field"
+                  value={gfont}
+                  placeholder="Google Fonts name, e.g. Roboto"
+                  onChange={(e) => setGfont(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && useGoogleFont()}
+                  aria-label="Google Fonts name"
+                />
+                <button className={`${textBtn} shrink-0 disabled:opacity-40`} onClick={useGoogleFont} disabled={!gfont.trim() || gfontBusy}>
+                  {gfontBusy ? "…" : "Use"}
+                </button>
+              </div>
+              {gfontMsg && <p className={`text-[11px] ${gfontMsg.ok ? "text-green-400" : "text-red-400"}`}>{gfontMsg.text}</p>}
+            </div>
+            <button className={`${textBtn} w-full text-left`} onClick={() => pickFile(".ttf,.otf", loadFont)}>Upload font file (.ttf / .otf)…</button>
+          </Card>
 
-      <Section title="Outline">
-        <Slider label="Width" value={style.outline.width} min={0} max={20} onChange={(v) => setStyle({ outline: { ...style.outline, width: v } }, "outline")} />
-        <input type="color" value={style.outline.color} onChange={(e) => setStyle({ outline: { ...style.outline, color: e.target.value } }, "outline")} />
-      </Section>
+          <Card title="Text">
+            <Slider label="Size" value={style.fontSize} min={24} max={240} onChange={(v) => setStyle({ fontSize: v })} />
+            <div className="flex items-center justify-between gap-3">
+              <label className="flex items-center gap-2.5 text-[12px] text-gray-300">
+                <input type="color" value={style.color} onChange={(e) => setStyle({ color: e.target.value })} aria-label="Text colour" />
+                Colour
+              </label>
+              <label className="flex items-center gap-2 text-[12px] text-gray-300">
+                <input type="checkbox" checked={style.uppercase} onChange={(e) => setStyle({ uppercase: e.target.checked })} />
+                ALL CAPS
+              </label>
+            </div>
+            <Slider label="Letter spacing" value={style.letterSpacing} min={-5} max={30} onChange={(v) => setStyle({ letterSpacing: v })} />
+            <Slider label="Line height" value={style.lineHeight} min={0.8} max={2} step={0.05} onChange={(v) => setStyle({ lineHeight: v })} />
+            <Slider label="Characters per line" value={style.maxCharsPerLine} min={8} max={60} onChange={(v) => setStyle({ maxCharsPerLine: v })} />
+          </Card>
 
-      <Section title="Position & animation">
-        <Row label="Position">
-          <select className="field" value={style.position} onChange={(e) => setStyle({ position: e.target.value as Position })}>
-            {POSITIONS.map((p) => <option key={p}>{p}</option>)}
-          </select>
-        </Row>
-        <Row label="Animation">
-          <select className="field" value={style.animation} onChange={(e) => setStyle({ animation: e.target.value as AnimationName })}>
-            {ANIMATIONS.map((a) => <option key={a}>{a}</option>)}
-          </select>
-        </Row>
-        <Slider label="Duration (ms)" value={style.animationMs} min={0} max={1000} step={50} onChange={(v) => setStyle({ animationMs: v })} />
-      </Section>
+          <Card title="Shadow">
+            <Slider label="Blur" value={style.shadow.blur} min={0} max={60} onChange={(v) => setStyle({ shadow: { ...style.shadow, blur: v } }, "shadow")} />
+            <Slider label="Distance" value={style.shadow.offsetY} min={-40} max={40} onChange={(v) => setStyle({ shadow: { ...style.shadow, offsetY: v } }, "shadow")} />
+            <Slider label="Opacity" value={style.shadow.opacity} min={0} max={1} step={0.05} onChange={(v) => setStyle({ shadow: { ...style.shadow, opacity: v } }, "shadow")} />
+          </Card>
+
+          <Card title="Outline">
+            <Slider label="Width" value={style.outline.width} min={0} max={20} onChange={(v) => setStyle({ outline: { ...style.outline, width: v } }, "outline")} />
+            <label className="flex items-center gap-2.5 text-[12px] text-gray-300">
+              <input type="color" value={style.outline.color} onChange={(e) => setStyle({ outline: { ...style.outline, color: e.target.value } }, "outline")} aria-label="Outline colour" />
+              Colour
+            </label>
+          </Card>
+        </>
+      )}
+
+      {tab === "motion" && (
+        <>
+          <Card title="Position" hint="Where lines sit on the screen.">
+            <Segmented label="Position" value={style.position} options={POSITIONS} onChange={(p) => setStyle({ position: p })} />
+          </Card>
+
+          <Card title="Entrance" hint="How each line appears.">
+            <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Animation">
+              {ANIMATIONS.map((a) => {
+                const on = style.animation === a;
+                return (
+                  <button
+                    key={a}
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => setStyle({ animation: a })}
+                    className={`rounded-lg border px-2.5 py-2 text-left text-[13px] capitalize ${
+                      on ? "border-accent/50 bg-accent/10 text-white" : "border-edge bg-black/20 text-gray-300 hover:bg-raised"
+                    }`}
+                  >
+                    {a.replace("-", " ")}
+                  </button>
+                );
+              })}
+            </div>
+            <Slider label="Speed" value={style.animationMs} min={0} max={1000} step={50} unit=" ms" onChange={(v) => setStyle({ animationMs: v })} />
+          </Card>
+        </>
+      )}
     </div>
   );
 }

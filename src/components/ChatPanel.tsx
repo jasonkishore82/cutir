@@ -136,8 +136,8 @@ export default function ChatPanel() {
   return (
     <div className="h-full flex flex-col">
       {/* chat tabs */}
-      <div className="flex items-stretch h-9 shrink-0 border-b border-edge bg-bg/60">
-        <div className="flex-1 min-w-0 flex overflow-x-auto">
+      <div className="flex h-11 shrink-0 items-center gap-1 border-b border-edge px-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {chats.map((c) => {
             const active = c.id === activeId;
             return (
@@ -147,8 +147,8 @@ export default function ChatPanel() {
                 aria-selected={active}
                 onClick={() => switchChat(c.id)}
                 title={busy && !active ? "Wait for the current reply to finish" : c.title}
-                className={`group flex items-center gap-2 pl-3 pr-1.5 max-w-[200px] shrink-0 text-xs cursor-pointer border-r border-edge ${
-                  active ? "bg-panel text-gray-100 border-t-2 border-t-accent" : "text-gray-500 hover:text-gray-300 border-t-2 border-t-transparent"
+                className={`group flex h-8 max-w-[200px] shrink-0 cursor-pointer items-center gap-2 rounded-lg pl-3 pr-1.5 text-xs ${
+                  active ? "bg-white/[0.08] text-gray-100" : "text-gray-500 hover:bg-white/[0.04] hover:text-gray-300"
                 } ${busy && !active ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <span className="text-accent text-sm leading-none">✱</span>
@@ -173,7 +173,7 @@ export default function ChatPanel() {
           disabled={busy}
           title="New chat"
           aria-label="New chat"
-          className="w-9 shrink-0 text-lg text-gray-400 hover:text-gray-100 hover:bg-edge disabled:opacity-40 border-l border-edge"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-lg leading-none text-gray-400 hover:bg-white/[0.07] hover:text-gray-100 disabled:opacity-40"
         >
           +
         </button>
@@ -240,7 +240,7 @@ export default function ChatPanel() {
           <div className="h-full flex flex-col items-center justify-center text-center gap-4 pb-6">
             <div className="flex items-center gap-2.5">
               <img src="/favicon.svg" alt="" className="h-9 w-9" />
-              <span className="text-[30px] leading-none text-gray-100 tracking-tight" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+              <span className="text-[30px] leading-none text-gray-100 tracking-tight" style={{ letterSpacing: "-0.02em", fontWeight: 600 }}>
                 Cutir
               </span>
             </div>

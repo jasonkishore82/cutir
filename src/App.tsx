@@ -7,6 +7,8 @@ import ExportDialog from "./components/ExportDialog";
 import Home from "./components/Home";
 import MenuBar from "./components/MenuBar";
 import SettingsDialog from "./components/SettingsDialog";
+import SectionTabs, { type SectionId } from "./components/SectionTabs";
+import { Icon } from "./components/ui";
 import { startAutosave, useProject } from "./store/project";
 import { installUnloadSave, useLibrary } from "./store/library";
 
@@ -71,11 +73,10 @@ function ResizeHandle({ width, set, dir, min, max, reset, storeKey }: {
         set(reset);
         save(reset);
       }}
-      className="group relative w-1 shrink-0 cursor-col-resize touch-none"
+      className="group relative w-2 shrink-0 cursor-col-resize touch-none"
     >
-      {/* wider invisible hit area, thin visible line */}
-      <span className="absolute inset-y-0 -left-1.5 -right-1.5" />
-      <span className={`absolute inset-y-0 left-0 w-px transition-colors ${active ? "bg-sky-500 w-[3px]" : "bg-edge group-hover:bg-sky-500"}`} />
+      {/* the gutter between floating panels; a small pill appears on hover */}
+      <span className={`absolute inset-y-[38%] left-1/2 w-[3px] -translate-x-1/2 rounded-full transition-colors ${active ? "bg-accent" : "bg-transparent group-hover:bg-white/30"}`} />
     </div>
   );
 }
@@ -133,10 +134,9 @@ function TimelineResizeHandle({ height, set }: { height: number; set: (h: number
           /* ignore */
         }
       }}
-      className="group relative h-1 shrink-0 cursor-row-resize touch-none"
+      className="group relative h-2 shrink-0 cursor-row-resize touch-none"
     >
-      <span className="absolute inset-x-0 -top-1.5 -bottom-1.5" />
-      <span className={`absolute inset-x-0 top-0 transition-colors ${active ? "h-[3px] bg-sky-500" : "h-px bg-edge group-hover:bg-sky-500"}`} />
+      <span className={`absolute inset-x-[42%] top-1/2 h-[3px] -translate-y-1/2 rounded-full transition-colors ${active ? "bg-accent" : "bg-transparent group-hover:bg-white/30"}`} />
     </div>
   );
 }
@@ -154,7 +154,7 @@ function ProjectName() {
   return (
     <input
       aria-label="Project name"
-      className="w-48 truncate rounded border border-transparent bg-transparent px-2 py-0.5 text-sm text-gray-200 hover:border-edge focus:border-accent focus:bg-bg"
+      className="w-44 min-w-0 truncate rounded-lg border border-transparent bg-transparent px-2 py-1 text-[13px] font-medium text-gray-100 hover:bg-white/5 focus:border-accent/70 focus:bg-bg"
       value={draft ?? name}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
@@ -176,9 +176,25 @@ export default function App() {
   const canUndo = useProject((s) => s.past.length > 0);
   const canRedo = useProject((s) => s.future.length > 0);
   const [exporting, setExporting] = useState(false);
-  const [leftW, setLeftW] = useState(() => readW("cutir:leftW", 280));
+  const [leftW, setLeftW] = useState(() => readW("cutir:leftW", 300));
   const [chatW, setChatW] = useState(() => readW("cutir:chatW", 360));
   const [tlH, setTlH] = useState(() => readW("cutir:tlH", 240));
+  const [section, setSectionState] = useState<SectionId>(() => {
+    try {
+      const v = localStorage.getItem("cutir:section");
+      return v === "lyrics" || v === "style" || v === "motion" ? v : "media";
+    } catch {
+      return "media";
+    }
+  });
+  const setSection = (s: SectionId) => {
+    setSectionState(s);
+    try {
+      localStorage.setItem("cutir:section", s);
+    } catch {
+      /* storage unavailable */
+    }
+  };
 
   useEffect(() => {
     useLibrary.getState().init(); // loads the project list (and migrates the old single autosave)
@@ -205,10 +221,11 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
-  const btn = "px-2 py-1 text-xs rounded border border-edge hover:bg-edge disabled:opacity-40 disabled:hover:bg-transparent";
+  const iconBtn = "grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-white/[0.07] hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400";
+  const panel = "overflow-hidden rounded-2xl border border-white/[0.06] bg-panel shadow-[0_8px_30px_rgb(0_0_0/0.35)]";
 
   const resetLayout = () => {
-    setLeftW(280);
+    setLeftW(300);
     setChatW(360);
     setTlH(240);
     for (const k of ["cutir:leftW", "cutir:chatW", "cutir:tlH"]) {
@@ -223,37 +240,56 @@ export default function App() {
   if (screen === "home") return <Home />;
 
   return (
-    <div className="h-full flex flex-col">
-      <header className="h-10 shrink-0 flex items-center gap-2 px-3 border-b border-edge bg-panel">
-        <button className={`${btn} flex items-center gap-1.5`} onClick={() => useLibrary.getState().goHome()} title="Back to all projects">
-          <span aria-hidden>‹</span> Projects
-        </button>
-        <img src="/favicon.svg" alt="" className="ml-1 h-6 w-6" />
-        <MenuBar onExport={() => setExporting(true)} onResetLayout={resetLayout} />
-        <ProjectName />
-        {saveFailed && <span className="text-[11px] text-red-400" title="Browser storage is full or blocked">⚠ not saved</span>}
-        <div className="ml-auto flex gap-1">
-          <button className={btn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">Undo</button>
-          <button className={btn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">Redo</button>
+    <div className="flex h-full flex-col bg-canvas p-2">
+      <header className="mb-2 grid h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            className="flex h-8 items-center gap-1 rounded-lg pl-1.5 pr-2.5 text-xs text-gray-300 hover:bg-white/[0.07] hover:text-white"
+            onClick={() => useLibrary.getState().goHome()}
+            title="Back to all projects"
+          >
+            <Icon name="back" className="h-4 w-4" /> <span className="hidden lg:inline">Projects</span>
+          </button>
+          <MenuBar onExport={() => setExporting(true)} onResetLayout={resetLayout} />
+          <ProjectName />
+          {saveFailed && <span className="shrink-0 text-[11px] text-red-400" title="Browser storage is full or blocked">⚠ not saved</span>}
         </div>
-        <div className="flex gap-1">
-          <button className={`${btn} border-accent text-accent`} onClick={() => setExporting(true)}>Export</button>
-          <button className={btn} onClick={toggleChat}>{chatOpen ? "Hide AI" : "Show AI"}</button>
+
+        <SectionTabs value={section} onChange={setSection} />
+
+        <div className="flex items-center justify-end gap-1">
+          <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo"><Icon name="undo" /></button>
+          <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><Icon name="redo" /></button>
+          <button
+            className={`${iconBtn} ${chatOpen ? "bg-white/[0.07] !text-accent" : ""}`}
+            onClick={toggleChat}
+            title={chatOpen ? "Hide the AI assistant" : "Show the AI assistant"}
+            aria-label="AI assistant"
+            aria-pressed={chatOpen}
+          >
+            <Icon name="ai" />
+          </button>
+          <button
+            className="ml-1 flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3.5 text-xs font-semibold text-black shadow-[0_2px_12px_rgb(224_112_154/0.35)] hover:brightness-110"
+            onClick={() => setExporting(true)}
+          >
+            <Icon name="export" className="h-3.5 w-3.5" /> Export
+          </button>
         </div>
       </header>
 
-      <div className="flex-1 min-h-0 flex">
-        <aside style={{ width: leftW }} className="shrink-0 bg-panel overflow-y-auto">
-          <LeftPanel />
+      <div className="flex min-h-0 flex-1">
+        <aside style={{ width: leftW }} className={`${panel} shrink-0 overflow-y-auto`}>
+          <LeftPanel tab={section} />
         </aside>
-        <ResizeHandle width={leftW} set={setLeftW} dir={1} min={220} max={480} reset={280} storeKey="cutir:leftW" />
-        <main className="flex-1 min-w-0 bg-bg">
+        <ResizeHandle width={leftW} set={setLeftW} dir={1} min={240} max={480} reset={300} storeKey="cutir:leftW" />
+        <main className={`${panel} min-w-0 flex-1 bg-bg`}>
           <Preview />
         </main>
         {chatOpen && (
           <>
             <ResizeHandle width={chatW} set={setChatW} dir={-1} min={280} max={720} reset={360} storeKey="cutir:chatW" />
-            <aside style={{ width: chatW }} className="shrink-0 bg-panel min-w-0">
+            <aside style={{ width: chatW }} className={`${panel} min-w-0 shrink-0`}>
               <ChatPanel />
             </aside>
           </>
@@ -264,7 +300,7 @@ export default function App() {
       <SettingsDialog />
 
       <TimelineResizeHandle height={tlH} set={setTlH} />
-      <footer style={{ height: tlH }} className="shrink-0 bg-panel">
+      <footer style={{ height: tlH }} className={`${panel} shrink-0`}>
         <Timeline />
       </footer>
     </div>

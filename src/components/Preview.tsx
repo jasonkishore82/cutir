@@ -1,3 +1,4 @@
+import { Icon } from "./ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "../store/project";
 import { ensureFont } from "../lib/fonts";
@@ -162,26 +163,35 @@ export default function Preview() {
     else if (duration > 0) setLoop({ start: 0, end: duration });
   };
 
-  const btn = "px-2 py-1 text-xs rounded border border-edge hover:bg-edge disabled:opacity-40";
+  const round = "grid h-9 w-9 place-items-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white";
 
   return (
-    <div className="h-full flex flex-col">
-      <div ref={boxRef} className="flex-1 min-h-0 flex items-center justify-center p-4">
+    <div className="flex h-full flex-col">
+      <div ref={boxRef} className="flex min-h-0 flex-1 items-center justify-center p-5">
         <canvas
           ref={canvasRef}
           width={Math.round(box.w * dpr)}
           height={Math.round(box.h * dpr)}
           style={{ width: box.w, height: box.h }}
-          className="border border-edge shadow-lg"
+          className="rounded-lg shadow-2xl shadow-black/70 ring-1 ring-white/10"
         />
       </div>
 
-      <div className="h-12 shrink-0 border-t border-edge flex items-center gap-3 px-3">
-        <button className={btn} onClick={toggle} title="Space">{playing ? "Pause" : "Play"}</button>
-        <button className={btn} onClick={() => seek(0)} title="Back to start">|&lt;</button>
+      <div className="mx-4 mb-4 flex h-12 shrink-0 items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.04] px-2.5">
+        <button className={round} onClick={() => seek(0)} title="Back to start" aria-label="Back to start"><Icon name="skipBack" /></button>
+        <button
+          className="grid h-9 w-9 place-items-center rounded-full bg-white text-black hover:bg-gray-200"
+          onClick={toggle}
+          title="Play / pause (Space)"
+          aria-label={playing ? "Pause" : "Play"}
+        >
+          <Icon name={playing ? "pause" : "play"} className="h-4 w-4" />
+        </button>
+        <span className="w-24 shrink-0 text-center text-xs tabular-nums text-gray-300">{timeLabel}</span>
         <input
           type="range"
-          className="flex-1 accent-[#e0709a]"
+          className="min-w-0 flex-1"
+          aria-label="Seek"
           min={0}
           max={duration || 1}
           step={0.01}
@@ -193,15 +203,15 @@ export default function Preview() {
           }}
           onPointerUp={() => setScrub(null)}
         />
-        <span className="text-xs tabular-nums text-gray-400 w-28 text-right">
-          {timeLabel} / {fmt(duration)}
-        </span>
+        <span className="w-14 shrink-0 text-right text-xs tabular-nums text-gray-500">{fmt(duration)}</span>
         <button
-          className={`${btn} ${loop ? "border-accent text-accent" : ""}`}
+          className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs ${loop ? "bg-accent/15 text-accent" : "text-gray-400 hover:bg-white/10 hover:text-white"}`}
           onClick={toggleLoop}
           title={selected ? "Loop the selected line" : "Loop the whole song"}
+          aria-pressed={!!loop}
         >
-          Loop{loop ? ` ${loop.start.toFixed(1)}-${loop.end.toFixed(1)}` : ""}
+          <Icon name="loop" className="h-3.5 w-3.5" />
+          Loop{loop ? ` ${loop.start.toFixed(1)}–${loop.end.toFixed(1)}` : ""}
         </button>
       </div>
     </div>
