@@ -1,4 +1,5 @@
 import { Icon } from "./ui";
+import TextOverlay from "./TextOverlay";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "../store/project";
 import { ensureFont } from "../lib/fonts";
@@ -168,13 +169,16 @@ export default function Preview() {
   return (
     <div className="flex h-full flex-col">
       <div ref={boxRef} className="flex min-h-0 flex-1 items-center justify-center p-5">
-        <canvas
-          ref={canvasRef}
-          width={Math.round(box.w * dpr)}
-          height={Math.round(box.h * dpr)}
-          style={{ width: box.w, height: box.h }}
-          className="rounded-lg shadow-2xl shadow-black/70 ring-1 ring-white/10"
-        />
+        <div className="relative" style={{ width: box.w, height: box.h }}>
+          <canvas
+            ref={canvasRef}
+            width={Math.round(box.w * dpr)}
+            height={Math.round(box.h * dpr)}
+            style={{ width: box.w, height: box.h }}
+            className="rounded-lg shadow-2xl shadow-black/70 ring-1 ring-white/10"
+          />
+          {box.w > 0 && <TextOverlay w={box.w} h={box.h} />}
+        </div>
       </div>
 
       <div className="mx-4 mb-4 flex h-12 shrink-0 items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.04] px-2.5">

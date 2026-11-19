@@ -19,6 +19,12 @@ export type Background =
   | { type: "gradient"; colors: string[]; angle: number; noise: boolean }
   | { type: "asset"; asset?: AssetRef };
 
+/**
+ * Free placement of a line. `x` and `y` are the centre of the text block as fractions of the canvas (0..1), so the
+ * placement survives any aspect ratio. While they are missing, the `position` preset places the line.
+ */
+export type Transform = { x?: number; y?: number; scale: number; rotation: number };
+
 export type TextStyle = {
   fontFamily: string;
   fontSize: number; // px at 1080p reference height
@@ -30,6 +36,7 @@ export type TextStyle = {
   shadow: { blur: number; offsetX: number; offsetY: number; opacity: number };
   outline: { width: number; color: string };
   position: Position;
+  transform: Transform;
   animation: AnimationName;
   animationMs: number;
 };
@@ -84,6 +91,7 @@ export const DEFAULT_STYLE: TextStyle = {
   shadow: { blur: 12, offsetX: 0, offsetY: 4, opacity: 0.45 },
   outline: { width: 0, color: "#000000" },
   position: "center",
+  transform: { scale: 1, rotation: 0 },
   animation: "fade",
   animationMs: 200,
 };

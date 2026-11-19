@@ -7,7 +7,9 @@ import { useMedia, type MediaItem } from "../store/media";
 import { SECTIONS, type SectionId } from "./SectionTabs";
 import { ActionButton, Card, Icon, Row, Segmented, Slider } from "./ui";
 import { useLibrary } from "../store/library";
+import { resetLineTransform, writeLineTransform } from "../lib/transform";
 import {
+  effectiveStyle,
   layerIdOf,
   linesOfLayer,
   linesToText,
@@ -52,6 +54,9 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
   const setBackground = useProject((s) => s.setBackground);
   const setAudio = useProject((s) => s.setAudio);
   const setLinesFromText = useProject((s) => s.setLinesFromText);
+  const selectedId = useProject((s) => s.selectedLineId);
+  const selectedLine = project.lines.find((l) => l.id === selectedId);
+  const selTf = selectedLine ? effectiveStyle(project, selectedLine).transform : undefined;
   const lastAudioUrl = useRef<string>();
   const [gfont, setGfont] = useState("");
   const [gfontMsg, setGfontMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -305,7 +310,34 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
       {tab === "motion" && (
         <>
           <Card title="Position">
-            <Segmented label="Position" value={style.position} options={POSITIONS} onChange={(p) => setStyle({ position: p })} />
+            <Segmented
+              label="Position"
+              value={style.position}
+              options={POSITIONS}
+              onChange={(p) => setStyle({ position: p, transform: { ...style.transform, x: undefined, y: undefined } })}
+            />
+          </Card>
+
+          <Card title="Selected line">
+            {!selectedLine ? (
+              <p className="text-[12px] text-gray-500">Click a line in the preview or the timeline to move, scale or rotate it.</p>
+            ) : (
+              <>
+                <p className="truncate text-[12px] text-gray-300" title={selectedLine.text}>{selectedLine.text}</p>
+                {selTf?.x === undefined && <p className="text-[11px] text-gray-500">Placed by the position preset. Drag it in the preview to place it freely.</p>}
+                {selTf?.x !== undefined && (
+                  <Slider label="Horizontal" value={Math.round(selTf.x * 100)} min={0} max={100} unit="%" onChange={(v) => writeLineTransform(selectedLine.id, { x: v / 100 }, `tf:x:${selectedLine.id}`)} />
+                )}
+                {selTf?.y !== undefined && (
+                  <Slider label="Vertical" value={Math.round(selTf.y * 100)} min={0} max={100} unit="%" onChange={(v) => writeLineTransform(selectedLine.id, { y: v / 100 }, `tf:y:${selectedLine.id}`)} />
+                )}
+                <Slider label="Size" value={Math.round((selTf?.scale ?? 1) * 100)} min={10} max={500} unit="%" onChange={(v) => writeLineTransform(selectedLine.id, { scale: v / 100 }, `tf:s:${selectedLine.id}`)} />
+                <Slider label="Rotation" value={Math.round(selTf?.rotation ?? 0)} min={-180} max={180} unit=" deg" onChange={(v) => writeLineTransform(selectedLine.id, { rotation: v }, `tf:r:${selectedLine.id}`)} />
+                <button className={`${textBtn} w-full text-left`} onClick={() => resetLineTransform(selectedLine.id)}>
+                  Reset position, size and rotation
+                </button>
+              </>
+            )}
           </Card>
 
           <Card title="Entrance">

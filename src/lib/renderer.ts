@@ -157,6 +157,81 @@ function wordStarts(line: LyricLine, count: number): number[] {
   return Array.from({ length: count }, (_, i) => line.start + (dur * i) / count);
 }
 
+/* ---------- Layout shared by drawing, hit-testing and the selection overlay ---------- */
+
+type Layout = { style: TextStyle; scale: number; fontPx: number; lineH: number; rows: string[]; blockH: number; textW: number; cx: number; cy: number };
+
+let measureCtx: CanvasRenderingContext2D | null = null;
+const getMeasureCtx = () => (measureCtx ??= document.createElement("canvas").getContext("2d")!);
+
+/** Where a line's text block sits and how big it is at canvas size w x h, before animation. */
+function layoutLine(ctx: CanvasRenderingContext2D, project: Project, line: LyricLine, w: number, h: number): Layout | null {
+  const style = effectiveStyle(project, line);
+  const scale = Math.min(w, h) / REF;
+  const fontPx = style.fontSize * scale;
+  const lineH = fontPx * style.lineHeight;
+  const raw = style.uppercase ? line.text.toUpperCase() : line.text;
+  const rows = wrapText(raw, style.maxCharsPerLine);
+  if (!rows.length) return null;
+
+  ctx.save();
+  ctx.font = `${fontPx}px "${style.fontFamily}", sans-serif`;
+  if ("letterSpacing" in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${style.letterSpacing * scale}px`;
+  const textW = Math.max(...rows.map((r) => ctx.measureText(r).width));
+  ctx.restore();
+
+  const blockH = rows.length * lineH;
+  const tf = style.transform;
+  let cx = w / 2;
+  let cy = h / 2;
+  if (style.position === "top") cy = h * 0.1 + blockH / 2;
+  if (style.position === "bottom") cy = h * 0.9 - blockH / 2;
+  if (tf?.x !== undefined) cx = tf.x * w;
+  if (tf?.y !== undefined) cy = tf.y * h;
+  return { style, scale, fontPx, lineH, rows, blockH, textW, cx, cy };
+}
+
+/** A line's box on the canvas: centre, half sizes (scale applied) and rotation in degrees. */
+export type LineBounds = { cx: number; cy: number; halfW: number; halfH: number; rotation: number };
+
+/** Lines showing at time t, one per visible layer, bottom layer first. */
+export function activeLinesAt(project: Project, t: number): { line: LyricLine; layerId: string; locked: boolean }[] {
+  const out: { line: LyricLine; layerId: string; locked: boolean }[] = [];
+  for (const layer of project.layers) {
+    if (!layer.visible) continue;
+    const line = activeLine(linesOfLayer(project, layer.id), t);
+    if (line) out.push({ line, layerId: layer.id, locked: layer.locked });
+  }
+  return out;
+}
+
+/** The rotated box of a line in its resting state (animation offsets are ignored so handles stay steady). */
+export function getLineBounds(project: Project, line: LyricLine, w: number, h: number): LineBounds | null {
+  const L = layoutLine(getMeasureCtx(), project, line, w, h);
+  if (!L) return null;
+  const tf = L.style.transform ?? { scale: 1, rotation: 0 };
+  const padX = L.fontPx * 0.2;
+  const padY = L.fontPx * 0.12;
+  return { cx: L.cx, cy: L.cy, halfW: (L.textW / 2 + padX) * tf.scale, halfH: (L.blockH / 2 + padY) * tf.scale, rotation: tf.rotation };
+}
+
+/** The top-most unlocked line under a point (canvas pixels) at time t. */
+export function hitTestLine(project: Project, t: number, w: number, h: number, px: number, py: number): LyricLine | null {
+  const lines = activeLinesAt(project, t);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i].locked) continue;
+    const b = getLineBounds(project, lines[i].line, w, h);
+    if (!b) continue;
+    const a = (-b.rotation * Math.PI) / 180;
+    const dx = px - b.cx;
+    const dy = py - b.cy;
+    const lx = dx * Math.cos(a) - dy * Math.sin(a);
+    const ly = dx * Math.sin(a) + dy * Math.cos(a);
+    if (Math.abs(lx) <= b.halfW && Math.abs(ly) <= b.halfH) return lines[i].line;
+  }
+  return null;
+}
+
 /* ---------- Main entry ---------- */
 
 export function drawFrame(
@@ -182,14 +257,10 @@ export function drawFrame(
 }
 
 function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricLine, t: number, w: number, h: number) {
-  const style: TextStyle = effectiveStyle(project, line);
-  const scale = Math.min(w, h) / REF;
-  const fontPx = style.fontSize * scale;
-  const lineH = fontPx * style.lineHeight;
-
-  const raw = style.uppercase ? line.text.toUpperCase() : line.text;
-  const rows = wrapText(raw, style.maxCharsPerLine);
-  if (!rows.length) return;
+  const L = layoutLine(ctx, project, line, w, h);
+  if (!L) return;
+  const { style, scale, fontPx, lineH, rows, blockH, cx, cy } = L;
+  const tf = style.transform ?? { scale: 1, rotation: 0 };
 
   /* animation parameters */
   const dur = Math.max(0.001, line.end - line.start);
@@ -229,17 +300,11 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
   }
   if (alpha <= 0) return;
 
-  /* block geometry */
-  const blockH = rows.length * lineH;
-  const cx = w / 2;
-  let cy = h / 2;
-  if (style.position === "top") cy = h * 0.1 + blockH / 2;
-  if (style.position === "bottom") cy = h * 0.9 - blockH / 2;
-
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(cx, cy + dy);
-  ctx.scale(sc, sc);
+  ctx.rotate((tf.rotation * Math.PI) / 180);
+  ctx.scale(sc * tf.scale, sc * tf.scale);
   ctx.translate(-cx, -cy);
 
   ctx.font = `${fontPx}px "${style.fontFamily}", sans-serif`;

@@ -672,6 +672,7 @@ export default function Timeline() {
       const layer = st.project.layers.find((l) => l.id === layerIdOf(st.project, sel));
       if (layer?.locked) return;
       if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
+        if (e.target instanceof HTMLElement && e.target.closest("[data-text-stage]")) return; // the preview moves the text instead
         e.preventDefault();
         const d = e.code === "ArrowLeft" ? -SNAP : SNAP;
         const start = Math.max(0, snap(sel.start + d));
