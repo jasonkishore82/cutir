@@ -27,7 +27,12 @@ export const idx = z.coerce.number().int().min(1);
 export const seconds = num(0, 36000);
 
 export const Position = z.enum(["top", "center", "bottom"]);
-export const Animation = z.enum(["fade", "pop", "slide-up", "typewriter", "word-highlight"]);
+export const Animation = z.enum([
+  "none", "fade", "pop", "slide-up", "slide-down", "slide-left", "slide-right", "zoom", "blur", "rotate",
+  "typewriter", "word-highlight", "word-by-word", "letter-by-letter",
+]);
+export const Loop = z.enum(["none", "float", "pulse", "shake", "glow", "wave"]);
+export const EasingName = z.enum(["linear", "ease-in", "ease-out", "ease-in-out", "back", "elastic"]);
 export const Aspect = z.enum(["16:9", "9:16", "1:1"]);
 
 export const StylePatch = z
@@ -42,8 +47,6 @@ export const StylePatch = z
     shadow: z.object({ blur: num(0, 100), offsetX: num(-100, 100), offsetY: num(-100, 100), opacity: num(0, 1) }).partial().strict(),
     outline: z.object({ width: num(0, 40), color }).partial().strict(),
     position: Position,
-    animation: Animation,
-    animationMs: num(0, 3000),
   })
   .partial()
   .strict();

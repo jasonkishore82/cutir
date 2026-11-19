@@ -1,3 +1,4 @@
+import { EFFECTS, IDENTITY, LOOPS, combineFx, presenceIn, presenceOut, toFx, unitPresence, type Info } from "./animations";
 import { effectiveStyle, linesOfLayer, type Aspect, type LyricLine, type Project, type TextStyle } from "../store/project";
 
 /**
@@ -21,13 +22,6 @@ export const ASPECT_SIZES: Record<Aspect, { w: number; h: number }> = {
 export const ASPECT_RATIO: Record<Aspect, number> = { "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1 };
 
 const REF = 1080; // font sizes and offsets are authored against a 1080px short side
-const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
-const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
-const easeOutBack = (t: number) => {
-  const c1 = 1.70158;
-  const c3 = c1 + 1;
-  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
-};
 
 /* ---------- Background ---------- */
 
@@ -261,51 +255,40 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
   if (!L) return;
   const { style, scale, fontPx, lineH, rows, blockH, cx, cy } = L;
   const tf = style.transform ?? { scale: 1, rotation: 0 };
+  const anim = style.animation;
 
-  /* animation parameters */
+  /* animation: in, out and loop are composed from the effect definitions */
   const dur = Math.max(0.001, line.end - line.start);
-  const ms = Math.min(style.animationMs / 1000, dur / 2);
-  const pin = ms > 0 ? clamp01((t - line.start) / ms) : 1;
-  const pout = ms > 0 ? clamp01((line.end - t) / ms) : 1;
-  const eIn = easeOutCubic(pin);
+  const info: Info = { chars: rows.join("").length, words: rows.reduce((n, r) => n + r.split(" ").length, 0), dur };
+  const inDef = EFFECTS[anim.in.name];
+  const outDef = EFFECTS[anim.out.name];
+  const loopDef = LOOPS[anim.loop.name];
+  const pIn = presenceIn(anim.in, t - line.start, info);
+  const pOut = presenceOut(anim.out, line.end - t, info);
 
-  let alpha = pin * pout;
-  let sc = 1;
-  let dy = 0;
-  let dim = 0; // alpha multiplier for not-yet-revealed text (0 = hidden)
-  let revealFrac: number | null = null; // typewriter
-  let highlight = false;
+  // word and letter effects act on each unit; every other effect acts on the whole block
+  const staggerIn = inDef.mode === "word" || inDef.mode === "letter";
+  const staggerOut = outDef.mode === "word" || outDef.mode === "letter";
+  const t0 = t - line.start;
+  const loop = loopDef.fx(t0, anim.loop.speed);
+  const letterWise = !!loopDef.letterDy;
+  let fx = combineFx(staggerIn ? IDENTITY : toFx(inDef.fx(pIn, "in")), staggerOut ? IDENTITY : toFx(outDef.fx(pOut, "out")));
+  fx = combineFx(fx, toFx(loop));
+  if (fx.opacity <= 0) return;
 
-  switch (style.animation) {
-    case "fade":
-      sc = 0.96 + 0.04 * eIn;
-      break;
-    case "pop":
-      alpha = clamp01(pin * 2) * pout;
-      sc = 0.6 + 0.4 * easeOutBack(pin);
-      break;
-    case "slide-up":
-      dy = (1 - eIn) * 0.06 * h;
-      break;
-    case "typewriter": {
-      alpha = pout;
-      const total = rows.join("").length;
-      const typeDur = Math.min(dur * 0.7, Math.max(0.3, total * 0.05));
-      revealFrac = clamp01((t - line.start) / typeDur);
-      break;
-    }
-    case "word-highlight":
-      dim = 0.35;
-      break;
-  }
-  if (alpha <= 0) return;
+  const highlight = inDef.mode === "highlight";
+  const dim = highlight ? 0.35 : 0; // alpha multiplier for not-yet-revealed text (0 = hidden)
+  const reveals = inDef.mode === "reveal" || outDef.mode === "reveal";
+  const revealFrac: number | null = reveals ? fx.reveal : null;
+  const glow = loop.glow ?? 0;
 
   ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.translate(cx, cy + dy);
-  ctx.rotate((tf.rotation * Math.PI) / 180);
-  ctx.scale(sc * tf.scale, sc * tf.scale);
+  ctx.globalAlpha = Math.min(1, Math.max(0, fx.opacity));
+  ctx.translate(cx + fx.dx * h, cy + fx.dy * h);
+  ctx.rotate(((tf.rotation + fx.rotation) * Math.PI) / 180);
+  ctx.scale(fx.scale * tf.scale, fx.scale * tf.scale);
   ctx.translate(-cx, -cy);
+  if (fx.blur > 0.05 && "filter" in ctx) (ctx as CanvasRenderingContext2D).filter = `blur(${fx.blur * scale}px)`;
 
   ctx.font = `${fontPx}px "${style.fontFamily}", sans-serif`;
   ctx.textBaseline = "middle";
@@ -313,10 +296,59 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
   ctx.lineJoin = "round";
   if ("letterSpacing" in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${style.letterSpacing * scale}px`;
 
+  /* per-word and per-letter drawing */
+  if (staggerIn || staggerOut || letterWise) {
+    type Unit = { text: string; row: number; start: number };
+    const mode = staggerIn ? inDef.mode : staggerOut ? outDef.mode : "letter";
+    const units: Unit[] = [];
+    rows.forEach((row, ri) => {
+      if (mode === "word") {
+        let pos = 0;
+        for (const word of row.split(" ")) {
+          if (word) units.push({ text: word, row: ri, start: pos });
+          pos += word.length + 1;
+        }
+      } else {
+        [...row].forEach((ch, i) => ch !== " " && units.push({ text: ch, row: ri, start: i }));
+      }
+    });
+    const n = units.length;
+    const revealCount = revealFrac === null ? Infinity : Math.floor(revealFrac * info.chars + 1e-6);
+    let before = 0;
+    let lastRow = -1;
+    units.forEach((u, i) => {
+      if (u.row !== lastRow) {
+        lastRow = u.row;
+        before = rows.slice(0, u.row).join("").length;
+      }
+      if (before + u.start >= revealCount) return;
+      let ufx = IDENTITY;
+      if (staggerIn) ufx = combineFx(ufx, toFx(inDef.fx(unitPresence(pIn, i, n, inDef.spread ?? 0.7), "in")));
+      if (staggerOut) ufx = combineFx(ufx, toFx(outDef.fx(unitPresence(pOut, i, n, outDef.spread ?? 0.7), "out")));
+      const ldy = loopDef.letterDy ? loopDef.letterDy(t0, anim.loop.speed, i) : 0;
+      if (ufx.opacity <= 0) return;
+
+      const row = rows[u.row];
+      const y = cy - blockH / 2 + lineH * (u.row + 0.5);
+      const x0 = cx - ctx.measureText(row).width / 2;
+      const ux = x0 + ctx.measureText(row.slice(0, u.start)).width;
+      const uw = ctx.measureText(u.text).width;
+      ctx.save();
+      ctx.globalAlpha *= Math.min(1, Math.max(0, ufx.opacity));
+      ctx.translate(ux + uw / 2 + ufx.dx * h, y + (ufx.dy + ldy) * h);
+      ctx.rotate((ufx.rotation * Math.PI) / 180);
+      ctx.scale(ufx.scale, ufx.scale);
+      ctx.translate(-(ux + uw / 2), -y);
+      paintText(ctx, u.text, ux, y, style, scale, 1, glow);
+      ctx.restore();
+    });
+    ctx.restore();
+    return;
+  }
+
   /* reveal counts per row */
   const wordsByRow = rows.map((r) => r.split(" "));
   const totalWords = wordsByRow.reduce((n, ws) => n + ws.length, 0);
-  highlight = style.animation === "word-highlight";
   const starts = highlight ? wordStarts(line, totalWords) : [];
   let charsLeft = revealFrac === null ? Infinity : Math.floor(revealFrac * rows.join("").length + 1e-6);
 
@@ -343,17 +375,17 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
     }
 
     const shown = row.slice(0, reveal);
-    if (shown) paintText(ctx, shown, x0, y, style, scale, 1);
+    if (shown) paintText(ctx, shown, x0, y, style, scale, 1, glow);
     if (dim > 0 && reveal < row.length) {
       const rest = row.slice(reveal);
-      paintText(ctx, rest, x0 + ctx.measureText(shown).width, y, style, scale, dim);
+      paintText(ctx, rest, x0 + ctx.measureText(shown).width, y, style, scale, dim, glow);
     }
   });
 
   ctx.restore();
 }
 
-function paintText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, s: TextStyle, scale: number, mul: number) {
+function paintText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, s: TextStyle, scale: number, mul: number, glow = 0) {
   ctx.save();
   ctx.globalAlpha *= mul;
   const sh = s.shadow;
@@ -368,6 +400,13 @@ function paintText(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
     ctx.lineWidth = s.outline.width * scale * 2; // stroke is centred; x2 so width reads as visible outline
     ctx.strokeText(text, x, y);
     ctx.shadowColor = "transparent"; // avoid double shadow under the fill
+  }
+  if (glow > 0) {
+    // a soft halo in the text colour, brightest at glow = 1
+    ctx.shadowColor = s.color;
+    ctx.shadowBlur = (sh.blur + 36 * glow) * scale;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
   }
   ctx.fillStyle = s.color;
   ctx.fillText(text, x, y);

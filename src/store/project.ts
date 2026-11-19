@@ -3,7 +3,18 @@ import { create } from "zustand";
 /* ---------- Types ---------- */
 
 export type Aspect = "16:9" | "9:16" | "1:1";
-export type AnimationName = "fade" | "pop" | "slide-up" | "typewriter" | "word-highlight";
+export type EffectName =
+  | "none" | "fade" | "pop" | "slide-up" | "slide-down" | "slide-left" | "slide-right" | "zoom" | "blur" | "rotate"
+  | "typewriter" | "word-highlight" | "word-by-word" | "letter-by-letter";
+export type LoopName = "none" | "float" | "pulse" | "shake" | "glow" | "wave";
+export type Easing = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "back" | "elastic";
+
+/** How a line appears, stays and leaves. `ms` of 0 means the effect's own automatic duration (typewriter) or none. */
+export type AnimationSpec = {
+  in: { name: EffectName; ms: number; easing: Easing };
+  out: { name: EffectName; ms: number; easing: Easing };
+  loop: { name: LoopName; speed: number };
+};
 export type Position = "top" | "center" | "bottom";
 
 export type AssetRef = {
@@ -37,12 +48,12 @@ export type TextStyle = {
   outline: { width: number; color: string };
   position: Position;
   transform: Transform;
-  animation: AnimationName;
-  animationMs: number;
+  animation: AnimationSpec;
 };
 
 /** Overrides for a layer or a line: any subset of the style, including single fields inside shadow, outline and transform. */
-export type StyleOverride = { [K in keyof TextStyle]?: TextStyle[K] extends object ? Partial<TextStyle[K]> : TextStyle[K] };
+type DeepPartial<T> = T extends object ? { [K in keyof T]?: DeepPartial<T[K]> } : T;
+export type StyleOverride = DeepPartial<TextStyle>;
 
 export type LyricLine = {
   id: string;
@@ -95,8 +106,11 @@ export const DEFAULT_STYLE: TextStyle = {
   outline: { width: 0, color: "#000000" },
   position: "center",
   transform: { scale: 1, rotation: 0 },
-  animation: "fade",
-  animationMs: 200,
+  animation: {
+    in: { name: "fade", ms: 200, easing: "linear" },
+    out: { name: "fade", ms: 200, easing: "linear" },
+    loop: { name: "none", speed: 1 },
+  },
 };
 
 export const mainLayer = (): Layer => ({ id: "main", name: "Lyrics", visible: true, locked: false });
@@ -136,23 +150,23 @@ export function orderByLayers(p: Project): Project {
   return { ...p, lines };
 }
 
-const NESTED = ["shadow", "outline", "transform"] as const;
+const isPlain = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** Lay overrides over a base style. Nested groups (shadow, outline, transform) merge field by field. */
-function mergeStyle(base: TextStyle, ...layers: (StyleOverride | undefined)[]): TextStyle {
+/** Merge `over` into `base`: plain objects merge field by field, everything else is replaced. Undefined is skipped. */
+function deepMerge(base: Record<string, unknown>, over: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...base };
-  for (const o of layers) {
-    if (!o) continue;
-    for (const [k, v] of Object.entries(o)) {
-      if (v === undefined) continue;
-      if ((NESTED as readonly string[]).includes(k)) {
-        const merged: Record<string, unknown> = { ...(out[k] as object) };
-        for (const [kk, vv] of Object.entries(v as object)) if (vv !== undefined) merged[kk] = vv;
-        out[k] = merged;
-      } else out[k] = v;
-    }
+  for (const [k, v] of Object.entries(over)) {
+    if (v === undefined) continue;
+    out[k] = isPlain(v) && isPlain(out[k]) ? deepMerge(out[k] as Record<string, unknown>, v) : v;
   }
-  return out as TextStyle;
+  return out;
+}
+
+/** Lay overrides over a base style. Groups (shadow, outline, transform, animation) merge field by field. */
+function mergeStyle(base: TextStyle, ...layers: (StyleOverride | undefined)[]): TextStyle {
+  let out = base as unknown as Record<string, unknown>;
+  for (const o of layers) if (o) out = deepMerge(out, o as Record<string, unknown>);
+  return out as unknown as TextStyle;
 }
 
 /** The style a layer gives its lines: project style with the layer's overrides. */
@@ -362,12 +376,53 @@ export const useProject = create<State>((set, get) => ({
 
 /* ---------- Persistence ---------- */
 
+/**
+ * Projects saved before animation slots had one `animation` name and one `animationMs`. The name becomes the in slot
+ * and the old fixed fade-out becomes the out slot, so they look exactly as they did.
+ */
+export function migrateAnimation<T extends object>(style: T | undefined, whole: boolean): T | undefined {
+  if (!style) return style;
+  const o = { ...(style as Record<string, unknown>) };
+  const name = typeof o.animation === "string" ? (o.animation as EffectName) : undefined;
+  const ms = typeof o.animationMs === "number" ? o.animationMs : undefined;
+  if (name === undefined && ms === undefined) return style;
+  delete o.animationMs;
+  const inSlot: Record<string, unknown> = {};
+  const outSlot: Record<string, unknown> = {};
+  if (name !== undefined) {
+    inSlot.name = name;
+    inSlot.easing = "linear";
+    // the old typewriter timed itself from the text, so it keeps an automatic duration
+    inSlot.ms = name === "typewriter" ? 0 : ms ?? (whole ? 200 : undefined);
+    if (whole) {
+      outSlot.name = "fade";
+      outSlot.easing = "linear";
+    }
+  } else if (typeof o.animation === "object") {
+    return o as T;
+  }
+  if (ms !== undefined) {
+    outSlot.ms = ms;
+    if (name === undefined) inSlot.ms = ms;
+  } else if (whole && name !== undefined) outSlot.ms = 200;
+  for (const k of Object.keys(inSlot)) if (inSlot[k] === undefined) delete inSlot[k];
+  o.animation = { in: inSlot, out: outSlot, loop: { name: "none", speed: 1 } };
+  if (!whole) delete (o.animation as Record<string, unknown>).loop;
+  return o as T;
+}
+
 export function normalizeProject(raw: Partial<Project>): Project {
   const d = defaultProject();
+  raw = {
+    ...raw,
+    style: migrateAnimation(raw.style, true) as Project["style"] | undefined,
+    layers: raw.layers?.map((l) => ({ ...l, style: migrateAnimation(l.style, false) })),
+    lines: raw.lines?.map((l) => (l.styleOverride ? { ...l, styleOverride: migrateAnimation(l.styleOverride, false) } : l)),
+  } as Partial<Project>;
   const layers: Layer[] = raw.layers?.length
     ? raw.layers.map((l) => ({ ...l, id: l.id || uid(), name: l.name || "Layer", visible: l.visible !== false, locked: !!l.locked }))
     : d.layers;
-  return orderByLayers({ ...d, ...raw, layers, style: { ...DEFAULT_STYLE, ...raw.style }, lines: raw.lines ?? [] });
+  return orderByLayers({ ...d, ...raw, layers, style: mergeStyle(DEFAULT_STYLE, raw.style as StyleOverride | undefined), lines: raw.lines ?? [] });
 }
 
 /** Debounced autosave: calls `save` ~400ms after the last change to the project. */

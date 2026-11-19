@@ -103,7 +103,8 @@ export const resetFields = (t: Target, paths: string[]) => editStyle(t, { unset:
 /** Everything that styles a line except where it sits. */
 const COPY_PATHS = [
   "fontFamily", "fontSize", "color", "uppercase", "letterSpacing", "lineHeight", "maxCharsPerLine",
-  "shadow.blur", "shadow.offsetX", "shadow.offsetY", "shadow.opacity", "outline.width", "outline.color", "animation", "animationMs",
+  "shadow.blur", "shadow.offsetX", "shadow.offsetY", "shadow.opacity", "outline.width", "outline.color",
+  "animation.in.name", "animation.in.ms", "animation.in.easing", "animation.out.name", "animation.out.ms", "animation.out.easing", "animation.loop.name", "animation.loop.speed",
 ];
 
 export function snapshotOf(p: Project, lineId: string): [string, unknown][] | null {

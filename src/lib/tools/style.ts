@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineTool } from "./registry";
-import { Animation, StylePatch, num } from "./schema";
+import { Animation, EasingName, Loop, StylePatch, num } from "./schema";
 import { ensureFont, titleCaseFont } from "../fonts";
 
 const STYLE_KEYS = Object.keys(StylePatch.shape);
@@ -10,7 +10,7 @@ export const updateStyle = defineTool({
   group: "style",
   description: "Change text style. Put the fields to change inside patch.",
   hint:
-    "patch keys: fontFamily,fontSize,color(hex),uppercase,letterSpacing,lineHeight,maxCharsPerLine,shadow{blur,offsetX,offsetY,opacity},outline{width,color},position(top|center|bottom),animation,animationMs",
+    "patch keys: fontFamily,fontSize,color(hex),uppercase,letterSpacing,lineHeight,maxCharsPerLine,shadow{blur,offsetX,offsetY,opacity},outline{width,color},position(top|center|bottom). Animation is set with set_animation",
   params: z.object({ patch: StylePatch.describe("style fields to change") }),
   // models often send the style fields flat instead of inside `patch`
   normalize: (args) => {
@@ -55,13 +55,33 @@ export const setFont = defineTool({
 export const setAnimation = defineTool({
   name: "set_animation",
   group: "style",
-  description: "Set the line entry animation",
-  hint: "animations: fade,pop,slide-up,typewriter,word-highlight",
-  params: z.object({ name: Animation, durationMs: num(0, 3000).optional() }),
-  apply: (p, a) => ({
-    project: { ...p, style: { ...p.style, animation: a.name, animationMs: a.durationMs ?? p.style.animationMs } },
-    summary: `animation ${a.name}${a.durationMs !== undefined ? ` ${a.durationMs}ms` : ""}`,
+  description: "Set how lines appear (slot in), leave (slot out) or keep moving (slot loop)",
+  hint:
+    "slot in|out: name one of none,fade,pop,slide-up,slide-down,slide-left,slide-right,zoom,blur,rotate,typewriter,word-by-word,letter-by-letter (in also word-highlight), durationMs, easing linear|ease-in|ease-out|ease-in-out|back|elastic. slot loop: name float|pulse|shake|glow|wave|none, speed 0.25-4",
+  params: z.object({
+    slot: z.enum(["in", "out", "loop"]).default("in"),
+    name: z.string().optional().describe("effect name"),
+    durationMs: num(0, 3000).optional(),
+    easing: EasingName.optional(),
+    speed: num(0.25, 4).optional(),
   }),
+  // older prompts sent only { name, durationMs } for the entrance
+  normalize: (args) => (args && typeof args === "object" && !("slot" in args) ? { slot: "in", ...(args as object) } : args),
+  apply: (p, a) => {
+    const cur = p.style.animation;
+    if (a.slot === "loop") {
+      const name = a.name ? Loop.parse(a.name) : cur.loop.name;
+      const speed = a.speed ?? cur.loop.speed;
+      return { project: { ...p, style: { ...p.style, animation: { ...cur, loop: { name, speed } } } }, summary: `loop ${name}${a.speed !== undefined ? ` x${speed}` : ""}` };
+    }
+    const name = a.name ? Animation.parse(a.name) : cur[a.slot].name;
+    if (a.slot === "out" && name === "word-highlight") throw new Error("word-highlight is only available as an entrance");
+    const slot = { name, ms: a.durationMs ?? cur[a.slot].ms, easing: a.easing ?? cur[a.slot].easing };
+    return {
+      project: { ...p, style: { ...p.style, animation: { ...cur, [a.slot]: slot } } },
+      summary: `${a.slot} ${name}${a.durationMs !== undefined ? ` ${a.durationMs}ms` : ""}${a.easing ? ` ${a.easing}` : ""}`,
+    };
+  },
 });
 
 export const styleTools = [updateStyle, setFont, setAnimation];

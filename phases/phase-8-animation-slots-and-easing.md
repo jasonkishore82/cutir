@@ -31,3 +31,10 @@ Modelled on how editors like CapCut organise text animation: every text item get
 - A line can have a different In, Out and Loop at the same time
 - Every effect is visible in preview and identical in the export
 - Old projects look the same as before
+
+## Status
+- Done: In, Out and Loop slots on the project, a layer or a single line; 14 in and out effects, 5 loops, 6 easings; old projects migrate and render pixel-identically (checked for all five old animations at two speeds).
+- A duration of 0 means "off", except typewriter where it means automatic (the old behaviour).
+- Easing shapes the motion over time. A few effects (fade scale, pop, slide) keep their own internal curve, which is why the default fade is unchanged.
+- Not built: the live hover preview thumbnail for each effect.
+- The AI tool `set_animation` takes a `slot` (in, out or loop); calls without a slot still set the entrance.

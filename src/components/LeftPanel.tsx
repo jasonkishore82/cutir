@@ -8,20 +8,19 @@ import { SECTIONS, type SectionId } from "./SectionTabs";
 import { ActionButton, Card, Icon, Row, Segmented } from "./ui";
 import { useLibrary } from "../store/library";
 import { ScopeBar, PropCheck, PropChoice, PropColor, PropSelect, PropSlider, useTarget } from "./props";
-import { alignLines, applyStyle, copyStyle, distributeLines, editStyle, idsOfLayer, resetFields, snapshotOf, useStyleClipboard, writeField, type AlignMode } from "../lib/styleEdit";
+import { IN_EFFECTS, OUT_EFFECTS, LOOP_NAMES, EASING_NAMES } from "../lib/animations";
+import { alignLines, applyStyle, copyStyle, distributeLines, editStyle, idsOfLayer, readField, resetFields, snapshotOf, useStyleClipboard, writeField, type AlignMode } from "../lib/styleEdit";
 import {
   layerIdOf,
   linesOfLayer,
   linesToText,
   orderByLayers,
   useProject,
-  type AnimationName,
   type Aspect,
   type Position,
 } from "../store/project";
 
 const FONTS = ["Permanent Marker", "Inter", "Arial", "Georgia", "Impact", "Courier New"];
-const ANIMATIONS: AnimationName[] = ["fade", "pop", "slide-up", "typewriter", "word-highlight"];
 const POSITIONS: Position[] = ["top", "center", "bottom"];
 const ASPECTS: Aspect[] = ["16:9", "9:16", "1:1"];
 
@@ -380,13 +379,41 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
             </Card>
           )}
 
-          <Card title="Entrance">
-            <PropChoice path="animation" label="Animation" options={ANIMATIONS} />
-            <PropSlider path="animationMs" label="Speed" min={0} max={1000} step={50} unit=" ms" />
-          </Card>
+          <AnimationCard />
         </>
       )}
     </div>
+  );
+}
+
+/** How lines come in, go out and keep moving. Each slot has its own effect, easing and duration. */
+function AnimationCard() {
+  const [slot, setSlot] = useState<"in" | "out" | "loop">("in");
+  const { target, project } = useTarget();
+  const name = readField(project, target, `animation.${slot}.name`).value;
+  const slotNames = slot === "in" ? IN_EFFECTS : OUT_EFFECTS;
+  return (
+    <Card title="Animation">
+      <Segmented
+        label="Animation slot"
+        value={slot}
+        options={[{ value: "in", label: "In" }, { value: "out", label: "Out" }, { value: "loop", label: "Loop" }]}
+        onChange={setSlot}
+      />
+      {slot === "loop" ? (
+        <>
+          <PropChoice path="animation.loop.name" label="Effect" options={LOOP_NAMES} />
+          <PropSlider path="animation.loop.speed" label="Speed" min={0.25} max={4} step={0.25} unit="x" />
+        </>
+      ) : (
+        <>
+          <PropChoice path={`animation.${slot}.name`} label="Effect" options={slotNames} />
+          <PropSelect path={`animation.${slot}.easing`} label="Easing" options={EASING_NAMES} />
+          <PropSlider path={`animation.${slot}.ms`} label="Duration" min={0} max={2000} step={50} unit=" ms" zero={name === "typewriter" ? "auto" : "off"} />
+          <p className="text-[11px] text-gray-500">In and out each use at most half of the line, so they never overlap.</p>
+        </>
+      )}
+    </Card>
   );
 }
 

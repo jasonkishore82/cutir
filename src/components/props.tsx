@@ -87,12 +87,12 @@ function Meta({ read, scope, onReset, text }: { read: FieldRead; scope: Scope; o
 
 type Common = { path: string; label: string };
 
-export function PropSlider({ path, label, min, max, step = 1, unit = "", factor = 1, auto }: Common & { min: number; max: number; step?: number; unit?: string; factor?: number; auto?: number }) {
+export function PropSlider({ path, label, min, max, step = 1, unit = "", factor = 1, auto, zero }: Common & { min: number; max: number; step?: number; unit?: string; factor?: number; auto?: number; zero?: string }) {
   const { target, scope, project } = useTarget();
   const r = readField(project, target, path);
   const raw = typeof r.value === "number" ? r.value : undefined;
   const shown = raw === undefined ? auto ?? min : Math.round(raw * factor * 100) / 100;
-  const text = r.mixed ? "mixed" : raw === undefined ? "preset" : `${shown}${unit}`;
+  const text = r.mixed ? "mixed" : raw === undefined ? "preset" : raw === 0 && zero ? zero : `${shown}${unit}`;
   return (
     <div>
       <div className="mb-2 flex items-center justify-between text-[12px]">
@@ -190,7 +190,7 @@ export function PropChoice({ path, label, options, columns = 2, onPick }: Common
               onClick={() => (onPick ? onPick(o, target) : writeField(target, path, o))}
               className={`rounded-lg border px-2.5 py-2 text-left text-[13px] capitalize ${on ? "border-accent/50 bg-accent/10 text-white" : "border-edge bg-black/20 text-gray-300 hover:bg-raised"}`}
             >
-              {o.replace("-", " ")}
+              {o.replace(/-/g, " ")}
             </button>
           );
         })}
