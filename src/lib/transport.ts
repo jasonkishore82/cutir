@@ -11,6 +11,8 @@ type PlaybackState = {
   duration: number;
   hasAudio: boolean;
   loop: { start: number; end: number } | null;
+  /** Playback speed: 1 = normal, 0.5 = slow motion, 2/4/8 = fast, negative = reverse (JKL shuttle). */
+  rate: number;
 };
 
 export const usePlayback = create<PlaybackState>(() => ({
@@ -18,6 +20,7 @@ export const usePlayback = create<PlaybackState>(() => ({
   duration: 0,
   hasAudio: false,
   loop: null,
+  rate: 1,
 }));
 
 const audio = new Audio();
@@ -34,8 +37,53 @@ const get = usePlayback.getState;
 audio.addEventListener("loadedmetadata", () => set({ duration: audio.duration || 0 }));
 audio.addEventListener("ended", () => set({ playing: false }));
 
+/** The clock. The song is the master while it plays forward; otherwise (no song, reverse) a virtual clock runs. */
 export function getTime(): number {
-  return hasAudio ? audio.currentTime : virtualTime;
+  return hasAudio && !reversing ? audio.currentTime : virtualTime;
+}
+
+let reversing = false;
+
+/** Mute the song without stopping the clock (its track is muted, or another track is soloed). */
+export function setSongMuted(muted: boolean) {
+  if (audio.muted !== muted) audio.muted = muted;
+}
+
+/** Set the shuttle speed. Forward speeds keep the song as the clock (pitch preserved); reverse plays silently. */
+export function setRate(rate: number) {
+  const r = Math.max(-8, Math.min(8, rate || 1));
+  const wasReverse = reversing;
+  reversing = r < 0;
+  if (reversing && !wasReverse) {
+    virtualTime = hasAudio ? audio.currentTime : virtualTime;
+    if (hasAudio) audio.pause();
+  } else if (!reversing && wasReverse && hasAudio) {
+    audio.currentTime = virtualTime;
+    if (get().playing) audio.play().catch(() => set({ playing: false }));
+  }
+  if (r > 0 && hasAudio) {
+    audio.preservesPitch = true;
+    audio.playbackRate = Math.max(0.0625, Math.min(16, r));
+  }
+  lastNow = performance.now();
+  set({ rate: r });
+}
+
+/** JKL: L plays forward (again: faster), J plays in reverse (again: faster), K stops. Shift gives half speed. */
+export function shuttle(key: "J" | "K" | "L", slow = false) {
+  const { playing, rate } = get();
+  if (key === "K") {
+    pause();
+    setRate(1);
+    return;
+  }
+  const dir = key === "L" ? 1 : -1;
+  let next: number;
+  if (slow) next = dir * 0.5;
+  else if (!playing || Math.sign(rate) !== dir || Math.abs(rate) < 1) next = dir;
+  else next = Math.max(-8, Math.min(8, rate * 2));
+  setRate(next);
+  if (!playing) play();
 }
 
 export function setSource(url?: string) {
@@ -63,8 +111,8 @@ export function setFallbackDuration(d: number) {
 export function seek(t: number) {
   const dur = get().duration;
   const clamped = Math.max(0, dur > 0 ? Math.min(t, dur) : t);
+  virtualTime = clamped;
   if (hasAudio) audio.currentTime = clamped;
-  else virtualTime = clamped;
 }
 
 export function play() {
@@ -72,14 +120,17 @@ export function play() {
   const { duration } = get();
   if (duration > 0 && getTime() >= duration - 0.01) seek(0);
   lastNow = performance.now();
-  if (hasAudio) {
+  if (hasAudio && !reversing) {
     audio.play().catch(() => set({ playing: false }));
   }
   set({ playing: true });
 }
 
 export function pause() {
-  if (hasAudio) audio.pause();
+  if (hasAudio) {
+    audio.pause();
+    if (reversing) audio.currentTime = virtualTime;
+  }
   set({ playing: false });
 }
 
@@ -96,14 +147,22 @@ export function tick() {
   const now = performance.now();
   const { playing, loop, duration } = get();
 
-  if (playing && !hasAudio) {
-    virtualTime += (now - lastNow) / 1000;
+  const rate = get().rate;
+  if (playing && (!hasAudio || reversing)) {
+    virtualTime += ((now - lastNow) / 1000) * rate;
     if (duration > 0 && virtualTime >= duration) {
       virtualTime = duration;
       set({ playing: false });
     }
+    if (virtualTime <= 0) {
+      virtualTime = 0;
+      if (reversing) set({ playing: false });
+    }
   }
   lastNow = now;
 
-  if (playing && loop && getTime() >= loop.end) seek(loop.start);
+  if (playing && loop) {
+    if (rate >= 0 && getTime() >= loop.end) seek(loop.start);
+    else if (rate < 0 && getTime() <= loop.start) seek(loop.end);
+  }
 }

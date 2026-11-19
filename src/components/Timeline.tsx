@@ -7,6 +7,12 @@ import { addLayer, moveLayer, moveLineToLayer, removeLayer, updateLayer, updateL
 import { getTime, play, seek, setLoop, usePlayback, pause } from "../lib/transport";
 import { addKeyAtPlayhead, copyKey, pasteKey, removeKey, splitKeyframes, updateKey, useKeyUi } from "../lib/keyframes";
 import { EASING_NAMES, TRANSITIONS, TRANSITION_NAMES } from "../lib/animations";
+import TrackLanes from "./TrackLanes";
+import { activeTimeline } from "../model/convert";
+import * as TE from "../timeline/engine";
+import { timecode, useTimelineUi } from "../timeline/ui";
+import { handleTimelineKey, loopRange, sourceEdit, sourceEditProblem, SOURCE_EDITS } from "../timeline/commands";
+import { useMedia } from "../store/media";
 
 const SNAP = 0.05;
 const MIN_LEN = 0.1;
@@ -373,10 +379,28 @@ export default function Timeline() {
   const endSet = useRef<Set<string>>(new Set()); // lines whose end was set with Enter in this sync pass
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  const docEnd = useProject((s) => TE.timelineEnd(activeTimeline(s.doc)));
+  const tlMarkers = useProject((s) => activeTimeline(s.doc).markers);
+  const tlIn = useProject((s) => activeTimeline(s.doc).inPoint);
+  const tlOut = useProject((s) => activeTimeline(s.doc).outPoint);
+  const fps = useProject((s) => s.doc.settings.fps);
+  const tool = useTimelineUi((s) => s.tool);
+  const snapping = useTimelineUi((s) => s.snapping);
+  const sourceName = useMedia((s) => s.items.find((i) => i.id === useTimelineUi.getState().sourceId)?.name);
+  useTimelineUi((s) => s.sourceId); // re-render when the source changes
   const total = useMemo(
-    () => Math.max(duration, lines.reduce((m, l) => Math.max(m, l.end), 0) + 2, 10),
-    [duration, lines]
+    () => Math.max(duration, lines.reduce((m, l) => Math.max(m, l.end), 0) + 2, docEnd + 2, 10),
+    [duration, lines, docEnd]
   );
+
+  /* multi-track shortcuts (tools, markers, in/out, blade, nudge, source edits); after the lyric shortcuts */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (handleTimelineKey(e)) e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const width = Math.ceil(total * pps);
 
   const activeLayer = layers.find((l) => l.id === activeLayerId) ?? layers[0];
@@ -835,7 +859,7 @@ export default function Timeline() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="h-8 shrink-0 flex items-center gap-3 px-3 border-b border-edge text-xs">
+      <div className="min-h-8 shrink-0 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1 border-b border-edge text-xs">
         {syncMode ? (
           <button className={`${btn} border-accent text-accent`} onClick={stopSync}>Stop sync (Esc)</button>
         ) : (
@@ -843,13 +867,62 @@ export default function Timeline() {
             Tap to sync
           </button>
         )}
-        <span className="text-gray-500 truncate flex-1">
+        <span className="text-gray-500 truncate flex-1 min-w-[160px]">
           {syncMode
             ? current
               ? `${activeLayer.name}: Space = start of line ${syncIndex + 1} "${current.text}"  |  Enter = end of the line before`
               : "All lines tapped. Enter closes the last line, Esc to finish."
             : "Drag blocks to move (up/down changes layer), edges to resize. Double-click empty space to add text, a block to edit it."}
         </span>
+        <div role="toolbar" aria-label="Timeline tools" className="flex items-center gap-0.5 rounded-md border border-edge p-0.5">
+          {(
+            [
+              ["select", "Select", "A"],
+              ["trim", "Trim", "T"],
+              ["blade", "Blade", "B"],
+              ["hand", "Hand", "H"],
+              ["zoom", "Zoom", "Z"],
+            ] as const
+          ).map(([id, name, key]) => (
+            <button
+              key={id}
+              aria-pressed={tool === id}
+              title={`${name} tool (${key})`}
+              onClick={() => useTimelineUi.setState({ tool: id })}
+              className={`rounded px-1.5 py-0.5 text-[11px] ${tool === id ? "bg-accent/25 text-accent" : "text-gray-400 hover:bg-white/10 hover:text-gray-100"}`}
+            >
+              {name}
+            </button>
+          ))}
+          <button
+            aria-pressed={snapping}
+            title="Snapping (N). Hold Alt while dragging to flip it."
+            onClick={() => useTimelineUi.setState({ snapping: !snapping })}
+            className={`rounded px-1.5 py-0.5 text-[11px] ${snapping ? "bg-accent/25 text-accent" : "text-gray-400 hover:bg-white/10"}`}
+          >
+            Snap
+          </button>
+        </div>
+        <div className="flex items-center gap-0.5" role="group" aria-label="Edit from the media library">
+          {SOURCE_EDITS.map((s) => (
+            <button
+              key={s.id}
+              className={`${btn} !px-1.5 text-[11px] disabled:opacity-40`}
+              title={`${s.label} (${s.key})${sourceName ? `: ${sourceName}` : ""}. ${sourceEditProblem(s.id) || ""}`}
+              onClick={() => {
+                const msg = sourceEdit(s.id);
+                if (msg) useMedia.setState({ notice: msg });
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        {tlIn !== undefined && tlOut !== undefined && (
+          <button className={`${btn} text-[11px]`} onClick={() => loopRange(!loop)} title="Play the in/out range in a loop">
+            {loop ? "Stop loop" : "Loop in/out"}
+          </button>
+        )}
         <label className="flex items-center gap-1.5 text-gray-500" title="Keep the playhead in view while playing">
           <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} className="accent-accent" />
           Follow
@@ -893,8 +966,30 @@ export default function Timeline() {
                 <div className="relative border-b border-edge" style={{ height: RULER_H }}>
                   {ticks.map((t) => (
                     <span key={t} className="absolute top-0 text-[10px] text-gray-500 border-l border-edge pl-1 h-full" style={{ left: t * pps }}>
-                      {Math.floor(t / 60)}:{String(t % 60).padStart(2, "0")}
+                      {pps >= 120 ? timecode(t, fps) : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`}
                     </span>
+                  ))}
+                  {tlIn !== undefined && (
+                    <span className="absolute top-0 h-full border-l-2 border-accent" style={{ left: tlIn * pps }} title={`In ${timecode(tlIn, fps)} (I)`} />
+                  )}
+                  {tlOut !== undefined && (
+                    <span className="absolute top-0 h-full border-r-2 border-accent" style={{ left: tlOut * pps - 2 }} title={`Out ${timecode(tlOut, fps)} (O)`} />
+                  )}
+                  {tlIn !== undefined && tlOut !== undefined && <span className="absolute top-0 h-full bg-accent/15" style={{ left: tlIn * pps, width: (tlOut - tlIn) * pps }} />}
+                  {tlMarkers.filter((m) => !m.clipId).map((m) => (
+                    <button
+                      key={m.id}
+                      className="absolute top-0 z-10 h-0 w-0 -translate-x-[5px] border-x-[5px] border-t-[9px] border-x-transparent"
+                      style={{ left: m.time * pps, borderTopColor: m.color }}
+                      title={`${m.name || "Marker"} at ${timecode(m.time, fps)}${m.note ? `: ${m.note}` : ""}. Click to jump, right-click to delete.`}
+                      aria-label={`Marker ${m.name}`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() => seek(m.time)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        useProject.getState().editDoc((d) => TE.onActive(d, (x) => TE.removeMarker(x, m.id)));
+                      }}
+                    />
                   ))}
                 </div>
                 <div ref={waveRef} style={{ height: WAVE_H, width }} className={audioUrl ? "" : "flex items-center px-3 text-xs text-gray-600"}>
@@ -1026,6 +1121,9 @@ export default function Timeline() {
               <div ref={headLanesRef} className="absolute top-0 bottom-0 left-0 w-px bg-yellow-400" />
             </div>
           </div>
+
+          {/* video and audio tracks of the timeline (phase 13) */}
+          <TrackLanes pps={pps} width={width} gutter={GUTTER} scrollRef={scrollRef} setPps={setPps} />
         </div>
       </div>
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={menuItems(ctx)} onClose={closeCtx} />}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ACCEPT, useMedia } from "../store/media";
 import { Icon } from "./ui";
 import { downloadProject, useProject } from "../store/project";
 import { useLibrary } from "../store/library";
@@ -10,6 +11,16 @@ type Item =
   | { label: string; shortcut?: string; checked?: boolean; disabled?: boolean; info?: boolean; onSelect?: () => void };
 
 type Menu = { id: string; label: string; items: Item[] };
+
+/** Pick files for the media pool (any kind it accepts). */
+function importMediaFiles() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.multiple = true;
+  input.accept = ACCEPT;
+  input.onchange = () => input.files?.length && void useMedia.getState().addFiles(Array.from(input.files));
+  input.click();
+}
 
 function importProjectFile() {
   const input = document.createElement("input");
@@ -47,6 +58,7 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
       label: "File",
       items: [
         { label: "All projects", onSelect: () => useLibrary.getState().goHome() },
+        { label: "Import media", onSelect: importMediaFiles },
         { label: "Import project", onSelect: importProjectFile },
         "sep",
         { label: "Save project file", onSelect: () => downloadProject(useProject.getState().project) },

@@ -266,18 +266,28 @@ export function hitTestLine(project: Project, t: number, w: number, h: number, p
 
 /* ---------- Main entry ---------- */
 
+/**
+ * Draw one frame of the lyric project. `between` draws whatever sits above the background and below the text: the
+ * compositor passes the timeline's video and image tracks here (phase 15), so preview and export share this path.
+ */
 export function drawFrame(
   ctx: CanvasRenderingContext2D,
   project: Project,
   time: number,
   w: number,
   h: number,
-  assets: RenderAssets = {}
+  assets: RenderAssets = {},
+  between?: (ctx: CanvasRenderingContext2D) => void
 ) {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, w, h);
   drawBackground(ctx, project, w, h, assets);
+  if (between) {
+    ctx.save();
+    between(ctx);
+    ctx.restore();
+  }
 
   // layers are drawn bottom to top; each visible layer shows its own active line, or two during a transition
   for (const layer of project.layers) {

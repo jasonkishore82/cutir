@@ -3,6 +3,7 @@ import { ensureFont, markFontReady } from "../lib/fonts";
 import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
 import KeyframesCard from "./KeyframesCard";
+import ClipCard from "./ClipCard";
 import TemplatesCard from "./TemplatesCard";
 import TransitionsCard from "./TransitionsCard";
 import MediaPool, { PoolThumb } from "./MediaPool";
@@ -57,7 +58,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
   const { target, ...sel } = useTarget();
   const pool = useMedia((s) => s.items);
   const audioItems = pool.filter((i) => i.kind === "audio");
-  const visualItems = pool.filter((i) => i.kind !== "audio");
+  const visualItems = pool.filter((i) => i.kind === "video" || i.kind === "image");
   const lastAudioUrl = useRef<string>();
   const [gfont, setGfont] = useState("");
   const [gfontMsg, setGfontMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -354,6 +355,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
 
       {tab === "motion" && (
         <>
+          <ClipCard />
           <ScopeBar />
 
           <Card title="Position">

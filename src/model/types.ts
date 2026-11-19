@@ -31,6 +31,8 @@ export type MediaRef = {
   height?: number;
   fps?: number;
   hasAudio?: boolean;
+  /** Why it cannot be played here (unsupported codec...). */
+  note?: string;
   /** The media-pool item this came from. */
   poolId?: string;
   /** Object URL for this session only; never saved. */
@@ -54,6 +56,8 @@ export type Track = {
   hidden: boolean;
   /** Subtitle tracks: style overrides for every clip on the track (the old layer style). */
   style?: StyleOverride;
+  /** Receives inserts and overwrites from the media pool (one video and one audio track at a time). */
+  target?: boolean;
 };
 
 /** A clip's content when it is not a media file. */
@@ -73,6 +77,10 @@ export type ClipEffect = { id: string; type: string; enabled: boolean; params: R
 export type Clip = {
   id: string;
   trackId: string;
+  /** Shown on the clip block; defaults to the media name. */
+  name?: string;
+  /** Clips with the same linkId (a video and its sound) are selected, moved and trimmed together. */
+  linkId?: string;
   /** Media from the pool, for video, audio and image clips. */
   mediaId?: string;
   generator?: Generator;
@@ -88,11 +96,33 @@ export type Clip = {
   speed: number;
   enabled: boolean;
   effects: ClipEffect[];
+  /** Placement of a video or image clip in the frame (phase 15). */
+  transform?: Partial<ClipTransform>;
+  /** Clip volume for audio, 0..2 (1 = as recorded). */
+  volume?: number;
   /** Keyframe lanes by name. Text clips keep their motion keyframes in `transform`. */
   keyframes: { transform?: Keyframe[] } & Record<string, Keyframe[] | undefined>;
 };
 
-export type Marker = { id: string; time: number; name: string; color: string };
+export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "add" | "difference";
+
+/** How a video or image clip sits in the frame. Missing = centred, fitted inside the frame, fully opaque. */
+export type ClipTransform = {
+  /** Centre as 0..1 of the frame width / height. */
+  x: number;
+  y: number;
+  scale: number;
+  /** Degrees clockwise. */
+  rotation: number;
+  opacity: number;
+  blend: BlendMode;
+  /** How the source fills the frame before scaling. */
+  fit: "contain" | "cover" | "fill";
+};
+
+export const IDENTITY_TRANSFORM: ClipTransform = { x: 0.5, y: 0.5, scale: 1, rotation: 0, opacity: 1, blend: "normal", fit: "contain" };
+
+export type Marker = { id: string; time: number; name: string; color: string; note?: string; /** On a clip instead of the ruler. */ clipId?: string };
 
 export type Timeline = {
   id: string;

@@ -277,6 +277,11 @@ type State = {
   endGesture: () => void;
   undo: () => void;
   redo: () => void;
+  /**
+   * Edit the document directly (tracks, clips, markers: anything beyond the lyric view). Recorded as one operation;
+   * the same `coalesceKey` within 600ms merges into one undo step. The lyric view is refreshed from the result.
+   */
+  editDoc: (fn: (doc: ProjectDoc) => ProjectDoc, coalesceKey?: string) => void;
   /** Apply a recorded operation to the document (undoable). */
   applyOperation: (op: Operation) => void;
 
@@ -313,6 +318,27 @@ function fold(doc: ProjectDoc, view: Project): { doc: ProjectDoc; op: Operation 
 
 const pushOp = (past: Operation[], op: Operation | null) => (op ? [...past, op].slice(-HISTORY_LIMIT) : past);
 
+/** Record a change: inside a batch just apply it; otherwise push (or merge, for the same key) one operation. */
+function commit(view: Project, nextDoc: ProjectDoc, op: Operation | null, coalesceKey?: string) {
+  const { doc, past } = useProject.getState();
+  if (batchDepth > 0) {
+    useProject.setState({ project: view, doc: nextDoc });
+    return;
+  }
+  const now = Date.now();
+  const coalesce = !!coalesceKey && coalesceKey === lastKey && now - lastTime < COALESCE_MS && past.length > 0;
+  lastKey = coalesceKey;
+  lastTime = now;
+  if (coalesce) {
+    // merge into the previous step: one operation from before that step to now
+    const prev = past[past.length - 1];
+    const merged = makeOperation(revertOperation(doc, prev), nextDoc, prev.label);
+    useProject.setState({ project: view, doc: nextDoc, past: merged ? [...past.slice(0, -1), merged] : past.slice(0, -1), future: [] });
+    return;
+  }
+  useProject.setState({ project: view, doc: nextDoc, past: pushOp(past, op), future: op ? [] : useProject.getState().future });
+}
+
 export const useProject = create<State>((set, get) => ({
   doc: firstDoc,
   project: docToView(firstDoc),
@@ -326,30 +352,21 @@ export const useProject = create<State>((set, get) => ({
   syncIndex: 0,
 
   update: (fn, coalesceKey) => {
-    const { project, doc, past } = get();
+    const { project, doc } = get();
     const next = fn(project);
     if (next === project) return;
     const { doc: nextDoc, op } = fold(doc, next);
+    commit(next, nextDoc, op, coalesceKey);
+  },
 
-    // Inside a batch: just apply; one operation for the whole batch is recorded at the end.
-    if (batchDepth > 0) {
-      set({ project: next, doc: nextDoc });
-      return;
-    }
-
-    const now = Date.now();
-    const coalesce = !!coalesceKey && coalesceKey === lastKey && now - lastTime < COALESCE_MS && past.length > 0;
-    lastKey = coalesceKey;
-    lastTime = now;
-
-    if (coalesce) {
-      // merge into the previous step: one operation from before that step to now
-      const prev = past[past.length - 1];
-      const merged = makeOperation(revertOperation(doc, prev), nextDoc, prev.label);
-      set({ project: next, doc: nextDoc, past: merged ? [...past.slice(0, -1), merged] : past.slice(0, -1), future: [] });
-      return;
-    }
-    set({ project: next, doc: nextDoc, past: pushOp(past, op), future: op ? [] : get().future });
+  editDoc: (fn, coalesceKey) => {
+    const { doc } = get();
+    const changed = fn(doc);
+    if (changed === doc) return;
+    const op = makeOperation(doc, changed);
+    if (!op) return;
+    const nextDoc = applyPatches(doc, op.patches); // share everything that did not change
+    commit(docToView(nextDoc), nextDoc, op, coalesceKey);
   },
 
   batch: (fn) => {

@@ -12,6 +12,7 @@ import { Icon } from "./components/ui";
 import { MediaLibrary } from "./components/MediaPool";
 import { startAutosave, useProject } from "./store/project";
 import { installUnloadSave, useLibrary } from "./store/library";
+import { useMedia } from "./store/media";
 
 const readW = (k: string, d: number) => {
   try {
@@ -221,6 +222,36 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
+
+  /* import from anywhere: paste files, or drop them on any part of the editor that does not take them itself */
+  useEffect(() => {
+    const inEditor = () => useLibrary.getState().screen === "editor";
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (!inEditor() || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
+      const files = Array.from(e.clipboardData?.files ?? []);
+      if (files.length) {
+        e.preventDefault();
+        void useMedia.getState().addFiles(files);
+      }
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (inEditor() && e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!inEditor() || e.defaultPrevented || !e.dataTransfer?.files.length) return;
+      e.preventDefault();
+      void useMedia.getState().addFiles(Array.from(e.dataTransfer.files));
+    };
+    window.addEventListener("paste", onPaste);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("paste", onPaste);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
 
   const resetLayoutRef = useRef<() => void>(() => {});
   const iconBtn = "grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-white/[0.07] hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400";
