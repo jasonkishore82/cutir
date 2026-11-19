@@ -4,12 +4,12 @@ export default {
   theme: {
     extend: {
       colors: {
-        canvas: "#060607", // the window behind the floating panels
-        bg: "#0d0d0f", // wells: inputs, viewer
-        panel: "#161618", // floating panels
-        raised: "#222226", // selected segments, hovered rows
-        edge: "#2a2a2f", // hairlines
-        accent: "#e0709a",
+        canvas: "#04060c", // the window behind the floating panels
+        bg: "#080b12", // wells: inputs, viewer
+        panel: "#0d1118", // floating panels
+        raised: "#1a2232", // selected segments, hovered rows
+        edge: "#222b3c", // hairlines
+        accent: "#5b9dff",
       },
       borderRadius: {
         DEFAULT: "8px", // every plain `rounded` is softer, app-wide
