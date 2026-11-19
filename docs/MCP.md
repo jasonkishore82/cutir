@@ -1,7 +1,51 @@
-# Cutir MCP Server (design)
+# Cutir MCP Server and Claude Code Plugin
 
-A plan for letting Claude (Claude Desktop, Claude Code, claude.ai with a local connector) edit Cutir projects through
-the Model Context Protocol. Status: **design only, not built yet.** The last section says when to build it.
+Lets Claude (Claude Code, including the VS Code extension, and Claude Desktop), signed in with your own Claude
+account, edit the project open in Cutir through the Model Context Protocol.
+
+**Status: live mode built (phase 15.5).** Source: `mcp/` (server), `src/lib/mcpBridge.ts` (the tab side),
+`src/mcp/protocol.ts` (shared), `src/lib/tools/timeline.ts` (timeline tools), `plugin/` (the Claude Code plugin),
+`.claude-plugin/marketplace.json` (so the repo installs as a plugin marketplace). File mode is not built yet.
+
+## Quick start
+
+1. **Install the plugin in Claude Code** (once):
+   ```bash
+   # from this repository on disk
+   claude plugin marketplace add "D:/path/to/Cutir"
+   # or, once the plugin is on the repository's default branch on GitHub
+   claude plugin marketplace add <owner>/<repo>
+
+   claude plugin install cutir@cutir
+   ```
+   To try it without installing: `claude --plugin-dir ./plugin`.
+2. **Get the pairing code:** in Claude Code ask "connect to Cutir" (the `connect` skill runs `cutir_status`), or run
+   `/cutir:connect`. The code is a 6-character word like `M25JZ8`; it stays the same between sessions.
+3. **Switch it on in Cutir:** open a project, then **Settings > AI models > Claude control (MCP)**, tick
+   **Let Claude control this editor** and type the code. A green **Claude connected** badge appears in the top bar.
+4. Ask Claude: "make a lyric video in a neon style", or run `/cutir:lyric-video neon`.
+
+Every change Claude makes is one undo step (Ctrl+Z) and is listed in the Claude control card's log. Click the badge to
+disconnect.
+
+**Claude Desktop** (no plugin system there): add the bundled server to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "cutir": { "command": "node", "args": ["D:/path/to/Cutir/plugin/server/cutir-mcp.mjs"] }
+  }
+}
+```
+
+Then ask Claude "what is my Cutir pairing code?" and continue from step 3. (Needs Node 18 or newer on the PATH.)
+
+**Rebuilding the server** after changing tools: `cd mcp && npm install && npm run build` (writes
+`plugin/server/cutir-mcp.mjs`), then `npm test` in `mcp/` runs the end-to-end test (a real MCP client and a fake
+Cutir tab). The bundled file is committed so the plugin works without a build step.
+
+**Options:** `--port <n>` or `CUTIR_MCP_PORT` (default 8790, must match Cutir's setting), `CUTIR_MCP_TOKEN` to set the
+pairing code yourself, `--origin` / `CUTIR_MCP_ORIGINS` to allow a Cutir hosted somewhere other than localhost.
 
 ## Why
 
@@ -93,31 +137,40 @@ Every tool in `src/lib/tools/` is offered as an MCP tool with the same name, des
 Unlike small local models, Claude can handle the full list, so MCP sends every group (no keyword routing).
 `set_animation` stays hidden (it is an alias).
 
-### Added for MCP (timeline and app)
+### Timeline tools (also in the in-app chat)
 
-These wrap code that already exists (phases 12 to 15):
+Defined with `defineTool` in `src/lib/tools/timeline.ts` (group `timeline`), working on the whole document
+(`applyDoc`). The in-app chat offers them when a message mentions clips, tracks, video, audio, trims and so on, and
+its prompt then lists the clip ids, tracks and library.
 
 | Tool | Does | Uses |
 |---|---|---|
-| `get_project_summary` | Aspect, fps, duration, counts, selection, playhead | store |
-| `list_media` | Media library items with ids, kinds, durations, status | `useMedia` |
-| `import_media_by_url` | Fetch a file from a URL the user gives and import it | `addFiles` |
-| `add_clip` | Put a library item on a track at a time (overwrite) | `overwriteEdit` |
-| `insert_clip` / `append_clip` | Insert or append a library item | `insertEdit`, `appendEdit` |
-| `trim_clip` | Trim an edge, normal or ripple | `trimEdge` |
-| `move_clips` | Move clips in time and across tracks | `moveClips` |
+| `add_clip` | Put a library item (by name or id) on a track; `mode` overwrite, insert, append or top; source `in` / `out` | `overwriteEdit`, `insertEdit`, `appendEdit`, `placeOnTop` |
+| `trim_clip` | Trim an edge `by` seconds or `to` a time; `ripple` | `trimEdge` |
+| `move_clips` | Move clips `by` / `to`, optionally to another track | `moveClips` |
 | `cut_at` | Blade at a time | `blade` |
 | `delete_clips` | Delete, optionally ripple | `deleteClips`, `rippleDelete` |
-| `add_track` / `set_track` | Add a track, lock, mute, solo, hide | `addTrack`, `setTrack` |
+| `set_clip` | Position, size, rotation, opacity, blend, fit; volume; enabled | clip `transform`, `volume` |
+| `add_track` / `set_track` | Add a track; rename, mute, solo, lock, hide, target | `addTrack`, `setTrack`, `setTarget` |
 | `add_marker` / `set_range` | Markers and in / out | `addMarker`, `setRange` |
-| `set_clip_transform` | Position, size, rotation, opacity, blend of a clip | clip `transform` |
-| `seek` / `play` / `pause` | Move or run the playhead | `transport.ts` |
-| `undo` / `redo` | Step through history | store |
-| `render_frame` | PNG of the frame at a time (returned as an MCP image) | `renderFrame` |
-| `export_video` | Start an MP4 export and report progress; the file downloads in the browser | `exportMp4` |
 
-Each one is a `defineTool` entry in a new group file (`src/lib/tools/timeline.ts`), so the in-app chat gets them
-too.
+Without a marked target track, clips go on the top-most plain video track and the first plain audio track (never
+the lyric background or song track).
+
+### App tools (MCP only)
+
+Answered by the tab in `src/lib/mcpBridge.ts`; listed in `APP_TOOLS` in `src/mcp/protocol.ts`.
+
+| Tool | Does |
+|---|---|
+| `get_project` | Everything Claude needs first: aspect, fps, duration, playhead, lines, layers, tracks, clips, markers, range, library, selection |
+| `list_media` | The media library with ids, kinds, durations, status |
+| `render_frame` | PNG of the frame at a time, exactly as it exports (returned as an MCP image) |
+| `seek` / `play` / `pause` | The playhead |
+| `undo` / `redo` | History, by steps |
+| `import_media_url` | Download a file into the library (the site must allow it) |
+| `export_video` / `export_status` | Start an MP4 export (downloads in the browser) and follow it |
+| `cutir_status` | Answered by the server itself: connected or not, the pairing code and port |
 
 ## Resources
 
@@ -156,65 +209,41 @@ MCP prompts (templates the user can pick in Claude):
   Claude app, as with any MCP server, which the settings card says plainly.
 - **Rate and size limits**: at most N calls per second, resource bodies capped, frames capped at 1280 px wide.
 
-## Setup (once built)
-
-Claude Code:
-
-```bash
-cd mcp && npm install && npm run build
-claude mcp add cutir -- node /path/to/Cutir/mcp/dist/server.js --port 8790
-```
-
-Claude Desktop (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "cutir": { "command": "node", "args": ["C:/path/to/Cutir/mcp/dist/server.js", "--port", "8790"] }
-  }
-}
-```
-
-Then in Cutir: Settings > AI models > **Let Claude control this editor**, enter the pairing code the server printed
-(Claude Desktop shows it in the server log), and ask Claude to "list the lines of my project".
-
 ## Packaging as a plugin
 
 The same server can ship in two installable packages, so nobody has to edit config files by hand. Both wrap the one
 server in `mcp/`; only the packaging differs. (Check the exact manifest fields against the current Claude Code and
 Claude Desktop docs when building: both formats are still evolving.)
 
-### Claude Code plugin
+### Claude Code plugin (built)
 
-A plugin bundles the MCP server with skills and slash commands that know how to use Cutir well.
+A plugin bundles the MCP server with skills that know how to use Cutir well.
 
 ```
-cutir-plugin/
-  .claude-plugin/
-    plugin.json            name "cutir", description, version, author
-  .mcp.json                starts the server: node ${CLAUDE_PLUGIN_ROOT}/server/server.js --port 8790
-  server/                  the built MCP server (mcp/dist), bundled into one file
+plugin/
+  .claude-plugin/plugin.json      name "cutir", version, description
+  .mcp.json                       node ${CLAUDE_PLUGIN_ROOT}/server/cutir-mcp.mjs --data ${CLAUDE_PLUGIN_DATA}
+  server/cutir-mcp.mjs            the server, SDK and Cutir tool definitions in one file (built by mcp/build.mjs)
   skills/
-    lyric-video/SKILL.md   how to make a lyric video with Cutir's tools, step by step
-    kinetic/SKILL.md       the kinetic typography pass (docs/KINETIC-TYPOGRAPHY.md)
-    timeline-editing/SKILL.md  trims, ripple, insert/overwrite with source marks
-  commands/
-    cutir-status.md        /cutir-status: is the editor connected, what is open
-    lyric-video.md         /lyric-video <song>: guided build from song + lyrics to export
-    restyle.md             /restyle <mood>: template + adjustments
+    connect/SKILL.md              /cutir:connect - status and pairing steps
+    lyric-video/SKILL.md          /cutir:lyric-video [style] - sync, template, motion, transitions, check frames
+    timeline-editing/SKILL.md     /cutir:timeline-editing - clips, tracks, trims, markers
+    kinetic-pass/SKILL.md         /cutir:kinetic-pass - emphasis, meaning-matched motion, keyframes
+.claude-plugin/marketplace.json   at the repo root: marketplace "cutir" listing ./plugin
 ```
 
-- Install: add the repo as a plugin marketplace (`.claude-plugin/marketplace.json` at the repo root listing the
-  plugin), then `/plugin install cutir@<marketplace>`.
+- The pairing code lives in the plugin's persistent data folder (`${CLAUDE_PLUGIN_DATA}`), so it survives updates.
+- Both manifests pass `claude plugin validate`.
 - The skills are what make it more than a bare MCP server: they teach Claude the order that works (sync before
   styling, check frames with `render_frame`, one change per call) and the vocabulary (templates, effects, transitions).
 - Useful during development too: Claude Code working on this repo can load the plugin and test the editor through it.
 
-### Claude Desktop extension
+### Claude Desktop extension (later)
 
-A one-click install for Claude Desktop: the server and a `manifest.json` (name, description, entry point, a
-configurable port) packed into a single extension file with Anthropic's MCP bundle tool. Users double-click it,
-Claude Desktop installs it and runs the bundled Node server; no Node install or JSON editing needed.
+A one-click install for Claude Desktop: the server and a `manifest.json` packed into an MCP Bundle (`.mcpb`, made
+with `npx @anthropic-ai/mcpb init` and `mcpb pack`). Users double-click it and Claude Desktop runs the bundled Node
+server; no Node install or JSON editing needed. Anthropic's Desktop extension directory no longer takes submissions,
+so the bundle would be shared directly (or shipped inside the plugin).
 
 ### What the user does
 
@@ -268,7 +297,7 @@ How it continues:
 
 | Phase | MCP work |
 |---|---|
-| Now (15.5) | Live mode with the lyric tools, timeline tools, resources, `render_frame`, pairing; Claude Code plugin with the first skills |
+| 15.5 (done) | Live mode with the lyric tools, timeline tools, resources, `render_frame`, pairing; Claude Code plugin with four skills |
 | 16 to 27 | Each phase adds its operations as tools, so Claude can use them as they land (effects, colour, audio...) |
 | 28 | Tools generated from the command registry; selection-context resource; macros callable from Claude |
 | 29 | File mode over the new project packages; OpenTimelineIO import and export as tools |

@@ -115,10 +115,19 @@ export function setTarget(tl: Timeline, id: string): Timeline {
   return { ...tl, tracks: tl.tracks.map((x) => (x.kind === t.kind ? { ...x, target: x.id === id } : x)) };
 }
 
-/** The target track of a kind: the marked one, else the first unlocked track of that kind. */
+/** The lyric project's own background and song tracks (see model/convert.ts IDS): never the default target. */
+const LYRIC_TRACKS = new Set(["v-bg", "a-song"]);
+
+/**
+ * The target track of a kind: the marked one; else a plain unlocked track (not the lyric background or song track),
+ * the top-most for video and the first for audio; else any unlocked track of that kind.
+ */
 export function targetTrack(tl: Timeline, kind: TrackKind): Track | undefined {
   const of = tl.tracks.filter((t) => t.kind === kind);
-  return of.find((t) => t.target && !t.locked) ?? of.find((t) => !t.locked);
+  const marked = of.find((t) => t.target && !t.locked);
+  if (marked) return marked;
+  const plain = of.filter((t) => !t.locked && !LYRIC_TRACKS.has(t.id) && !tl.clips.some((c) => c.trackId === t.id && c.fill));
+  return (kind === "video" ? plain[plain.length - 1] : plain[0]) ?? of.find((t) => !t.locked);
 }
 
 /* ---------- snapping ---------- */

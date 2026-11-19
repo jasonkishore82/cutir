@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import ClaudeControlCard from "./ClaudeControlCard";
 import { PROVIDERS, providerById } from "../lib/llm/providers";
 import { configProblem, listChatModels } from "../lib/llm";
 import { OllamaError } from "../lib/ollama";
@@ -195,6 +196,7 @@ function AiTab() {
           Keys stay in this browser. Turn the box off to keep them only until the tab closes. Requests go straight to the provider you choose.
         </p>
       </Card>
+      <ClaudeControlCard />
     </div>
   );
 }

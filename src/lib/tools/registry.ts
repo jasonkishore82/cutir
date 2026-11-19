@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Project } from "../../store/project";
+import type { ProjectDoc } from "../../model/types";
 
 /**
  * Tool registry. A tool is defined ONCE here: its zod parameter schema, description and apply function.
@@ -11,7 +12,7 @@ import type { Project } from "../../store/project";
  * To add a tool: write defineTool({...}) in a group file and add it to that file's export. Nothing else.
  */
 
-export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers" | "transform" | "motion";
+export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers" | "transform" | "motion" | "timeline";
 
 export type ToolResultOk = { project: Project; summary: string };
 
@@ -30,7 +31,12 @@ export type ToolDef<S extends z.ZodType = z.ZodType> = {
   /** Optional async step that runs BEFORE apply (e.g. download a font). Throw to reject the call with a message. */
   prepare?: (args: z.output<S>) => Promise<void>;
   /** Pure: returns the new project, or throws an Error whose message is shown to the user and the model. */
-  apply: (project: Project, args: z.output<S>) => ToolResultOk;
+  apply?: (project: Project, args: z.output<S>) => ToolResultOk;
+  /**
+   * For edits beyond the lyric view (timeline tracks and clips, markers, media): works on the whole document.
+   * Pure like `apply`. A tool has `apply` or `applyDoc`.
+   */
+  applyDoc?: (doc: ProjectDoc, args: z.output<S>) => { doc: ProjectDoc; summary: string };
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

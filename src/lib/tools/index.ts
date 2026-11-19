@@ -7,9 +7,12 @@ import { sceneTools } from "./scene";
 import { syncTools } from "./sync";
 import { layerTools } from "./layers";
 import { animationTools, motionTools, transformTools } from "./motion";
+import { timelineTools } from "./timeline";
+import { activeTimeline } from "../../model/convert";
+import { useMedia } from "../../store/media";
 
 /** The one list of tools. Add a tool to a group file; it is picked up everywhere from here. */
-export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools]);
+export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools]);
 
 export const TOOL_NAMES = registry.all.map((t) => t.name);
 
@@ -24,6 +27,10 @@ const TRANSFORM_WORDS =
 const MOTION_WORDS =
   /\b(keyframes?|key ?frames?|motion|path|drift|fly|flies|flying|travel|glide|across|transitions?|crossfade|cross-fade|dissolve|push|zoom.?through|between (all |the )?lines|templates?|presets?|look|karaoke|neon|minimal|cinematic|bold caption|caption style)\b/i;
 
+/** Words that bring in the timeline tools (clips on video and audio tracks, markers, in/out). */
+const TIMELINE_WORDS =
+  /\b(clips?|tracks?|video|footage|b-?roll|audio|sound|music|voice.?over|image|photo|picture|trim|ripple|blade|cut|split|marker|in.?point|out.?point|insert|overwrite|append|timeline|volume|mute|solo|library|media)\b/i;
+
 /**
  * Which tool groups to offer for this message. Fewer tools = better accuracy and a shorter prompt for small models.
  * Style (with the animation slots), line, scene and sync tools are always offered; the rest only when the request
@@ -34,6 +41,7 @@ export function selectToolGroups(text: string, p: Project): ToolGroup[] {
   if (p.layers.length > 1 || /\b(layers?|tracks?|lanes?|translation|translate|subtitles?|overlay|credits?|caption)\b/i.test(text)) groups.push("layers");
   if (TRANSFORM_WORDS.test(text)) groups.push("transform");
   if (MOTION_WORDS.test(text)) groups.push("motion");
+  if (TIMELINE_WORDS.test(text)) groups.push("timeline");
   return groups;
 }
 
@@ -93,8 +101,20 @@ export async function applyCalls(calls: RawCall[]): Promise<{ results: CallResul
         continue;
       }
       try {
+        if (r.def.applyDoc) {
+          // timeline and media edits work on the whole document
+          const cur = useProject.getState().doc;
+          const { doc, summary } = r.def.applyDoc(cur, r.data);
+          if (doc === cur || JSON.stringify(doc) === JSON.stringify(cur)) {
+            results.push({ ...r.call, ok: true, noop: true, summary: `${summary} (already so, unchanged)` });
+            continue;
+          }
+          useProject.getState().editDoc(() => doc);
+          results.push({ ...r.call, ok: true, summary });
+          continue;
+        }
         const current = useProject.getState().project;
-        const { project, summary } = r.def.apply(current, r.data);
+        const { project, summary } = r.def.apply!(current, r.data);
         if (JSON.stringify(project) === JSON.stringify(current)) {
           results.push({ ...r.call, ok: true, noop: true, summary: `${summary} (already set, unchanged)` });
           continue;
@@ -138,6 +158,18 @@ export function buildSystemPrompt(p: Project, fallbackJson: boolean, groups?: To
       : []),
     `LINES (${multi ? "index | layer | start-end | text" : "index | start-end | text"}):\n${rows || "(none)"}${more}`,
   ];
+  // timeline tools need the clip ids, tracks and library names
+  if (groups?.includes("timeline")) {
+    const doc = useProject.getState().doc;
+    const tl = activeTimeline(doc);
+    const tracks = tl.tracks.filter((t) => t.kind !== "subtitle").map((t) => `${t.name} (${t.kind}${t.target ? ", target" : ""}${t.locked ? ", locked" : ""}${t.muted ? ", muted" : ""})`);
+    const clips = tl.clips
+      .filter((c) => !c.fill && !c.text)
+      .slice(0, 80)
+      .map((c) => `${c.id} | ${tl.tracks.find((t) => t.id === c.trackId)?.name} | ${c.start.toFixed(2)}-${(c.start + c.duration).toFixed(2)} | ${doc.media.find((m) => m.id === c.mediaId)?.name ?? ""}`);
+    const media = useMedia.getState().items.slice(0, 60).map((i) => `${i.name} (${i.kind}${i.duration ? ` ${i.duration.toFixed(1)}s` : ""})`);
+    parts.push(`TRACKS: ${tracks.join(", ") || "(none)"}`, `CLIPS (id | track | start-end | media):\n${clips.join("\n") || "(none)"}`, `MEDIA LIBRARY: ${media.join(", ") || "(empty)"}`);
+  }
   if (fallbackJson) {
     parts.push(
       'Tools are unavailable. Reply with ONE ```json block containing {"actions":[{"tool":"<name>","args":{...}}]} and nothing else needed.'

@@ -1,0 +1,7 @@
+{
+  "name": "cutir",
+  "version": "0.1.0",
+  "description": "Edit lyric videos and timelines in the Cutir editor from Claude: lyrics, timing, styles, templates, animation, clips, frames and export.",
+  "author": { "name": "Cutir" },
+  "keywords": ["video", "lyrics", "editor", "mcp"]
+}

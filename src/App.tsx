@@ -13,6 +13,8 @@ import { MediaLibrary } from "./components/MediaPool";
 import { startAutosave, useProject } from "./store/project";
 import { installUnloadSave, useLibrary } from "./store/library";
 import { useMedia } from "./store/media";
+import { startMcpBridge } from "./lib/mcpBridge";
+import { ClaudeBadge } from "./components/ClaudeControlCard";
 
 const readW = (k: string, d: number) => {
   try {
@@ -200,6 +202,7 @@ export default function App() {
 
   useEffect(() => {
     useLibrary.getState().init(); // loads the project list (and migrates the old single autosave)
+    startMcpBridge(); // connects to the Cutir MCP server only if the user switched Claude control on
     installUnloadSave();
     return startAutosave((doc, view) => useLibrary.getState().saveContent(doc, view));
   }, []);
@@ -303,6 +306,7 @@ export default function App() {
         <SectionTabs value={section} onChange={setSection} />
 
         <div className="flex items-center justify-end gap-1">
+          <ClaudeBadge />
           <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo"><Icon name="undo" /></button>
           <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><Icon name="redo" /></button>
           <button
