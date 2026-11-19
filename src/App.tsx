@@ -9,6 +9,7 @@ import MenuBar from "./components/MenuBar";
 import SettingsScreen from "./components/SettingsScreen";
 import SectionTabs, { type SectionId } from "./components/SectionTabs";
 import { Icon } from "./components/ui";
+import { MediaLibrary } from "./components/MediaPool";
 import { startAutosave, useProject } from "./store/project";
 import { installUnloadSave, useLibrary } from "./store/library";
 
@@ -293,11 +294,11 @@ export default function App() {
 
       <div className="flex min-h-0 flex-1">
         <aside style={{ width: leftW }} className={`${panel} shrink-0 overflow-y-auto`}>
-          <LeftPanel tab={section} />
+          <LeftPanel tab={section} onGoto={setSection} />
         </aside>
         <ResizeHandle width={leftW} set={setLeftW} dir={1} min={240} max={480} reset={300} storeKey="cutir:leftW" />
         <main className={`${panel} min-w-0 flex-1 bg-bg`}>
-          <Preview />
+          {section === "import" ? <MediaLibrary /> : <Preview />}
         </main>
         {chatOpen && (
           <>

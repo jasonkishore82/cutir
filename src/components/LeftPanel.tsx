@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { ensureFont, markFontReady } from "../lib/fonts";
 import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
-import MediaPool from "./MediaPool";
+import MediaPool, { PoolThumb } from "./MediaPool";
 import { useMedia, type MediaItem } from "../store/media";
 import { SECTIONS, type SectionId } from "./SectionTabs";
 import { ActionButton, Card, Icon, Row, Segmented, Slider } from "./ui";
@@ -42,7 +42,7 @@ function pickFile(accept: string, onFile: (f: File) => void) {
   input.click();
 }
 
-export default function LeftPanel({ tab }: { tab: SectionId }) {
+export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s: SectionId) => void }) {
   const project = useProject((s) => s.project);
   const activeLayerId = useProject((s) => s.activeLayerId);
   const setActiveLayer = useProject((s) => s.setActiveLayer);
@@ -57,6 +57,9 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
   const selectedId = useProject((s) => s.selectedLineId);
   const selectedLine = project.lines.find((l) => l.id === selectedId);
   const selTf = selectedLine ? effectiveStyle(project, selectedLine).transform : undefined;
+  const pool = useMedia((s) => s.items);
+  const audioItems = pool.filter((i) => i.kind === "audio");
+  const visualItems = pool.filter((i) => i.kind !== "audio");
   const lastAudioUrl = useRef<string>();
   const [gfont, setGfont] = useState("");
   const [gfontMsg, setGfontMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -127,17 +130,16 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
 
       {tab === "import" && (
         <>
-          <Card title="Media pool">
-            <MediaPool onUse={useFromPool} />
+          <Card title="Import">
+            <MediaPool compact />
           </Card>
-
           <Card title="Canva">
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
-                const f = e.dataTransfer.files?.[0];
-                if (f && (f.type.startsWith("image/") || f.type.startsWith("video/"))) void chooseBackground(f);
+                const files = Array.from(e.dataTransfer.files ?? []).filter((f) => f.type.startsWith("image/") || f.type.startsWith("video/"));
+                if (files.length) void useMedia.getState().addFiles(files);
               }}
               className="space-y-3"
             >
@@ -150,7 +152,7 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
                 <Icon name="export" className="h-4 w-4 shrink-0 text-gray-500" />
                 <span className="min-w-0 flex-1 truncate">Open Canva</span>
               </a>
-              <ActionButton icon="image" onClick={() => pickFile("image/*,video/*", chooseBackground)}>
+              <ActionButton icon="image" onClick={() => pickFile("image/*,video/*", (f) => void useMedia.getState().addFiles([f]))}>
                 Import Canva export
               </ActionButton>
               <ol className="list-decimal space-y-1 pl-4 text-[11px] leading-snug text-gray-500">
@@ -166,18 +168,66 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
       {tab === "media" && (
         <>
           <Card title="Song">
-            <ActionButton icon="music" active={!!project.audio} onClick={() => pickFile("audio/*,.mp3,.wav,.m4a", chooseAudio)}>
-              {project.audio ? project.audio.name : "Choose audio file"}
+            {audioItems.length > 0 ? (
+              <ul className="space-y-1" aria-label="Imported audio">
+                {audioItems.map((it) => {
+                  const on = project.audio?.mediaId === it.id;
+                  return (
+                    <li key={it.id}>
+                      <button
+                        onClick={() => useFromPool(it)}
+                        aria-pressed={on}
+                        className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-[13px] ${on ? "border-accent/50 bg-accent/10 text-white" : "border-edge bg-black/20 text-gray-300 hover:bg-raised hover:text-white"}`}
+                      >
+                        <Icon name="music" className={`h-4 w-4 shrink-0 ${on ? "text-accent" : "text-gray-500"}`} />
+                        <span className="min-w-0 flex-1 truncate">{it.name}</span>
+                        {on && <Icon name="check" className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-[12px] text-gray-500">
+                No audio imported yet.{" "}
+                {onGoto && <button className="text-accent hover:underline" onClick={() => onGoto("import")}>Open Import</button>}
+              </p>
+            )}
+            <ActionButton icon="music" active={!!project.audio && !project.audio.mediaId} onClick={() => pickFile("audio/*,.mp3,.wav,.m4a", chooseAudio)}>
+              {project.audio && !project.audio.mediaId ? project.audio.name : "Choose another file"}
             </ActionButton>
           </Card>
 
           <Card title="Background">
+            {visualItems.length > 0 && (
+              <div>
+                <span className="label">Imported</span>
+                <div className="grid grid-cols-3 gap-2">
+                  {visualItems.map((it) => {
+                    const on = project.background.type === "asset" && project.background.asset?.mediaId === it.id;
+                    return (
+                      <button
+                        key={it.id}
+                        title={it.name}
+                        aria-label={`Use ${it.name} as background`}
+                        aria-pressed={on}
+                        onClick={() => useFromPool(it)}
+                        className={`relative aspect-square overflow-hidden rounded-lg border bg-black/40 ${on ? "border-accent ring-2 ring-accent/40" : "border-white/10 hover:border-white/30"}`}
+                      >
+                        <PoolThumb item={it} />
+                        {it.kind === "video" && <span className="absolute bottom-0.5 right-0.5 rounded bg-black/70 px-1 text-[9px] text-gray-200">video</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <ActionButton
               icon="image"
-              active={project.background.type === "asset"}
+              active={project.background.type === "asset" && !project.background.asset?.mediaId}
               onClick={() => pickFile("image/*,video/*", chooseBackground)}
             >
-              {project.background.type === "asset" && project.background.asset ? project.background.asset.name : "Choose image or video"}
+              {project.background.type === "asset" && project.background.asset && !project.background.asset.mediaId ? project.background.asset.name : "Choose another file"}
             </ActionButton>
             <div>
               <span className="label">Gradients</span>
