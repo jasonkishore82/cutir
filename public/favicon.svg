@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <rect width="64" height="64" rx="14" fill="#0f1115"/>
+  <!-- board body -->
+  <rect x="11" y="27" width="42" height="26" rx="3" fill="#5b9dff"/>
+  <rect x="11" y="27" width="42" height="6" fill="#161a21" opacity="0.25"/>
+  <!-- clapper arm (tilted open) -->
+  <g transform="rotate(-14 11 27)">
+    <rect x="11" y="16" width="42" height="11" rx="2" fill="#ffffff"/>
+    <polygon points="17,16 25,16 19,27 11,27" fill="#161a21"/>
+    <polygon points="33,16 41,16 35,27 27,27" fill="#161a21"/>
+    <polygon points="49,16 53,16 53,27 43,27" fill="#161a21"/>
+  </g>
+  <!-- fixed stripe bar -->
+  <rect x="11" y="27" width="42" height="7" fill="#ffffff"/>
+  <polygon points="15,27 23,27 19,34 11,34" fill="#161a21"/>
+  <polygon points="31,27 39,27 35,34 27,34" fill="#161a21"/>
+  <polygon points="47,27 53,27 53,34 43,34" fill="#161a21"/>
+</svg>

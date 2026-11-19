@@ -1,0 +1,229 @@
+import { z } from "zod";
+import { layerIdOf, useProject, type Project } from "../../store/project";
+import { createRegistry, toOllamaTool, toolSignature, type AnyTool, type ToolGroup } from "./registry";
+import { lineTools } from "./lines";
+import { styleTools } from "./style";
+import { sceneTools } from "./scene";
+import { syncTools } from "./sync";
+import { layerTools } from "./layers";
+
+/** The one list of tools. Add a tool to a group file; it is picked up everywhere from here. */
+export const registry = createRegistry([...styleTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools]);
+
+export const TOOL_NAMES = registry.all.map((t) => t.name);
+
+/** Tool definitions in Ollama's format, generated from the zod schemas. Pass groups to send a subset. */
+export const getOllamaTools = (groups?: ToolGroup[]) => registry.list(groups).map(toOllamaTool);
+export const OLLAMA_TOOLS = getOllamaTools();
+
+/**
+ * Which tool groups to offer for this message. Fewer tools = better accuracy and a shorter prompt for small models.
+ * Layer tools are only sent when the request (or the project) involves layers.
+ */
+export function selectToolGroups(text: string, p: Project): ToolGroup[] {
+  const groups: ToolGroup[] = ["style", "lines", "scene", "sync"];
+  if (p.layers.length > 1 || /\b(layers?|tracks?|lanes?|translation|translate|subtitles?|overlay|credits?|caption)\b/i.test(text)) groups.push("layers");
+  return groups;
+}
+
+/* ---------- applying calls ---------- */
+
+export type RawCall = { tool: string; args: unknown };
+export type CallResult = { tool: string; args: unknown; ok: boolean; summary: string; noop?: boolean };
+
+const fmtIssues = (e: z.ZodError) => e.issues.map((i) => `${i.path.join(".") || "args"}: ${i.message}`).join("; ");
+
+/**
+ * Validate and apply every call as ONE undoable history step. Invalid calls are reported, valid ones still apply.
+ * Async because some tools prepare resources first (e.g. downloading a font); that happens before any change is made.
+ */
+export async function applyCalls(calls: RawCall[]): Promise<{ results: CallResult[]; before: Project; after: Project }> {
+  type Ready = { call: RawCall; def: AnyTool; data: unknown } | { call: RawCall; fail: string };
+
+  // phase 1 (async): look up, repair, validate, prepare
+  const ready: Ready[] = [];
+  for (const call of calls) {
+    const def = registry.get(call.tool);
+    if (!def) {
+      ready.push({ call, fail: `unknown tool "${call.tool}"` });
+      continue;
+    }
+    let args = call.args;
+    if (typeof args === "string") {
+      try {
+        args = JSON.parse(args); // some models send arguments as a JSON string
+      } catch {
+        /* leave as is; validation will report it */
+      }
+    }
+    if (def.normalize) args = def.normalize(args);
+    const parsed = def.params.safeParse(args);
+    if (!parsed.success) {
+      ready.push({ call, fail: `${def.name}: ${fmtIssues(parsed.error)}` });
+      continue;
+    }
+    try {
+      await def.prepare?.(parsed.data);
+    } catch (err) {
+      ready.push({ call, fail: `${def.name}: ${(err as Error).message}` });
+      continue;
+    }
+    ready.push({ call, def, data: parsed.data });
+  }
+
+  // phase 2 (sync): apply everything inside a single history step
+  const store = useProject.getState();
+  const before = store.project;
+  const results: CallResult[] = [];
+  store.batch(() => {
+    for (const r of ready) {
+      if ("fail" in r) {
+        results.push({ ...r.call, ok: false, summary: r.fail });
+        continue;
+      }
+      try {
+        const current = useProject.getState().project;
+        const { project, summary } = r.def.apply(current, r.data);
+        if (JSON.stringify(project) === JSON.stringify(current)) {
+          results.push({ ...r.call, ok: true, noop: true, summary: `${summary} (already set, unchanged)` });
+          continue;
+        }
+        useProject.getState().update(() => project);
+        results.push({ ...r.call, ok: true, summary });
+      } catch (err) {
+        results.push({ ...r.call, ok: false, summary: `${r.def.name}: ${(err as Error).message}` });
+      }
+    }
+  });
+
+  return { results, before, after: useProject.getState().project };
+}
+
+/* ---------- prompts ---------- */
+
+const MAX_PROMPT_LINES = 120;
+
+export function buildSystemPrompt(p: Project, fallbackJson: boolean, groups?: ToolGroup[]): string {
+  const bg =
+    p.background.type === "gradient"
+      ? `gradient ${p.background.colors.join(",")} angle ${p.background.angle}`
+      : `asset ${p.background.asset?.name ?? "(none)"}`;
+  const shown = p.lines.slice(0, MAX_PROMPT_LINES);
+  const multi = p.layers.length > 1;
+  const layerName = (l: (typeof p.lines)[number]) => p.layers.find((x) => x.id === layerIdOf(p, l))?.name ?? "";
+  const rows = shown
+    .map((l, i) => `${i + 1} | ${multi ? `${layerName(l)} | ` : ""}${l.start.toFixed(2)}-${l.end.toFixed(2)} | ${l.text.slice(0, 70)}`)
+    .join("\n");
+  const more = p.lines.length > shown.length ? `\n(+${p.lines.length - shown.length} more lines)` : "";
+
+  const parts = [
+    "You are the assistant inside Cutir, a lyric video editor. ONLY call tools when the user asks to change the video. For greetings, thanks or questions, answer in one short sentence and do NOT call any tool. When editing: one edit per call (several calls are fine), only change what was asked, and never repeat values that are already set. Line numbers are 1-based, times are seconds.",
+    `Tools: ${registry.list(groups).map(toolSignature).join(", ")}.`,
+    `STYLE: ${JSON.stringify(p.style)}`,
+    `BACKGROUND: ${bg}`,
+    `ASPECT: ${p.aspect}`,
+    ...(multi
+      ? [`LAYERS (drawn bottom to top): ${p.layers.map((l, i) => `${i + 1} ${l.name}${l.visible ? "" : " (hidden)"}${l.locked ? " (locked)" : ""}`).join(", ")}`]
+      : []),
+    `LINES (${multi ? "index | layer | start-end | text" : "index | start-end | text"}):\n${rows || "(none)"}${more}`,
+  ];
+  if (fallbackJson) {
+    parts.push(
+      'Tools are unavailable. Reply with ONE ```json block containing {"actions":[{"tool":"<name>","args":{...}}]} and nothing else needed.'
+    );
+  }
+  return parts.join("\n");
+}
+
+const SMALL_TALK = /^\s*(hi+|hello+|hey+|hiya|yo|sup|howdy|thanks?|thank you|thx|ok(ay)?|cool|nice|great|good (morning|afternoon|evening|night)|bye|goodbye|how are you\??|who are you\??|what can you do\??|help)[\s!.?]*$/i;
+
+/** Greetings and chit-chat: answer normally, no tools. Small models otherwise invent edits. */
+export const isSmallTalk = (text: string) => SMALL_TALK.test(text);
+
+export const CHAT_ONLY_PROMPT =
+  "You are the assistant inside Cutir, a lyric video editor. Reply in one or two short friendly sentences. You can change text style, lyric lines and timings, backgrounds, animations and aspect ratio when asked. Do not claim to have changed anything.";
+
+/** Index of the bracket that closes the one at `from` (string-aware), or -1. */
+function matchBracket(s: string, from: number): number {
+  let depth = 0;
+  let inStr = false;
+  for (let i = from; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (c === "\\") i++;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') inStr = true;
+    else if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** Every JSON object/array embedded in free text (inside code fences, <tool_call> tags, or bare). */
+function findJson(text: string): { value: unknown; start: number; end: number }[] {
+  const found: { value: unknown; start: number; end: number }[] = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{" && text[i] !== "[") continue;
+    const end = matchBracket(text, i);
+    if (end < 0) continue;
+    try {
+      found.push({ value: JSON.parse(text.slice(i, end + 1)), start: i, end: end + 1 });
+      i = end; // skip past it; nested objects are part of this one
+    } catch {
+      /* not valid JSON starting here; keep scanning */
+    }
+  }
+  return found;
+}
+
+/**
+ * Turn the many shapes models use for a tool call into RawCalls:
+ *   {"name":"set_aspect","arguments":{...}}      (Qwen / OpenAI style)
+ *   {"tool":"set_aspect","args":{...}}           (our own JSON-reply format)
+ *   {"function":{"name":...,"arguments":...}}    (Ollama tool_calls entries)
+ *   {"actions":[...]} / {"tool_calls":[...]} / [ ... ]
+ * Only names of registered tools count, so ordinary JSON in a reply is left alone.
+ */
+function toCalls(v: unknown): RawCall[] {
+  if (Array.isArray(v)) return v.flatMap(toCalls);
+  if (!v || typeof v !== "object") return [];
+  const o = v as Record<string, unknown>;
+  if (Array.isArray(o.actions)) return o.actions.flatMap(toCalls);
+  if (Array.isArray(o.tool_calls)) return o.tool_calls.flatMap(toCalls);
+  const fn = o.function && typeof o.function === "object" ? (o.function as Record<string, unknown>) : o;
+  const name = fn.name ?? fn.tool;
+  if (typeof name !== "string" || !registry.get(name)) return [];
+  return [{ tool: name, args: fn.arguments ?? fn.parameters ?? fn.args ?? {} }];
+}
+
+/** Pull tool calls out of a model reply that wrote them as text. Returns the reply with the JSON removed. */
+export function parseActionsFromText(text: string): { calls: RawCall[]; stripped: string } {
+  const calls: RawCall[] = [];
+  const cut: [number, number][] = [];
+  for (const j of findJson(text)) {
+    const c = toCalls(j.value);
+    if (c.length) {
+      calls.push(...c);
+      cut.push([j.start, j.end]);
+    }
+  }
+  if (!calls.length) return { calls: [], stripped: text };
+
+  let stripped = "";
+  let pos = 0;
+  for (const [a, b] of cut) {
+    stripped += text.slice(pos, a);
+    pos = b;
+  }
+  stripped += text.slice(pos);
+  // leftover wrappers around the removed JSON
+  stripped = stripped
+    .replace(/```(?:json)?\s*```/gi, "")
+    .replace(/<\/?tool_call>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { calls, stripped };
+}
