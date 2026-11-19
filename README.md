@@ -9,6 +9,15 @@ npm i
 npm run dev          # http://localhost:5173
 ```
 
+### AI providers (Settings menu)
+
+Open **Settings > AI models & API keys** to choose the model behind the chat. Ollama stays the default and needs no key.
+Cloud options: OpenAI, Groq, OpenRouter, Together AI, Mistral, DeepSeek, xAI (Grok), Google Gemini, Cerebras and Fireworks AI.
+Local options: Ollama and LM Studio. **Custom** takes any server with an OpenAI-style `/chat/completions` endpoint.
+
+Keys are stored only in your browser (localStorage, or sessionStorage if you turn off "Remember API keys") and are sent only to the provider you pick; there is no Cutir server.
+Some providers block direct browser requests (CORS). Use **Test connection** in the dialog to check.
+
 ### AI chat (Ollama)
 
 ```bash

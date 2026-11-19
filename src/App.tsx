@@ -5,7 +5,9 @@ import Timeline from "./components/Timeline";
 import ChatPanel from "./components/ChatPanel";
 import ExportDialog from "./components/ExportDialog";
 import Home from "./components/Home";
-import { downloadProject, startAutosave, useProject } from "./store/project";
+import MenuBar from "./components/MenuBar";
+import SettingsDialog from "./components/SettingsDialog";
+import { startAutosave, useProject } from "./store/project";
 import { installUnloadSave, useLibrary } from "./store/library";
 
 const readW = (k: string, d: number) => {
@@ -205,6 +207,19 @@ export default function App() {
 
   const btn = "px-2 py-1 text-xs rounded border border-edge hover:bg-edge disabled:opacity-40 disabled:hover:bg-transparent";
 
+  const resetLayout = () => {
+    setLeftW(280);
+    setChatW(360);
+    setTlH(240);
+    for (const k of ["cutir:leftW", "cutir:chatW", "cutir:tlH"]) {
+      try {
+        localStorage.removeItem(k);
+      } catch {
+        /* storage unavailable */
+      }
+    }
+  };
+
   if (screen === "home") return <Home />;
 
   return (
@@ -214,14 +229,14 @@ export default function App() {
           <span aria-hidden>‹</span> Projects
         </button>
         <img src="/favicon.svg" alt="" className="ml-1 h-6 w-6" />
+        <MenuBar onExport={() => setExporting(true)} onResetLayout={resetLayout} />
         <ProjectName />
         {saveFailed && <span className="text-[11px] text-red-400" title="Browser storage is full or blocked">⚠ not saved</span>}
-        <div className="ml-4 flex gap-1">
+        <div className="ml-auto flex gap-1">
           <button className={btn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">Undo</button>
           <button className={btn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">Redo</button>
         </div>
-        <div className="ml-auto flex gap-1">
-          <button className={btn} onClick={() => downloadProject(useProject.getState().project)} title="Download the project as a .json file">Save file</button>
+        <div className="flex gap-1">
           <button className={`${btn} border-accent text-accent`} onClick={() => setExporting(true)}>Export</button>
           <button className={btn} onClick={toggleChat}>{chatOpen ? "Hide AI" : "Show AI"}</button>
         </div>
@@ -246,6 +261,7 @@ export default function App() {
       </div>
 
       {exporting && <ExportDialog onClose={() => setExporting(false)} />}
+      <SettingsDialog />
 
       <TimelineResizeHandle height={tlH} set={setTlH} />
       <footer style={{ height: tlH }} className="shrink-0 bg-panel">

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useChat, type Attachment, type ChatEntry } from "../store/chat";
+import { useActiveConfig, useSettings } from "../store/settings";
 import { useProject } from "../store/project";
 import Thinking from "./Thinking";
 import SyncProgress from "./SyncProgress";
@@ -61,8 +62,10 @@ function AppliedCard({ m }: { m: ChatEntry }) {
 }
 
 export default function ChatPanel() {
-  const { baseUrl, model, models, noToolModels, status, statusDetail, messages, busy, chats, activeId } = useChat();
-  const { setBaseUrl, setModel, refreshModels, send, stop, clear, newChat, switchChat, closeChat } = useChat.getState();
+  const { models, noToolModels, status, statusDetail, messages, busy, chats, activeId } = useChat();
+  const { setModel, refreshModels, send, stop, clear, newChat, switchChat, closeChat } = useChat.getState();
+  const { provider, baseUrl, apiKey, model } = useActiveConfig();
+  const isOllama = provider.kind === "ollama";
   const [draft, setDraft] = useState("");
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState("");
@@ -71,9 +74,14 @@ export default function ChatPanel() {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    setUrlDraft(baseUrl);
+  }, [baseUrl]);
+
+  // re-read the model list whenever the provider, its URL or its key changes
+  useEffect(() => {
     refreshModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseUrl]);
+  }, [provider.id, baseUrl, apiKey]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -81,7 +89,7 @@ export default function ChatPanel() {
 
   const commitUrl = () => {
     const u = urlDraft.trim();
-    if (u && u !== baseUrl) setBaseUrl(u);
+    if (u && u !== baseUrl) useSettings.getState().patch(provider.id, { baseUrl: u });
   };
 
   const submit = () => {
@@ -174,19 +182,40 @@ export default function ChatPanel() {
       <div className="p-3 border-b border-edge space-y-2">
         <div className="flex items-center gap-2">
           <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${DOT[status]}`} title={statusDetail || status} />
-          <input
-            className="field"
-            value={urlDraft}
-            onChange={(e) => setUrlDraft(e.target.value)}
-            onBlur={commitUrl}
-            onKeyDown={(e) => e.key === "Enter" && (e.currentTarget.blur(), commitUrl())}
-            placeholder="http://localhost:11434"
-            aria-label="Ollama URL"
-          />
+          {isOllama ? (
+            <input
+              className="field"
+              value={urlDraft}
+              onChange={(e) => setUrlDraft(e.target.value)}
+              onBlur={commitUrl}
+              onKeyDown={(e) => e.key === "Enter" && (e.currentTarget.blur(), commitUrl())}
+              placeholder="http://localhost:11434"
+              aria-label="Ollama URL"
+            />
+          ) : (
+            <button
+              className="field flex-1 truncate text-left hover:bg-edge"
+              onClick={() => useSettings.getState().openDialog()}
+              title="Change provider, API key or model"
+              aria-label="AI provider"
+            >
+              {provider.name}
+              {provider.needsKey && !apiKey && <span className="text-yellow-400"> · add API key</span>}
+            </button>
+          )}
+          <button
+            className="px-2 py-1 text-xs rounded border border-edge hover:bg-edge"
+            onClick={() => useSettings.getState().openDialog()}
+            title="AI settings: provider, API key, model"
+            aria-label="AI settings"
+          >
+            ⚙
+          </button>
         </div>
         <div className="flex gap-2">
           <select className="field flex-1" value={model} onChange={(e) => setModel(e.target.value)} aria-label="Model">
-            {!models.length && <option value="">{status === "online" ? "no models installed" : "no models"}</option>}
+            {!models.length && !model && <option value="">{status === "online" ? "no models" : "no models"}</option>}
+            {model && !models.includes(model) && <option value={model}>{model}</option>}
             {models.map((m) => (
               <option key={m} value={m}>{m}{noToolModels.includes(m) ? "  (no tools)" : ""}</option>
             ))}

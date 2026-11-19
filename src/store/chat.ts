@@ -1,15 +1,8 @@
 import { create } from "zustand";
 import { useProject, uid, type Project } from "./project";
-import {
-  DEFAULT_OLLAMA_URL,
-  OllamaError,
-  listModelInfo,
-  normalizeUrl,
-  streamChat,
-  stripThink,
-  type ChatMessage,
-  type RawOllamaCall,
-} from "../lib/ollama";
+import { OllamaError, stripThink, type ChatMessage, type RawOllamaCall } from "../lib/ollama";
+import { configProblem, listChatModels, streamChat } from "../lib/llm";
+import { activeConfig, useSettings } from "./settings";
 import { cancelAlignment, isAutoSyncIntent, syncOverridesFromText } from "../lib/autosync";
 import { CHAT_ONLY_PROMPT, applyCalls, buildSystemPrompt, getOllamaTools, isSmallTalk, parseActionsFromText, selectToolGroups, type CallResult, type RawCall } from "../lib/tools";
 
@@ -35,10 +28,8 @@ export type ChatEntry = {
 type Status = "unknown" | "checking" | "online" | "offline";
 
 type ChatState = {
-  baseUrl: string;
-  model: string;
-  models: string[]; // chat-capable models only
-  noToolModels: string[]; // of those, the ones Ollama says cannot call tools
+  models: string[]; // chat-capable models only (of the active provider)
+  noToolModels: string[]; // of those, the ones the provider says cannot call tools
   hiddenModels: number; // embedding-only models left out of the list
   status: Status;
   statusDetail: string;
@@ -48,7 +39,6 @@ type ChatState = {
   byId: Record<string, ChatEntry[]>; // messages of the inactive chats
   busy: boolean;
 
-  setBaseUrl: (u: string) => void;
   setModel: (m: string) => void;
   refreshModels: () => Promise<void>;
   send: (text: string, attachments?: Attachment[]) => Promise<void>;
@@ -61,23 +51,9 @@ type ChatState = {
   undoApplied: (id: string) => void;
 };
 
-const read = (k: string, d: string) => {
-  try {
-    return localStorage.getItem(k) ?? d;
-  } catch {
-    return d;
-  }
-};
-const write = (k: string, v: string) => {
-  try {
-    localStorage.setItem(k, v);
-  } catch {
-    /* storage unavailable */
-  }
-};
-
 const HISTORY_TURNS = 8;
-const noTools = new Set<string>(); // models that rejected the `tools` field this session
+const noTools = new Set<string>(); // "provider:model" pairs that rejected the `tools` field this session
+const toolKey = (provider: string, model: string) => `${provider}:${model}`;
 let abort: AbortController | null = null;
 
 const NEW_TITLE = "New chat";
@@ -110,7 +86,7 @@ export const useChat = create<ChatState>((set, get) => {
 
   /** One streaming request. Returns the raw text and any structured tool calls. */
   const runOnce = async (text: string, replyId: string, mode: "tools" | "json" | "chat", signal: AbortSignal) => {
-    const { baseUrl, model } = get();
+    const cfg = activeConfig();
     const groups = selectToolGroups(text, useProject.getState().project); // only offer the tools that could matter
     const messages: ChatMessage[] = [
       { role: "system", content: mode === "chat" ? CHAT_ONLY_PROMPT : buildSystemPrompt(useProject.getState().project, mode === "json", groups) },
@@ -122,7 +98,7 @@ export const useChat = create<ChatState>((set, get) => {
     let content = "";
     const rawCalls: RawOllamaCall[] = [];
     let tokens = 0;
-    for await (const chunk of streamChat({ baseUrl, model, messages, tools: mode === "tools" ? getOllamaTools(groups) : undefined, signal })) {
+    for await (const chunk of streamChat(cfg, { messages, tools: mode === "tools" ? getOllamaTools(groups) : undefined, signal })) {
       if (chunk.content || chunk.thinking || chunk.toolCalls) tokens = chunk.evalCount ?? tokens + 1;
       else if (chunk.evalCount) tokens = chunk.evalCount;
       patchMsg(replyId, { tokens });
@@ -136,8 +112,6 @@ export const useChat = create<ChatState>((set, get) => {
   };
 
   return {
-    baseUrl: normalizeUrl(read("cutir:ollamaUrl", DEFAULT_OLLAMA_URL)),
-    model: read("cutir:ollamaModel", ""),
     models: [],
     noToolModels: [],
     hiddenModels: 0,
@@ -149,38 +123,41 @@ export const useChat = create<ChatState>((set, get) => {
     byId: {},
     busy: false,
 
-    setBaseUrl: (u) => {
-      write("cutir:ollamaUrl", u);
-      set({ baseUrl: u });
-    },
-    setModel: (m) => {
-      write("cutir:ollamaModel", m);
-      set({ model: m });
-    },
+    setModel: (m) => useSettings.getState().setModel(m),
 
     refreshModels: async () => {
+      const cfg = activeConfig();
+      const problem = configProblem(cfg);
+      if (problem) {
+        set({ status: "offline", statusDetail: problem, models: [], noToolModels: [], hiddenModels: 0 });
+        return;
+      }
       set({ status: "checking", statusDetail: "" });
       try {
-        const infos = await listModelInfo(get().baseUrl);
-        // embedding-only models cannot chat; without capability info fall back to their names
-        const chatCapable = infos.filter((i) => (i.capabilities ? i.capabilities.includes("completion") : !/embed|bge-|nomic/i.test(i.name)));
-        const models = chatCapable.map((i) => i.name);
-        const noToolModels = chatCapable.filter((i) => i.capabilities && !i.capabilities.includes("tools")).map((i) => i.name);
-        noToolModels.forEach((m) => noTools.add(m)); // skip the failed first request: go straight to JSON replies
+        const { models, noToolModels, hidden } = await listChatModels(cfg);
+        // the active provider may have changed while the request was running
+        if (activeConfig().provider.id !== cfg.provider.id) return;
+        noToolModels.forEach((m) => noTools.add(toolKey(cfg.provider.id, m))); // skip the failed first request: go straight to JSON replies
         const hasTools = (m: string) => !noToolModels.includes(m);
-        const cur = get().model;
-        const model = models.includes(cur) ? cur : models.find((m) => /qwen3/i.test(m) && hasTools(m)) ?? models.find(hasTools) ?? models[0] ?? "";
-        if (model !== cur) write("cutir:ollamaModel", model);
+        const cur = cfg.model;
+        let model = cur;
+        if (cfg.provider.kind === "ollama") {
+          model = models.includes(cur) ? cur : models.find((m) => /qwen3/i.test(m) && hasTools(m)) ?? models.find(hasTools) ?? models[0] ?? "";
+        } else if (!cur) {
+          // cloud lists can be hundreds long: start from the provider's suggested model
+          const pick = cfg.provider.defaultModel;
+          model = pick && models.includes(pick) ? pick : models[0] ?? "";
+        }
+        if (model !== cur) useSettings.getState().setModel(model);
         set({
           models,
           noToolModels,
-          hiddenModels: infos.length - models.length,
-          model,
+          hiddenModels: hidden,
           status: "online",
-          statusDetail: models.length ? `${models.length} models` : "No chat models installed. Run: ollama pull qwen3:8b",
+          statusDetail: models.length ? `${models.length} models` : cfg.provider.kind === "ollama" ? "No chat models installed. Run: ollama pull qwen3:8b" : "The provider listed no chat models. Type a model name in Settings.",
         });
       } catch (e) {
-        set({ status: "offline", models: [], statusDetail: e instanceof OllamaError ? e.message : (e as Error).message });
+        set({ status: "offline", models: [], noToolModels: [], statusDetail: e instanceof OllamaError ? e.message : (e as Error).message });
       }
     },
 
@@ -217,8 +194,17 @@ export const useChat = create<ChatState>((set, get) => {
         return;
       }
 
-      if (!get().model) {
-        push({ role: "error", content: get().status === "online" ? "Pick a model first (run `ollama pull qwen3:8b` if none are installed)." : "Not connected to Ollama. Start Ollama with OLLAMA_ORIGINS=* (or your dev URL) so the browser can reach it." });
+      const cfg = activeConfig();
+      const problem = configProblem(cfg);
+      if (problem) {
+        push({ role: "error", content: problem });
+        return;
+      }
+      if (!cfg.model) {
+        push({
+          role: "error",
+          content: get().status === "online" ? "Pick a model first." + (cfg.provider.kind === "ollama" ? " Run `ollama pull qwen3:8b` if none are installed." : "") : get().statusDetail || `Not connected to ${cfg.provider.name}.`,
+        });
         return;
       }
 
@@ -241,14 +227,15 @@ ${a.data}
       set({ busy: true });
 
       try {
-        const model = get().model;
+        const model = cfg.model;
+        const tk = toolKey(cfg.provider.id, model);
         const chatOnly = isSmallTalk(text) && !attachments.length; // greetings: plain reply, never edits
         let out: { content: string; rawCalls: RawOllamaCall[] };
         try {
-          out = await runOnce(text, replyId, chatOnly ? "chat" : noTools.has(model) ? "json" : "tools", abort.signal);
+          out = await runOnce(text, replyId, chatOnly ? "chat" : noTools.has(tk) ? "json" : "tools", abort.signal);
         } catch (e) {
           if (e instanceof OllamaError && e.kind === "no-tools") {
-            noTools.add(model);
+            noTools.add(tk);
             patchMsg(replyId, { content: "" });
             push({ role: "note", content: `${model} has no tool support, using JSON replies instead.` });
             out = await runOnce(text, replyId, "json", abort.signal);
