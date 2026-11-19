@@ -30722,6 +30722,7 @@ const useMedia = create((set, get) => {
 			} : i) }));
 			saveItems();
 		},
+		updateItem: (id, p) => patch(id, p),
 		setMarks: (id, m) => {
 			const it = get().items.find((i) => i.id === id);
 			if (!it) return;

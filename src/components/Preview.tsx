@@ -5,8 +5,11 @@ import { useProject } from "../store/project";
 import { ensureFont } from "../lib/fonts";
 import { ASPECT_RATIO, type MediaSource } from "../lib/renderer";
 import { getTime, pause, seek, setFallbackDuration, setLoop, setSongMuted, setSource, shuttle, tick, toggle, usePlayback } from "../lib/transport";
-import { renderFrame, visualMediaIds } from "../render/compositor";
-import { closeUnused, liveFrames, setFileResolver, sourceStates, stats } from "../render/sources";
+import { activeVisuals, needsAt, renderFrame, visualMediaIds } from "../render/compositor";
+import { closeUnused, exactFrames, liveFrames, reopenPlayback, setFileResolver, sourceStates, stats } from "../render/sources";
+import { FrameCache, affectedRanges, useCacheInfo } from "../render/cache";
+import { fileFor, onVariantsChanged, proxySettings, variantFor } from "../lib/proxy";
+import { DEFAULT_CACHE, type ProjectDoc } from "../model/types";
 import { AudioMixer, songAudible } from "../render/audio";
 import { activeTimeline } from "../model/convert";
 import { timelineEnd } from "../timeline/engine";
@@ -14,9 +17,73 @@ import { useMedia } from "../store/media";
 
 /** Pictures and sound of timeline clips come from the media pool. */
 const poolOf = (mediaId: string) => useProject.getState().doc.media.find((m) => m.id === mediaId)?.poolId;
-setFileResolver(async (mediaId) => {
+setFileResolver(async (mediaId, purpose) => {
   const pool = poolOf(mediaId);
-  return pool ? useMedia.getState().fileOf(pool) : null;
+  return pool ? fileFor(pool, purpose) : null; // proxies for playback when allowed; originals for export
+});
+
+/* ---------- render cache (phase 16) ---------- */
+
+const cacheSettings = (doc: ProjectDoc = useProject.getState().doc) => ({ ...DEFAULT_CACHE, ...(doc.settings.renderCache ?? {}) });
+const frameCache = new FrameCache(DEFAULT_CACHE.sizeMB * 1024 * 1024);
+let cacheVersion = 0;
+let cacheSize = "";
+const slowFrames = new Set<number>();
+const pending = new Set<number>();
+let viewSize = { w: 0, h: 0 };
+/** The viewer's lyric background (image or video element), so pre-rendered frames match. */
+let liveBg: MediaSource | undefined;
+
+export function clearRenderCache() {
+  frameCache.clear();
+  slowFrames.clear();
+  cacheVersion++;
+  publishCache();
+}
+
+function publishCache() {
+  const fps = useProject.getState().doc.settings.fps;
+  useCacheInfo.setState({ ranges: frameCache.ranges(fps), frames: frameCache.size, mb: Math.round(frameCache.bytes / 1048576) });
+}
+
+/** Render the in/out range (or the given span) into the cache now, at the viewer's size. Returns frames added. */
+export async function prerenderRange(a: number, b: number, onProgress?: (f: number) => void): Promise<number> {
+  const st = useProject.getState();
+  const fps = st.doc.settings.fps;
+  if (!viewSize.w || cacheSettings().mode === "off") return 0;
+  if (liveBg instanceof HTMLVideoElement) throw new Error("Pre-rendering is not available while the lyric background is a video; play the range once instead.");
+  const canvas = document.createElement("canvas");
+  canvas.width = viewSize.w;
+  canvas.height = viewSize.h;
+  const ctx = canvas.getContext("2d")!;
+  const frames = exactFrames("playback");
+  const first = Math.ceil(a * fps);
+  const last = Math.floor(b * fps);
+  const version = cacheVersion;
+  let added = 0;
+  for (let i = first; i <= last; i++) {
+    if (version !== cacheVersion) break; // the project changed meanwhile
+    if (frameCache.has(i)) continue;
+    const t = i / fps;
+    const { doc, project } = useProject.getState();
+    if (!activeVisuals(activeTimeline(doc), doc, t).length) continue;
+    await frames.prepare(needsAt(doc, t));
+    renderFrame(ctx, doc, project, t, canvas.width, canvas.height, { bg: liveBg }, frames);
+    frameCache.put(i, await createImageBitmap(canvas));
+    added++;
+    if (i % 10 === 0) {
+      onProgress?.((i - first) / Math.max(1, last - first));
+      publishCache();
+    }
+  }
+  publishCache();
+  return added;
+}
+
+// a proxy appearing or going changes which file plays: reopen decoders, drop frames made from the old file
+onVariantsChanged(() => {
+  reopenPlayback();
+  clearRenderCache();
 });
 const mixer = new AudioMixer((mediaId) => {
   const pool = poolOf(mediaId);
@@ -63,9 +130,23 @@ export default function Preview() {
   }, [lines, docEnd]);
 
   /* decoders stay open only for media still on a timeline; the song follows its track's mute and solo */
+  const prevDoc = useRef(doc);
   useEffect(() => {
     closeUnused(visualMediaIds(doc));
     setSongMuted(!songAudible(doc));
+    // render cache: drop exactly the frames this edit can change
+    const before = prevDoc.current;
+    prevDoc.current = doc;
+    const set = cacheSettings(doc);
+    frameCache.setLimit(set.sizeMB * 1024 * 1024);
+    if (set.mode === "off") return void (frameCache.size && clearRenderCache());
+    if (JSON.stringify(before.settings.proxy) !== JSON.stringify(doc.settings.proxy)) reopenPlayback();
+    const changed = affectedRanges(before, doc);
+    if (changed === "all" || changed.length) {
+      frameCache.invalidate(changed, doc.settings.fps);
+      cacheVersion++;
+      publishCache();
+    }
   }, [doc]);
   useEffect(() => () => mixer.stop(), []);
 
@@ -144,6 +225,14 @@ export default function Preview() {
     let frames = 0;
     let since = performance.now();
     let missing = 0;
+    let suggested = false;
+    let droppedAtStart = stats.dropped;
+    viewSize = { w: canvas.width, h: canvas.height };
+    const sizeKey = `${canvas.width}x${canvas.height}`;
+    if (cacheSize !== sizeKey) {
+      cacheSize = sizeKey; // cached frames are only valid at the size they were drawn
+      clearRenderCache();
+    }
 
     const frame = () => {
       tick();
@@ -161,7 +250,34 @@ export default function Preview() {
 
       const st = useProject.getState();
       const pb = usePlayback.getState();
-      missing = renderFrame(ctx, st.doc, st.project, t, canvas.width, canvas.height, { bg }, liveFrames(pb.playing && pb.rate > 0));
+      const live = pb.playing && pb.rate > 0;
+      liveBg = bg;
+      const cset = cacheSettings(st.doc);
+      const fi = Math.round(t * st.doc.settings.fps);
+      const cached = cset.mode !== "off" ? frameCache.get(fi) : undefined;
+      if (cached) {
+        ctx.drawImage(cached, 0, 0);
+        missing = 0;
+      } else {
+        const dropped0 = stats.dropped;
+        missing = renderFrame(ctx, st.doc, st.project, t, canvas.width, canvas.height, { bg }, liveFrames(live));
+        const heavy = cset.mode !== "off" && activeVisuals(activeTimeline(st.doc), st.doc, t).length > 0;
+        if (heavy) {
+          if (live && (missing > 0 || stats.dropped > dropped0)) slowFrames.add(fi); // did not play in real time
+          const keep = cset.mode === "always" || slowFrames.has(fi);
+          if (keep && missing === 0 && !pending.has(fi)) {
+            pending.add(fi);
+            const version = cacheVersion;
+            void createImageBitmap(canvas).then((b) => {
+              pending.delete(fi);
+              if (version === cacheVersion) {
+                frameCache.put(fi, b);
+                slowFrames.delete(fi);
+              } else b.close();
+            });
+          }
+        }
+      }
       mixer.update(st.doc, t, pb.playing, pb.rate);
 
       // diagnostics: frames drawn per second, decoder counters
@@ -172,6 +288,18 @@ export default function Preview() {
         frames = 0;
         since = now;
         setDiag({ fps, dropped: stats.dropped, decoded: stats.decoded, cacheMB: stats.cacheMB, missing });
+        publishCache();
+        // playback keeps dropping frames: suggest proxies once, if the project wants suggestions
+        if (!suggested && usePlayback.getState().playing && stats.dropped - droppedAtStart > 15 && proxySettings().suggest) {
+          const { doc } = useProject.getState();
+          const used = new Set(activeTimeline(doc).clips.map((c) => doc.media.find((m) => m.id === c.mediaId)?.poolId).filter(Boolean));
+          const lacking = useMedia.getState().items.filter((i) => used.has(i.id) && i.kind === "video" && variantFor(i, "playback", proxySettings()) === "original");
+          if (lacking.length) {
+            suggested = true;
+            useMedia.setState({ notice: `Playback is dropping frames. Create proxies for ${lacking.length} clip${lacking.length === 1 ? "" : "s"} in the Media library ("Proxies for clips in use").` });
+          }
+        }
+        if (!usePlayback.getState().playing) droppedAtStart = stats.dropped;
       }
 
       const label = fmt(t);

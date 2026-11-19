@@ -6,6 +6,8 @@ import { activeTimeline } from "../model/convert";
 import type { Clip, Timeline, Track } from "../model/types";
 import { getTime, seek } from "../lib/transport";
 import * as E from "../timeline/engine";
+import { variantFor } from "../lib/proxy";
+import { DEFAULT_PROXY } from "../model/types";
 import { CURSOR, MODE_HINT, editCtx, editTimeline, sourceOf, tlNow, useTimelineUi, withPoolMedia } from "../timeline/ui";
 
 /** Drag type used by the media pool. */
@@ -51,6 +53,8 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
   }, [tl, tracks]);
   const maxLen = useMemo(() => Math.max(1, ...tl.clips.filter(E.editable).map((c) => c.duration)), [tl]);
   const items = useMedia((s) => s.items);
+  const proxyStored = useProject((s) => s.doc.settings.proxy);
+  const proxyCfg = { ...DEFAULT_PROXY, ...(proxyStored ?? {}) };
   const anySolo = tracks.some((t) => t.solo && t.kind === "audio");
 
   /* ---------- visible window ---------- */
@@ -422,6 +426,15 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
               >
                 <div className="flex items-center gap-1 truncate bg-black/25 px-1.5 leading-4 text-white">
                   {c.linkId && <span title="Linked">⛓</span>}
+                  {(() => {
+                    const it = media?.poolId ? items.find((i) => i.id === media.poolId) : undefined;
+                    const v = it ? variantFor(it, "playback", proxyCfg) : "original";
+                    return v === "original" ? null : (
+                      <span className="rounded bg-black/40 px-0.5 font-semibold" title={v === "proxy" ? `Playing the ${it!.proxy!.height}p proxy; export uses the original` : "Playing the optimized copy; export uses the original"}>
+                        {v === "proxy" ? "P" : "O"}
+                      </span>
+                    );
+                  })()}
                   {media?.note && <span title={media.note}>⚠</span>}
                   {c.speed !== 1 && <span className="rounded bg-black/40 px-0.5">{Math.round(c.speed * 100)}%</span>}
                   {c.effects.length > 0 && <span className="rounded bg-black/40 px-0.5">fx</span>}

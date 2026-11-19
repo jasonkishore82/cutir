@@ -42,6 +42,10 @@ export type MediaItem = {
   /** Source marks for three- and four-point edits, in source seconds. */
   markIn?: number;
   markOut?: number;
+  /** A smaller copy for playback (phase 16), stored at `<projectId>/proxy/<itemId>`. */
+  proxy?: { height: number; size: number };
+  /** An easy-to-seek full-size copy (short keyframe interval), stored at `<projectId>/opt/<itemId>`. */
+  optimized?: { size: number };
 };
 
 export type Bin = { id: string; name: string; parentId?: string };
@@ -53,6 +57,8 @@ const metaKey = (pid: string) => `cutir:media:${pid}`;
 const binKey = (pid: string) => `cutir:bins:${pid}`;
 export const fileKey = (pid: string, id: string) => `${pid}/m/${id}`;
 const thumbKey = (pid: string, id: string) => `${pid}/thumb/${id}`;
+export const proxyKey = (pid: string, id: string) => `${pid}/proxy/${id}`;
+export const optimizedKey = (pid: string, id: string) => `${pid}/opt/${id}`;
 
 const AUDIO = /\.(mp3|wav|m4a|aac|ogg|oga|flac|opus)$/i;
 const VIDEO = /\.(mp4|m4v|mov|webm|mkv|ogv)$/i;
@@ -157,6 +163,8 @@ type MediaState = {
   rename: (id: string, name: string) => void;
   moveToBin: (ids: string[], binId?: string) => void;
   setMarks: (id: string, marks: { markIn?: number | null; markOut?: number | null }) => void;
+  /** Change an item's saved details (used by proxy and optimized-media jobs). */
+  updateItem: (id: string, p: Partial<MediaItem>) => void;
   /** Replace a missing (or any) item's file, keeping its id so the timeline keeps pointing at it. */
   relink: (id: string, file: File) => Promise<void>;
   /** Ask again for permission to read a linked original. Needs a user click. */
@@ -361,6 +369,8 @@ export const useMedia = create<MediaState>((set, get) => {
       set((s) => ({ items: s.items.map((i) => (set_.has(i.id) ? { ...i, binId } : i)) }));
       saveItems();
     },
+
+    updateItem: (id, p) => patch(id, p),
 
     setMarks: (id, m) => {
       const it = get().items.find((i) => i.id === id);

@@ -13,6 +13,7 @@ import * as TE from "../timeline/engine";
 import { timecode, useTimelineUi } from "../timeline/ui";
 import { handleTimelineKey, loopRange, sourceEdit, sourceEditProblem, SOURCE_EDITS } from "../timeline/commands";
 import { useMedia } from "../store/media";
+import { useCacheInfo } from "../render/cache";
 
 const SNAP = 0.05;
 const MIN_LEN = 0.1;
@@ -385,6 +386,7 @@ export default function Timeline() {
   const tlOut = useProject((s) => activeTimeline(s.doc).outPoint);
   const fps = useProject((s) => s.doc.settings.fps);
   const tool = useTimelineUi((s) => s.tool);
+  const cacheRanges = useCacheInfo((s) => s.ranges);
   const snapping = useTimelineUi((s) => s.snapping);
   const sourceName = useMedia((s) => s.items.find((i) => i.id === useTimelineUi.getState().sourceId)?.name);
   useTimelineUi((s) => s.sourceId); // re-render when the source changes
@@ -968,6 +970,9 @@ export default function Timeline() {
                     <span key={t} className="absolute top-0 text-[10px] text-gray-500 border-l border-edge pl-1 h-full" style={{ left: t * pps }}>
                       {pps >= 120 ? timecode(t, fps) : `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`}
                     </span>
+                  ))}
+                  {cacheRanges.map(([a, b], i) => (
+                    <span key={i} className="pointer-events-none absolute bottom-0 h-[3px] bg-green-500/80" style={{ left: a * pps, width: Math.max(1, (b - a) * pps) }} title="Rendered and cached" />
                   ))}
                   {tlIn !== undefined && (
                     <span className="absolute top-0 h-full border-l-2 border-accent" style={{ left: tlIn * pps }} title={`In ${timecode(tlIn, fps)} (I)`} />

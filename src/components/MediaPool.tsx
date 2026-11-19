@@ -8,6 +8,7 @@ import { seek } from "../lib/transport";
 import { poolMediaId, timecode, useTimelineUi } from "../timeline/ui";
 import { POOL_MIME } from "./TrackLanes";
 import { Icon } from "./ui";
+import { cancelJob, makeVariants, proxySettings, removeVariant, useProxyJobs, wantsProxy } from "../lib/proxy";
 
 const mmss = (s?: number) => {
   if (s === undefined) return "";
@@ -115,6 +116,9 @@ export function MediaLibrary() {
   const status = useMedia((s) => s.status);
   const used = useUsedIds();
   const sourceId = useTimelineUi((s) => s.sourceId);
+  const jobs = useProxyJobs((s) => s.jobs);
+  const large = items.filter((i) => wantsProxy(i) && !i.proxy && !jobs[i.id]);
+  const inUseNoProxy = items.filter((i) => i.kind === "video" && used.has(i.id) && !i.proxy && !jobs[i.id]);
   const [where, setWhere] = useState<Where>({ smart: "all" });
   const [kind, setKind] = useState<KindFilter>("all");
   const [usage, setUsage] = useState<UseFilter>("all");
@@ -178,6 +182,13 @@ export function MediaLibrary() {
       {it.note && <Badge tone="yellow" title={it.note}>Needs convert</Badge>}
       {it.storage === "link" && status[it.id] === "ok" && <Badge tone="gray" title="Linked to the original file, not copied">Link</Badge>}
       {used.has(it.id) && <Badge tone="accent" title="Used in this project">In use</Badge>}
+      {it.proxy && <Badge tone="gray" title="A smaller copy plays in the viewer; export uses the original">{`Proxy ${it.proxy.height}p`}</Badge>}
+      {it.optimized && <Badge tone="gray" title="An easy-to-seek copy plays in the viewer">Optimized</Badge>}
+      {jobs[it.id] && (
+        <Badge tone={jobs[it.id].error ? "red" : "gray"} title={jobs[it.id].error ?? "Being made in the background"}>
+          {jobs[it.id].error ? "Proxy failed" : jobs[it.id].queued ? "Queued" : `${jobs[it.id].kind === "proxy" ? "Proxy" : "Optimizing"} ${Math.round(jobs[it.id].progress * 100)}%`}
+        </Badge>
+      )}
     </>
   );
   const fixButton = (it: MediaItem) =>
@@ -270,6 +281,16 @@ export function MediaLibrary() {
             </button>
           ))}
         </div>
+        {proxySettings().suggest && large.length > 0 && (
+          <button className="rounded-lg border border-accent/50 px-3 py-1.5 text-xs text-accent hover:bg-accent/10" onClick={() => makeVariants(large.map((i) => i.id), "proxy")} title="Videos larger than 1080p edit more smoothly with proxies">
+            Proxies for {large.length} large clip{large.length === 1 ? "" : "s"}
+          </button>
+        )}
+        {inUseNoProxy.length > 0 && (
+          <button className="rounded-lg border border-edge px-3 py-1.5 text-xs text-gray-300 hover:bg-raised" onClick={() => makeVariants(inUseNoProxy.map((i) => i.id), "proxy")} title="Make proxies for the videos on the timeline">
+            Proxies for clips in use
+          </button>
+        )}
         {canLink() && (
           <button className="rounded-lg border border-edge px-3 py-1.5 text-xs text-gray-300 hover:bg-raised" onClick={() => void useMedia.getState().linkFiles(binId)} title="Keep a link to large files instead of copying them">
             Link files
@@ -397,6 +418,16 @@ export function MediaLibrary() {
               { label: "Rename", onClick: () => setRenaming(it.id) },
               { label: "Reveal in timeline", onClick: () => reveal(it.id) },
               { label: "Relink to another file", onClick: () => ((relinkId.current = it.id), relinkRef.current?.click()) },
+              ...(it.kind === "video"
+                ? jobs[it.id] && !jobs[it.id].error
+                  ? [{ label: "Cancel proxy / optimizing", onClick: () => cancelJob(it.id) }]
+                  : [
+                      it.proxy ? { label: "Remove proxy", onClick: () => void removeVariant(it.id, "proxy") } : { label: "Create proxy", onClick: () => makeVariants([it.id], "proxy") },
+                      it.optimized
+                        ? { label: "Remove optimized media", onClick: () => void removeVariant(it.id, "optimized") }
+                        : { label: "Create optimized media (easy to seek)", onClick: () => makeVariants([it.id], "optimized") },
+                    ]
+                : []),
               ...(it.binId ? [{ label: "Move out of bin", onClick: () => useMedia.getState().moveToBin([it.id], undefined) }] : []),
               ...targets.map((b) => ({ label: `Move to ${b.name}`, onClick: () => useMedia.getState().moveToBin([it.id], b.id) })),
               { label: "Import media", onClick: () => fileRef.current?.click() },

@@ -8,7 +8,31 @@ import type { Aspect, Easing, Keyframe, KeyProp, StyleOverride, TextStyle, Trans
 
 export const SCHEMA_VERSION = 2;
 
+/** Smaller copies of large videos used for smooth playback (phase 16). */
+export type ProxySettings = {
+  /** Play proxies (and optimized copies) instead of the originals when they exist. */
+  use: boolean;
+  /** Proxy size: a fraction of the original height or a fixed height. */
+  size: "half" | "quarter" | "540" | "720" | "1080";
+  /** Suggest proxies for clips larger than 1080p or when playback drops frames. */
+  suggest: boolean;
+  /** Export from proxies instead of the originals (off unless the user chooses it). */
+  exportFromProxies: boolean;
+};
+
+/** Finished frames kept for smooth playback of heavy parts (phase 16). */
+export type RenderCacheSettings = {
+  /** off; smart = only frames that did not play in real time; always = every frame with video or images. */
+  mode: "off" | "smart" | "always";
+  sizeMB: number;
+};
+
+export const DEFAULT_PROXY: ProxySettings = { use: true, size: "half", suggest: true, exportFromProxies: false };
+export const DEFAULT_CACHE: RenderCacheSettings = { mode: "smart", sizeMB: 512 };
+
 export type ProjectSettings = {
+  proxy?: ProxySettings;
+  renderCache?: RenderCacheSettings;
   aspect: Aspect;
   /** Output size in pixels (follows the aspect today). */
   width: number;

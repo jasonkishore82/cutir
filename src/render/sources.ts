@@ -252,18 +252,22 @@ export class VideoStream {
 type Entry = { video?: VideoStream; image?: ImageBitmap; loading?: Promise<void>; failed?: string };
 const open = new Map<string, Entry>();
 
-/** How sources find their files (set by the app: media pool lookups). */
-let resolveFile: (mediaId: string) => Promise<Blob | null> = async () => null;
+/** Playback may decode a proxy or optimized copy; export decodes the original (phase 16). */
+export type Purpose = "playback" | "export";
+
+/** How sources find their files (set by the app: media pool lookups, choosing proxies for playback). */
+let resolveFile: (mediaId: string, purpose: Purpose) => Promise<Blob | null> = async () => null;
 export const setFileResolver = (fn: typeof resolveFile) => (resolveFile = fn);
 
-function entry(mediaId: string, kind: "video" | "image"): Entry {
-  let e = open.get(mediaId);
+function entry(mediaId: string, kind: "video" | "image", purpose: Purpose = "playback"): Entry {
+  const key = `${mediaId}|${kind === "image" ? "playback" : purpose}`; // images are the same file either way
+  let e = open.get(key);
   if (e) return e;
   e = {};
-  open.set(mediaId, e);
+  open.set(key, e);
   const en = e;
   en.loading = (async () => {
-    const file = await resolveFile(mediaId);
+    const file = await resolveFile(mediaId, kind === "image" ? "playback" : purpose);
     if (!file) {
       en.failed = "file not available";
       return;
@@ -282,11 +286,20 @@ function entry(mediaId: string, kind: "video" | "image"): Entry {
 
 /** Close sources no longer on the timeline (frees decoders and cached frames). */
 export function closeUnused(keep: Set<string>) {
-  for (const [id, e] of open) {
-    if (keep.has(id)) continue;
+  for (const [key, e] of open) {
+    if (keep.has(key.split("|")[0])) continue;
     e.video?.close();
     e.image?.close();
-    open.delete(id);
+    open.delete(key);
+  }
+}
+
+/** Reopen the playback decoders (after a proxy appears or goes, or the proxy setting changes). */
+export function reopenPlayback() {
+  for (const [key, e] of open) {
+    if (!key.endsWith("|playback") || !e.video) continue;
+    e.video.close();
+    open.delete(key);
   }
 }
 
@@ -298,7 +311,7 @@ export function closeAll() {
 
 /** Decoder state for the diagnostics panel. */
 export function sourceStates(): { id: string; state: string }[] {
-  return [...open].map(([id, e]) => ({ id, state: e.failed ? `failed: ${e.failed}` : e.video ? (e.video.state === "failed" ? `failed: ${e.video.error}` : e.video.state) : e.image ? "image" : "loading" }));
+  return [...open].map(([id, e]) => ({ id: id.replace("|", " "), state: e.failed ? `failed: ${e.failed}` : e.video ? (e.video.state === "failed" ? `failed: ${e.video.error}` : e.video.state) : e.image ? "image" : "loading" }));
 }
 
 /* ---------- providers: what the compositor asks for pictures ---------- */
@@ -319,15 +332,18 @@ export function liveFrames(playing: boolean): FrameProvider {
   };
 }
 
-/** For export: `prepare` waits until every picture needed at t is exactly decoded, then `picture` returns them. */
-export function exactFrames() {
+/**
+ * Exact pictures: `prepare` waits until every picture needed at t is decoded, then `picture` returns them.
+ * Export uses the originals; render_frame and export-from-proxies may ask for the playback files.
+ */
+export function exactFrames(purpose: Purpose = "export") {
   const ready = new Map<string, Picture | null>();
   const key = (id: string, st: number) => `${id}@${st.toFixed(5)}`;
   return {
     async prepare(needs: { mediaId: string; kind: "video" | "image"; sourceTime: number }[]) {
       ready.clear();
       for (const n of needs) {
-        const e = entry(n.mediaId, n.kind);
+        const e = entry(n.mediaId, n.kind, purpose);
         await e.loading;
         if (n.kind === "image") ready.set(key(n.mediaId, n.sourceTime), (e.image as Picture | undefined) ?? null);
         else ready.set(key(n.mediaId, n.sourceTime), e.video ? await e.video.exact(n.sourceTime) : null);
