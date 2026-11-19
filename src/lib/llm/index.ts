@@ -1,5 +1,6 @@
 import { listModelInfo, normalizeUrl, streamChat as streamOllama, type ChatMessage, type StreamChunk } from "../ollama";
 import { NON_CHAT, listOpenAIModels, streamOpenAIChat } from "./openai";
+import { listAnthropicModels, streamAnthropicChat } from "./anthropic";
 import type { Provider } from "./providers";
 
 /** The connection settings of the active provider. */
@@ -19,6 +20,10 @@ export async function listChatModels(cfg: LlmConfig, signal?: AbortSignal): Prom
       hidden: infos.length - chat.length,
     };
   }
+  if (cfg.provider.kind === "anthropic") {
+    const models = await listAnthropicModels(cfg.baseUrl, cfg.apiKey, signal);
+    return { models, noToolModels: [], hidden: 0 };
+  }
   const all = await listOpenAIModels(cfg.baseUrl, cfg.apiKey, signal);
   const models = all.filter((m) => !NON_CHAT.test(m));
   return { models, noToolModels: [], hidden: all.length - models.length };
@@ -28,6 +33,7 @@ export function streamChat(
   cfg: LlmConfig,
   opts: { messages: ChatMessage[]; tools?: unknown[]; signal?: AbortSignal }
 ): AsyncGenerator<StreamChunk> {
+  if (cfg.provider.kind === "anthropic") return streamAnthropicChat({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, ...opts });
   return cfg.provider.kind === "ollama"
     ? streamOllama({ baseUrl: normalizeUrl(cfg.baseUrl), model: cfg.model, ...opts })
     : streamOpenAIChat({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, ...opts });

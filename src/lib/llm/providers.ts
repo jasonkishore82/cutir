@@ -8,6 +8,7 @@ export type ProviderId =
   | "none"
   | "ollama"
   | "lmstudio"
+  | "anthropic"
   | "openai"
   | "groq"
   | "openrouter"
@@ -23,8 +24,8 @@ export type ProviderId =
 export type Provider = {
   id: ProviderId;
   name: string;
-  /** "ollama" uses Ollama's native API; "openai" is any OpenAI-compatible /chat/completions API. */
-  kind: "ollama" | "openai";
+  /** "ollama" uses Ollama's native API; "anthropic" the Claude Messages API; "openai" is any OpenAI-compatible /chat/completions API. */
+  kind: "ollama" | "openai" | "anthropic";
   baseUrl: string;
   local: boolean;
   needsKey: boolean;
@@ -39,6 +40,7 @@ export type Provider = {
 export const PROVIDERS: Provider[] = [
   { id: "ollama", name: "Ollama (local)", kind: "ollama", baseUrl: "http://localhost:11434", local: true, needsKey: false, defaultModel: "qwen3:8b", note: "Start Ollama with OLLAMA_ORIGINS=* so the browser can reach it." },
   { id: "lmstudio", name: "LM Studio (local)", kind: "openai", baseUrl: "http://localhost:1234/v1", local: true, needsKey: false, note: "Start the local server in LM Studio and enable CORS." },
+  { id: "anthropic", name: "Anthropic (Claude)", kind: "anthropic", baseUrl: "https://api.anthropic.com", local: false, needsKey: true, keyUrl: "https://platform.claude.com/settings/keys", defaultModel: "claude-opus-5-5", note: "Keys start with sk-ant-. Requests go straight from this browser to Anthropic." },
   { id: "openai", name: "OpenAI", kind: "openai", baseUrl: "https://api.openai.com/v1", local: false, needsKey: true, keyUrl: "https://platform.openai.com/api-keys", defaultModel: "gpt-4o-mini" },
   { id: "groq", name: "Groq", kind: "openai", baseUrl: "https://api.groq.com/openai/v1", local: false, needsKey: true, keyUrl: "https://console.groq.com/keys", defaultModel: "llama-3.3-70b-versatile" },
   { id: "openrouter", name: "OpenRouter", kind: "openai", baseUrl: "https://openrouter.ai/api/v1", local: false, needsKey: true, keyUrl: "https://openrouter.ai/keys", defaultModel: "openai/gpt-4o-mini", note: "Model names look like vendor/model." },

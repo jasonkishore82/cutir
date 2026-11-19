@@ -117,7 +117,7 @@ function AiTab() {
               />
             </div>
 
-            {provider.kind === "openai" && (
+            {provider.kind !== "ollama" && (
               <div>
                 <div className="flex items-baseline justify-between">
                   <label className={label} htmlFor="llm-key">API key{provider.needsKey ? "" : " (optional)"}</label>
