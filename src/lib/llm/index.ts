@@ -35,6 +35,7 @@ export function streamChat(
 
 /** Why a provider cannot be used yet, or "" when it is ready. */
 export function configProblem(cfg: LlmConfig): string {
+  if (cfg.provider.id === "none") return "Choose an AI provider in Settings.";
   if (!cfg.baseUrl.trim()) return "Enter the provider's base URL in Settings.";
   if (cfg.provider.needsKey && !cfg.apiKey.trim()) return `Add your ${cfg.provider.name} API key in Settings (Settings menu, AI models).`;
   return "";

@@ -75,7 +75,9 @@ function load(): Pick<State, "provider" | "byProvider" | "rememberKeys"> {
   const oldModel = get(local, "cutir:ollamaModel");
   if (!saved.byProvider?.ollama && (oldUrl || oldModel)) byProvider.ollama = { ...byProvider.ollama, baseUrl: oldUrl ?? undefined, model: oldModel ?? undefined };
 
-  return { provider: providerById(saved.provider ?? "ollama").id, byProvider, rememberKeys };
+  // nothing is chosen for a new user; people who already used Ollama keep it
+  const hadOllama = !!(oldUrl || oldModel);
+  return { provider: providerById(saved.provider ?? (hadOllama ? "ollama" : "none")).id, byProvider, rememberKeys };
 }
 
 function save(s: Pick<State, "provider" | "byProvider" | "rememberKeys">) {

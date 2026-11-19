@@ -98,6 +98,7 @@ export default function SettingsDialog() {
           <div>
             <label className={label} htmlFor="llm-provider">Provider</label>
             <select id="llm-provider" className="field" value={provider.id} onChange={(e) => setProvider(e.target.value as typeof provider.id)}>
+              {provider.id === "none" && <option value="none" disabled>Choose a provider</option>}
               <optgroup label="Runs on your computer">
                 {local.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </optgroup>
@@ -108,6 +109,8 @@ export default function SettingsDialog() {
             {provider.note && <p className="mt-1.5 text-[11px] text-gray-500">{provider.note}</p>}
           </div>
 
+          {provider.id !== "none" && (
+            <>
           <div>
             <div className="flex items-baseline justify-between">
               <label className={label} htmlFor="llm-url">Base URL</label>
@@ -190,6 +193,9 @@ export default function SettingsDialog() {
               Test connection
             </button>
           </div>
+
+            </>
+          )}
 
           <div className="space-y-2 border-t border-edge pt-3">
             <label className="flex items-center gap-2 text-xs text-gray-300">

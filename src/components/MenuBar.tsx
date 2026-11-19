@@ -39,7 +39,6 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
   const chatOpen = useProject((s) => s.chatOpen);
   const canUndo = useProject((s) => s.past.length > 0);
   const canRedo = useProject((s) => s.future.length > 0);
-  const chatBusy = useChat((s) => s.busy);
   const { provider, model } = useActiveConfig();
 
   const menus: Menu[] = [
@@ -61,7 +60,7 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
         { label: "Undo", shortcut: "Ctrl+Z", disabled: !canUndo, onSelect: () => useProject.getState().undo() },
         { label: "Redo", shortcut: "Ctrl+Shift+Z", disabled: !canRedo, onSelect: () => useProject.getState().redo() },
         "sep",
-        { label: "Clear AI chat", disabled: chatBusy, onSelect: () => useChat.getState().clear() },
+        { label: "New AI chat", onSelect: () => { useProject.setState({ chatOpen: true }); useChat.getState().newChat(); } },
       ],
     },
     {
@@ -78,7 +77,7 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
       items: [
         { label: "AI models and API keys", onSelect: () => useSettings.getState().openDialog() },
         "sep",
-        { label: `Using ${provider.name}${model ? `, ${model}` : ""}`, info: true, disabled: true },
+        { label: provider.id === "none" ? "No AI provider selected" : `Using ${provider.name}${model ? `, ${model}` : ""}`, info: true, disabled: true },
       ],
     },
   ];

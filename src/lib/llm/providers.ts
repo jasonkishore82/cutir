@@ -5,6 +5,7 @@
  */
 
 export type ProviderId =
+  | "none"
   | "ollama"
   | "lmstudio"
   | "openai"
@@ -51,4 +52,7 @@ export const PROVIDERS: Provider[] = [
   { id: "custom", name: "Custom (OpenAI-compatible)", kind: "openai", baseUrl: "", local: false, needsKey: false, note: "Any server with an OpenAI-style /chat/completions endpoint." },
 ];
 
-export const providerById = (id: string): Provider => PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
+/** Nothing chosen yet. The assistant stays idle until the user picks a provider. */
+export const NONE: Provider = { id: "none", name: "No provider", kind: "openai", baseUrl: "", local: false, needsKey: false };
+
+export const providerById = (id: string): Provider => (id === "none" ? NONE : PROVIDERS.find((p) => p.id === id) ?? NONE);

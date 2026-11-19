@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 export type IconName =
   | "media" | "lyrics" | "style" | "motion" | "undo" | "redo" | "ai" | "play" | "pause" | "skipBack"
-  | "loop" | "back" | "export" | "plus" | "music" | "image" | "close" | "refresh" | "settings" | "dots" | "check";
+  | "loop" | "back" | "export" | "plus" | "music" | "image" | "close" | "refresh" | "settings" | "dots" | "check" | "history" | "edit" | "archive" | "trash";
 
 const PATHS: Record<IconName, ReactNode> = {
   media: <><rect x="3" y="4" width="18" height="16" rx="3" /><circle cx="9" cy="10" r="1.6" /><path d="M21 16l-5-5-8 9" /></>,
@@ -28,6 +28,10 @@ const PATHS: Record<IconName, ReactNode> = {
   settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1" /></>,
   dots: <><circle cx="5" cy="12" r="1.3" fill="currentColor" /><circle cx="12" cy="12" r="1.3" fill="currentColor" /><circle cx="19" cy="12" r="1.3" fill="currentColor" /></>,
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+  history: <><path d="M3 12a9 9 0 109-9 9 9 0 00-6.4 2.6L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 2" /></>,
+  edit: <><path d="M4 20h4L19 9l-4-4L4 16z" /><path d="M13.5 6.5l4 4" /></>,
+  archive: <><rect x="3" y="4" width="18" height="5" rx="1.5" /><path d="M5 9v9a2 2 0 002 2h10a2 2 0 002-2V9" /><path d="M10 13h4" /></>,
+  trash: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3" />,
 };
 
 export function Icon({ name, className = "h-4 w-4" }: { name: IconName; className?: string }) {

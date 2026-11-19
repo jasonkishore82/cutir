@@ -11,7 +11,7 @@ npm run dev          # http://localhost:5173
 
 ### AI providers (Settings menu)
 
-Open **Settings > AI models & API keys** to choose the model behind the chat. Ollama stays the default and needs no key.
+The AI panel is closed and no provider is selected until you choose one. Open **Settings > AI models and API keys** (or the panel) to pick the model behind the chat. Ollama needs no key.
 Cloud options: OpenAI, Groq, OpenRouter, Together AI, Mistral, DeepSeek, xAI (Grok), Google Gemini, Cerebras and Fireworks AI.
 Local options: Ollama and LM Studio. **Custom** takes any server with an OpenAI-style `/chat/completions` endpoint.
 

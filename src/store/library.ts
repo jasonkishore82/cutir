@@ -206,7 +206,7 @@ export const useLibrary = create<Library>((set, get) => {
         writeProject(cur, useProject.getState().project, true);
       }
       const project = await hydrate(id);
-      if (cur !== id) useChat.getState().resetChats(); // chats belong to the project they were started in
+      if (cur !== id) useChat.getState().loadProject(id); // chats belong to the project they were started in
       useProject.getState().loadProject(project);
       set({ currentId: id, screen: "editor" });
     },
@@ -214,6 +214,7 @@ export const useLibrary = create<Library>((set, get) => {
     goHome: () => {
       const id = get().currentId;
       if (id) writeProject(id, useProject.getState().project, true);
+      useChat.getState().loadProject(null);
       set({ currentId: null, screen: "home" });
       revokeLive();
     },
@@ -242,6 +243,7 @@ export const useLibrary = create<Library>((set, get) => {
     deleteProject: async (id) => {
       safeDel(`cutir:p:${id}`);
       safeDel(`cutir:t:${id}`);
+      safeDel(`cutir:chats:${id}`);
       await deleteProjectFiles(id);
       const { [id]: _gone, ...thumbs } = get().thumbs;
       void _gone;

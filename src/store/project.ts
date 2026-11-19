@@ -212,7 +212,7 @@ export const useProject = create<State>((set, get) => ({
   future: [],
   selectedLineId: null,
   activeLayerId: "main",
-  chatOpen: true,
+  chatOpen: false,
   syncMode: false,
   syncIndex: 0,
 
