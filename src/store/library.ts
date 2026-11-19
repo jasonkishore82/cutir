@@ -11,6 +11,7 @@ import {
   type Project,
 } from "./project";
 import { useChat } from "./chat";
+import { copyProjectMedia, deleteProjectMedia, useMedia } from "./media";
 import { useSettings } from "./settings";
 import { copyProjectFiles, deleteFile, deleteProjectFiles, loadFile, saveFile } from "../lib/assetdb";
 import { makeThumbnail } from "../lib/thumbnail";
@@ -207,7 +208,10 @@ export const useLibrary = create<Library>((set, get) => {
         writeProject(cur, useProject.getState().project, true);
       }
       const project = await hydrate(id);
-      if (cur !== id) useChat.getState().loadProject(id); // chats belong to the project they were started in
+      if (cur !== id) {
+        useChat.getState().loadProject(id); // chats belong to the project they were started in
+        void useMedia.getState().load(id);
+      }
       useProject.getState().loadProject(project);
       useProject.setState({ chatOpen: useSettings.getState().showAiOnOpen });
       set({ currentId: id, screen: "editor" });
@@ -217,6 +221,7 @@ export const useLibrary = create<Library>((set, get) => {
       const id = get().currentId;
       if (id) writeProject(id, useProject.getState().project, true);
       useChat.getState().loadProject(null);
+      void useMedia.getState().load(null);
       set({ currentId: null, screen: "home" });
       revokeLive();
     },
@@ -238,6 +243,7 @@ export const useLibrary = create<Library>((set, get) => {
       const thumb = safeGet(`cutir:t:${id}`);
       if (thumb) safeSet(`cutir:t:${copy.id}`, thumb);
       await copyProjectFiles(id, copy.id);
+      await copyProjectMedia(id, copy.id);
       persistEntries([copy, ...get().entries]);
       set({ thumbs: loadThumbs(get().entries) });
     },
@@ -247,6 +253,7 @@ export const useLibrary = create<Library>((set, get) => {
       safeDel(`cutir:t:${id}`);
       safeDel(`cutir:chats:${id}`);
       await deleteProjectFiles(id);
+      await deleteProjectMedia(id);
       const { [id]: _gone, ...thumbs } = get().thumbs;
       void _gone;
       persistEntries(get().entries.filter((e) => e.id !== id));

@@ -2,6 +2,8 @@ import { useRef, useState } from "react";
 import { ensureFont, markFontReady } from "../lib/fonts";
 import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
+import MediaPool from "./MediaPool";
+import { useMedia, type MediaItem } from "../store/media";
 import { SECTIONS, type SectionId } from "./SectionTabs";
 import { ActionButton, Card, Icon, Row, Segmented, Slider } from "./ui";
 import { useLibrary } from "../store/library";
@@ -73,17 +75,27 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
     }
   };
 
-  const loadAudio = (f: File) => {
+  const loadAudio = (f: File, mediaId?: string) => {
     if (lastAudioUrl.current) URL.revokeObjectURL(lastAudioUrl.current);
     lastAudioUrl.current = URL.createObjectURL(f);
-    setAudio({ name: f.name, kind: "audio", url: lastAudioUrl.current });
+    setAudio({ name: f.name, kind: "audio", url: lastAudioUrl.current, mediaId });
     useLibrary.getState().saveAsset("audio", f, f.name); // so the project gets its song back when reopened
   };
 
-  const loadBackground = (f: File) => {
+  const loadBackground = (f: File, mediaId?: string) => {
     const kind = f.type.startsWith("video") ? "video" : "image";
-    setBackground({ type: "asset", asset: { name: f.name, kind, url: URL.createObjectURL(f) } });
+    setBackground({ type: "asset", asset: { name: f.name, kind, url: URL.createObjectURL(f), mediaId } });
     useLibrary.getState().saveAsset("bg", f, f.name);
+  };
+
+  /** A file picked from the Song, Background or Canva card also joins the media pool. */
+  const chooseAudio = async (f: File) => loadAudio(f, (await useMedia.getState().addFiles([f]))[0]?.id);
+  const chooseBackground = async (f: File) => loadBackground(f, (await useMedia.getState().addFiles([f]))[0]?.id);
+  const useFromPool = async (item: MediaItem) => {
+    const f = await useMedia.getState().fileOf(item.id);
+    if (!f) return;
+    if (item.kind === "audio") loadAudio(f, item.id);
+    else loadBackground(f, item.id);
   };
 
   const loadFont = async (f: File) => {
@@ -110,8 +122,12 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
 
       {tab === "media" && (
         <>
+          <Card title="Media pool">
+            <MediaPool onUse={useFromPool} />
+          </Card>
+
           <Card title="Song">
-            <ActionButton icon="music" active={!!project.audio} onClick={() => pickFile("audio/*,.mp3,.wav,.m4a", loadAudio)}>
+            <ActionButton icon="music" active={!!project.audio} onClick={() => pickFile("audio/*,.mp3,.wav,.m4a", chooseAudio)}>
               {project.audio ? project.audio.name : "Choose audio file"}
             </ActionButton>
           </Card>
@@ -120,7 +136,7 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
             <ActionButton
               icon="image"
               active={project.background.type === "asset"}
-              onClick={() => pickFile("image/*,video/*", loadBackground)}
+              onClick={() => pickFile("image/*,video/*", chooseBackground)}
             >
               {project.background.type === "asset" && project.background.asset ? project.background.asset.name : "Choose image or video"}
             </ActionButton>
@@ -147,7 +163,7 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
               onDrop={(e) => {
                 e.preventDefault();
                 const f = e.dataTransfer.files?.[0];
-                if (f && (f.type.startsWith("image/") || f.type.startsWith("video/"))) loadBackground(f);
+                if (f && (f.type.startsWith("image/") || f.type.startsWith("video/"))) void chooseBackground(f);
               }}
               className="space-y-3"
             >
@@ -160,7 +176,7 @@ export default function LeftPanel({ tab }: { tab: SectionId }) {
                 <Icon name="export" className="h-4 w-4 shrink-0 text-gray-500" />
                 <span className="min-w-0 flex-1 truncate">Open Canva</span>
               </a>
-              <ActionButton icon="image" onClick={() => pickFile("image/*,video/*", loadBackground)}>
+              <ActionButton icon="image" onClick={() => pickFile("image/*,video/*", chooseBackground)}>
                 Import Canva export
               </ActionButton>
               <ol className="list-decimal space-y-1 pl-4 text-[11px] leading-snug text-gray-500">

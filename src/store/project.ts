@@ -11,6 +11,8 @@ export type AssetRef = {
   kind: "audio" | "image" | "video";
   /** Object URL, valid for this session only; stripped when saving to JSON. */
   url?: string;
+  /** The media pool item this came from, so the pool can show what is in use. */
+  mediaId?: string;
 };
 
 export type Background =
