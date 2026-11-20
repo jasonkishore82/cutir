@@ -1,0 +1,14 @@
+{
+  "name": "cutir",
+  "description": "Plugins for the Cutir lyric video and video editor.",
+  "owner": {
+    "name": "Cutir"
+  },
+  "plugins": [
+    {
+      "name": "cutir",
+      "source": "./plugin",
+      "description": "Control the Cutir video editor from Claude Code: lyrics, styles, animation, timeline clips, frames and export."
+    }
+  ]
+}

@@ -11,12 +11,20 @@ import {
   canEncodeAudio,
   canEncodeVideo,
 } from "mediabunny";
-import { ASPECT_SIZES, drawFrame, type MediaSource } from "./renderer";
-import type { Project } from "../store/project";
+import { ASPECT_SIZES, type MediaSource } from "./renderer";
+import { useProject, type Project } from "../store/project";
 import { ensureFont } from "./fonts";
+import { viewToDoc } from "../model/convert";
+import type { ProjectDoc } from "../model/types";
+import { needsAt, renderFrame } from "../render/compositor";
+import { exactFrames } from "../render/sources";
+import { mixInputs, mixdown } from "../render/audio";
+import { useMedia } from "../store/media";
 
 /**
- * MP4 export. Every frame is drawn with the SAME drawFrame() the preview uses.
+ * MP4 export. Every frame is drawn with the SAME renderFrame() the preview uses (lyric background, timeline video and
+ * image tracks, lyric text); export waits until each clip's frame is exactly decoded. The sound is one mix of the
+ * song and every audible audio clip.
  *
  *  1. Fast path (WebCodecs): frames go straight from the canvas into the browser's H.264 encoder (hardware
  *     accelerated where available) and are muxed to MP4 with Mediabunny. Audio is encoded to AAC the same way.
@@ -68,6 +76,48 @@ async function seekVideo(v: HTMLVideoElement, t: number) {
   });
 }
 
+/** The document behind a lyric view: the live one when exporting the open project. */
+function docFor(project: Project): ProjectDoc {
+  const st = useProject.getState();
+  return project === st.project ? st.doc : viewToDoc(project);
+}
+
+const urlOfMedia = (doc: ProjectDoc) => (mediaId: string) => {
+  const pool = doc.media.find((m) => m.id === mediaId)?.poolId;
+  return pool ? useMedia.getState().urls[pool] : undefined;
+};
+
+/** The exported sound: the song and every audible timeline audio clip, mixed to one stereo track. */
+async function exportAudio(project: Project, duration: number, signal: AbortSignal): Promise<AudioBuffer | null> {
+  const doc = docFor(project);
+  return mixdown(mixInputs(doc, project.audio?.url, duration, urlOfMedia(doc)), duration, 48000, signal);
+}
+
+/** 16-bit PCM WAV of a buffer, for the ffmpeg paths. */
+function wavOf(buf: AudioBuffer): Blob {
+  const ch = buf.numberOfChannels;
+  const n = buf.length;
+  const data = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  const str = (o: number, s: string) => [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF");
+  data.setUint32(4, 36 + n * ch * 2, true);
+  str(8, "WAVE");
+  str(12, "fmt ");
+  data.setUint32(16, 16, true);
+  data.setUint16(20, 1, true);
+  data.setUint16(22, ch, true);
+  data.setUint32(24, buf.sampleRate, true);
+  data.setUint32(28, buf.sampleRate * ch * 2, true);
+  data.setUint16(32, ch * 2, true);
+  data.setUint16(34, 16, true);
+  str(36, "data");
+  data.setUint32(40, n * ch * 2, true);
+  const chans = Array.from({ length: ch }, (_, i) => buf.getChannelData(i));
+  let o = 44;
+  for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++, o += 2) data.setInt16(o, Math.max(-1, Math.min(1, chans[c][i])) * 0x7fff, true);
+  return new Blob([data.buffer], { type: "audio/wav" });
+}
+
 async function setup(project: Project, duration: number) {
   if (!(duration > 0)) throw new Error("Nothing to export yet. Add audio or lyrics first.");
   const { w, h } = ASPECT_SIZES[project.aspect];
@@ -95,11 +145,15 @@ async function setup(project: Project, duration: number) {
     else bg = await loadImage(asset.url);
   }
 
-  /** Draw frame `i` onto the canvas. */
+  const doc = docFor(project);
+  const frames = exactFrames();
+
+  /** Draw frame `i` onto the canvas: wait for the exact pictures of every clip at t, then composite. */
   const render = async (i: number) => {
     const t = i / fps;
     if (bgVideo) await seekVideo(bgVideo, t);
-    drawFrame(ctx, project, t, w, h, { bg });
+    await frames.prepare(needsAt(doc, t));
+    renderFrame(ctx, doc, project, t, w, h, { bg }, frames);
   };
 
   return { w, h, fps, total, canvas, render };
@@ -123,20 +177,18 @@ async function exportViaWebCodecs(project: Project, { duration, onProgress, sign
   const video = new CanvasSource(canvas, { codec: "avc", quality: QUALITY_HIGH, keyFrameInterval: 2 });
   output.addVideoTrack(video, { frameRate: fps });
 
-  /* audio: decode once, then encode to AAC with the same muxer when the browser can */
-  let audioBuffer: AudioBuffer | undefined;
+  /* audio: mix the song and the timeline's audio clips once, then encode to AAC with the same muxer when possible */
   let audio: AudioBufferSource | undefined;
   let audioFileForFallback: { url: string; name: string } | undefined;
-  if (project.audio?.url) {
-    onProgress({ stage: "Reading audio", fraction: 0 });
-    const data = await (await fetch(project.audio.url)).arrayBuffer();
-    check();
-    audioBuffer = await new OfflineAudioContext(2, 1, 48000).decodeAudioData(data);
+  onProgress({ stage: "Mixing audio", fraction: 0 });
+  const audioBuffer = (await exportAudio(project, duration, signal)) ?? undefined;
+  check();
+  if (audioBuffer) {
     if (await canEncodeAudio("aac", { numberOfChannels: audioBuffer.numberOfChannels, sampleRate: audioBuffer.sampleRate, quality: QUALITY_HIGH })) {
       audio = new AudioBufferSource({ codec: "aac", quality: QUALITY_HIGH });
       output.addAudioTrack(audio);
     } else {
-      audioFileForFallback = { url: project.audio.url, name: project.audio.name }; // video-only now, audio muxed by ffmpeg below
+      audioFileForFallback = { url: URL.createObjectURL(wavOf(audioBuffer)), name: "mix.wav" }; // video-only now, audio muxed by ffmpeg below
     }
   }
 
@@ -174,7 +226,11 @@ async function exportViaWebCodecs(project: Project, { duration, onProgress, sign
 
   if (audioFileForFallback) {
     onProgress({ stage: "Adding audio", fraction: 0.97 });
-    blob = await muxAudioWithFfmpeg(blob, audioFileForFallback, signal);
+    try {
+      blob = await muxAudioWithFfmpeg(blob, audioFileForFallback, signal);
+    } finally {
+      URL.revokeObjectURL(audioFileForFallback.url);
+    }
   }
   onProgress({ stage: "Done", fraction: 1 });
   return blob;
@@ -244,11 +300,10 @@ async function exportViaFfmpeg(project: Project, { duration, onProgress, signal 
     check();
 
     let audioName: string | undefined;
-    if (project.audio?.url) {
-      const ext = (/\.([a-z0-9]+)$/i.exec(project.audio.name)?.[1] ?? "mp3").toLowerCase();
-      audioName = `audio.${ext}`;
-      const buf = await (await fetch(project.audio.url)).arrayBuffer();
-      await ffmpeg.writeFile(audioName, new Uint8Array(buf));
+    const mix = await exportAudio(project, duration, signal);
+    if (mix) {
+      audioName = "mix.wav";
+      await ffmpeg.writeFile(audioName, new Uint8Array(await wavOf(mix).arrayBuffer()));
     }
     check();
 

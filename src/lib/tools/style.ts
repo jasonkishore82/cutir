@@ -10,7 +10,7 @@ export const updateStyle = defineTool({
   group: "style",
   description: "Change text style. Put the fields to change inside patch.",
   hint:
-    "patch keys: fontFamily,fontSize,color(hex),uppercase,letterSpacing,lineHeight,maxCharsPerLine,shadow{blur,offsetX,offsetY,opacity},outline{width,color},position(top|center|bottom). Animation is set with set_animation",
+    "patch keys: fontFamily,fontSize,color(hex),uppercase,letterSpacing,lineHeight,maxCharsPerLine,shadow{blur,offsetX,offsetY,opacity},outline{width,color},position(top|center|bottom). Animation: set_animation_in/out/loop",
   params: z.object({ patch: StylePatch.describe("style fields to change") }),
   // models often send the style fields flat instead of inside `patch`
   normalize: (args) => {
@@ -52,9 +52,11 @@ export const setFont = defineTool({
   apply: (p, a) => ({ project: { ...p, style: { ...p.style, fontFamily: titleCaseFont(a.family) } }, summary: `font ${titleCaseFont(a.family)}` }),
 });
 
+/** Replaced by set_animation_in / _out / _loop (tools/motion.ts); kept so older prompts and replies still work. */
 export const setAnimation = defineTool({
   name: "set_animation",
   group: "style",
+  alias: true,
   description: "Set how lines appear (slot in), leave (slot out) or keep moving (slot loop)",
   hint:
     "slot in|out: name one of none,fade,pop,slide-up,slide-down,slide-left,slide-right,zoom,blur,rotate,typewriter,word-by-word,letter-by-letter (in also word-highlight), durationMs, easing linear|ease-in|ease-out|ease-in-out|back|elastic. slot loop: name float|pulse|shake|glow|wave|none, speed 0.25-4",

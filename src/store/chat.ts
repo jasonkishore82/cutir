@@ -4,7 +4,9 @@ import { OllamaError, stripThink, type ChatMessage, type RawOllamaCall } from ".
 import { configProblem, listChatModels, streamChat } from "../lib/llm";
 import { activeConfig, useSettings } from "./settings";
 import { cancelAlignment, isAutoSyncIntent, syncOverridesFromText } from "../lib/autosync";
-import { CHAT_ONLY_PROMPT, applyCalls, buildSystemPrompt, getOllamaTools, isSmallTalk, parseActionsFromText, selectToolGroups, type CallResult, type RawCall } from "../lib/tools";
+import { fontIntent, titleCaseFont } from "../lib/fonts";
+import { beginReply, endReply, speakReplyStream, spokenSummary, stopSpeaking, turnEnded } from "../lib/voice";
+import { CHAT_ONLY_PROMPT, applyCalls, buildSystemPrompt, getOllamaTools, isSmallTalk, limitDeletes, parseActionsFromText, quickAnswer, selectToolGroups, type CallResult, type RawCall } from "../lib/tools";
 
 /** `before` and `after` only exist for the current session: they are not saved, so old cards cannot be undone. */
 export type Applied = { results: CallResult[]; before?: Project; after?: Project; undone?: boolean };
@@ -83,6 +85,30 @@ const noTools = new Set<string>(); // "provider:model" pairs that rejected the `
 const toolKey = (provider: string, model: string) => `${provider}:${model}`;
 const aborts = new Map<string, AbortController>();
 
+/** A request clear enough to run without asking the model which tool to use. */
+type DirectIntent = { call: RawCall; done: string; already: string; failHint?: string; sync?: boolean };
+
+function directIntent(text: string): DirectIntent | null {
+  if (isAutoSyncIntent(text)) {
+    return {
+      call: { tool: "auto_sync", args: syncOverridesFromText(text) },
+      done: "Auto-sync finished. Press play to check the timing, or undo it from the card below.",
+      already: "The lyrics are already synced that way.",
+      sync: true,
+    };
+  }
+  const font = fontIntent(text);
+  if (font) {
+    return {
+      call: { tool: "set_font", args: { family: font } },
+      done: `Now using ${titleCaseFont(font)}. It was downloaded from Google Fonts.`,
+      already: `Already using ${titleCaseFont(font)}.`,
+      failHint: "\nCheck the spelling against fonts.google.com, and that you are online.",
+    };
+  }
+  return null;
+}
+
 const newConv = (): Conv => {
   const now = Date.now();
   return { id: uid(), title: NEW_TITLE, createdAt: now, updatedAt: now, messages: [] };
@@ -142,8 +168,10 @@ export const useChat = create<ChatState>((set, get) => {
     let lastUser = -1;
     turns.forEach((m, i) => m.role === "user" && (lastUser = i));
     return turns.map((m, i) => {
-      const note = m.applied ? ` (applied: ${m.applied.results.filter((r) => r.ok).map((r) => r.tool).join(", ") || "nothing"})` : "";
-      const msg: ChatMessage = { role: m.role as "user" | "assistant", content: (m.sent ?? m.content ?? "") + note || "ok" };
+      // Keep past assistant turns plain. A label like "(applied: set_background)" gets imitated by small models,
+      // which then answer with the label as text instead of calling the tool. The current state is in the system prompt anyway.
+      const content = m.role === "user" ? m.sent ?? m.content : m.content || (m.applied ? "Done." : "OK.");
+      const msg: ChatMessage = { role: m.role as "user" | "assistant", content: content || "OK." };
       // images are only re-sent with the latest user message (they are large)
       const imgs = i === lastUser ? m.attachments?.filter((a) => a.kind === "image" && a.data).map((a) => a.data) : undefined;
       if (imgs?.length) msg.images = imgs;
@@ -169,7 +197,9 @@ export const useChat = create<ChatState>((set, get) => {
       patchMsg(cid, replyId, { tokens });
       if (chunk.content) {
         content += chunk.content;
-        patchMsg(cid, replyId, { content: stripThink(content) });
+        const clean = stripThink(content);
+        patchMsg(cid, replyId, { content: clean });
+        speakReplyStream(clean); // sentences are spoken as they complete, while the model is still writing
       }
       if (chunk.toolCalls) rawCalls.push(...chunk.toolCalls);
     }
@@ -236,30 +266,48 @@ export const useChat = create<ChatState>((set, get) => {
       const text = raw.trim();
       if ((!text && !attachments.length) || get().running[cid]) return;
 
-      // "auto sync" starts the sync directly: no model round trip, so it works even before a model is picked
-      if (isAutoSyncIntent(text) && !attachments.length) {
+      // Clear requests ("auto sync", "use Roboto font") run directly: no model round trip, so a small model
+      // cannot get them wrong, and they work even before a model is picked.
+      // simple counting questions are answered from the project itself: always right, no model needed
+      const quick = !attachments.length ? quickAnswer(text, useProject.getState().project) : null;
+      if (quick) {
         push(cid, { role: "user", content: text, sent: text });
         titleFrom(cid, text);
-        const replyId = push(cid, { role: "assistant", content: "", streaming: true, sync: true });
+        push(cid, { role: "assistant", content: quick });
+        beginReply();
+        endReply(quick);
+        turnEnded();
+        finish(cid);
+        return;
+      }
+
+      const direct = !attachments.length ? directIntent(text) : null;
+      if (direct) {
+        push(cid, { role: "user", content: text, sent: text });
+        titleFrom(cid, text);
+        const replyId = push(cid, { role: "assistant", content: "", streaming: true, sync: direct.sync });
         const t0 = Date.now();
+        beginReply();
         setRunning(cid, true);
         try {
-          const applied = await applyCalls([{ tool: "auto_sync", args: syncOverridesFromText(text) }]);
+          const applied = await applyCalls([direct.call]);
           const r = applied.results[0];
-          if (r.ok) {
-            patchMsg(cid, replyId, {
-              content: "Auto-sync finished. Press play to check the timing, or undo it from the card below.",
-              applied,
-              streaming: false,
-              thoughtSecs: Math.round((Date.now() - t0) / 1000),
-            });
+          if (r.ok && !r.noop) {
+            patchMsg(cid, replyId, { content: direct.done, applied, streaming: false, thoughtSecs: Math.round((Date.now() - t0) / 1000) });
+            endReply(spokenSummary(applied.results));
+          } else if (r.ok) {
+            patchMsg(cid, replyId, { content: direct.already, streaming: false });
+            endReply(direct.already);
           } else {
             dropMsg(cid, replyId);
-            push(cid, { role: "error", content: r.summary.replace(/^auto_sync: /, "") });
+            const why = r.summary.replace(/^\w+: /, "");
+            push(cid, { role: "error", content: `${why}${direct.failHint ?? ""}` });
+            endReply(`That didn't work. ${why}`);
           }
         } finally {
           setRunning(cid, false);
           finish(cid);
+          turnEnded();
         }
         return;
       }
@@ -292,6 +340,7 @@ ${a.data}
       aborts.set(cid, ac);
       const t0 = Date.now();
       const took = () => Math.round((Date.now() - t0) / 1000);
+      beginReply(); // silence anything still being read out from the previous reply
       setRunning(cid, true);
 
       try {
@@ -315,6 +364,9 @@ ${a.data}
           .map((c) => ({ tool: c.function!.name!, args: c.function!.arguments ?? {} }));
 
         let shown = stripThink(out.content);
+        // older chats may contain "(applied: ...)" labels that a model copies back as its reply; never show them
+        const leaked = /\(applied:[^)]*\)/i.test(shown);
+        shown = shown.replace(/\(applied:[^)]*\)/gi, "").trim();
         if (!calls.length && !chatOnly) {
           // fallback: ```json {actions:[...]} ``` in the text (also catches tool-capable models that answer in text)
           const parsed = parseActionsFromText(shown);
@@ -322,18 +374,31 @@ ${a.data}
           if (calls.length) shown = parsed.stripped;
         }
 
-        if (calls.length) {
+        // a model must not delete lines the user did not name
+        const guard = limitDeletes(text, calls);
+        calls = guard.calls;
+        if (calls.length || guard.skipped.length) {
           const applied = await applyCalls(calls);
+          applied.results.push(...guard.skipped);
           const changed = applied.results.some((r) => r.ok && !r.noop);
           const failed = applied.results.some((r) => !r.ok);
           if (changed || failed) {
             patchMsg(cid, replyId, { content: shown, applied, streaming: false, thoughtSecs: took() });
+            endReply(spokenSummary(applied.results));
           } else {
             // every call was a no-op: just talk, don't show an "Applied changes" card
-            patchMsg(cid, replyId, { content: shown || "That's already how it is, so nothing changed.", streaming: false, thoughtSecs: took() });
+            const msg = shown || "That's already how it is, so nothing changed.";
+            patchMsg(cid, replyId, { content: msg, streaming: false, thoughtSecs: took() });
+            endReply(msg);
           }
         } else {
-          patchMsg(cid, replyId, { content: shown || "(no reply)", streaming: false, thoughtSecs: took() });
+          const msg =
+            shown ||
+            (leaked
+              ? "I couldn't turn that into an edit. Try being more specific, for example: \"make the background a violet, pink and green gradient\"."
+              : "(no reply)");
+          patchMsg(cid, replyId, { content: msg, streaming: false, thoughtSecs: took() });
+          endReply(msg);
         }
       } catch (e) {
         const aborted = (e as Error).name === "AbortError";
@@ -347,12 +412,14 @@ ${a.data}
         aborts.delete(cid);
         setRunning(cid, false);
         finish(cid);
+        turnEnded(); // hands-free mode: listen again once the reply has been spoken
       }
     },
 
     stop: () => {
       aborts.get(get().activeId)?.abort();
       cancelAlignment();
+      stopSpeaking();
     },
     clear: () => patchConv(get().activeId, (c) => ({ ...c, messages: [], title: NEW_TITLE })),
 

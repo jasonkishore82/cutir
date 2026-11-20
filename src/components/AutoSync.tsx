@@ -20,7 +20,7 @@ const write = (k: string, v: string) => {
   }
 };
 
-/** Auto-sync lyrics to the song with the local Python aligner (tools/aligner). The chat can start the same job. */
+/** Auto-sync lyrics to the song with the Python backend (backend/). The chat can start the same job. */
 export default function AutoSync() {
   const audio = useProject((s) => s.project.audio);
   const lines = useProject((s) => s.project.lines);
@@ -50,7 +50,17 @@ export default function AutoSync() {
     setMsg(null);
     try {
       const h = await checkAligner(url);
-      setMsg({ ok: !!h.ffmpeg, text: h.ffmpeg ? `Aligner is running (${h.backend}, default model ${h.model}).` : "Aligner is running but ffmpeg is missing from PATH." });
+      const a = h.aligner;
+      const problem = !h.ffmpeg
+        ? "ffmpeg is missing from PATH"
+        : !a.stable_ts
+          ? "stable-ts is not installed (pip install -r backend/requirements.txt)"
+          : null;
+      setMsg(
+        problem
+          ? { ok: false, text: `Backend is running, but ${problem}.` }
+          : { ok: true, text: `Backend is running (v${h.version}): ${a.backend}, model ${a.model}${a.demucs ? ", vocal separation available" : ", no Demucs (pip install demucs)"}.` }
+      );
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message || ALIGNER_HELP });
     }

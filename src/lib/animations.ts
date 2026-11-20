@@ -1,4 +1,4 @@
-import type { AnimationSpec, Easing, EffectName, LoopName } from "../store/project";
+import type { AnimationSpec, Beat, BeatName, BeatSlot, Easing, EffectName, EnergyCurve, LoopName, TransitionType } from "../store/project";
 
 /**
  * Text animation: easing curves, the in/out effects and the loop effects.
@@ -25,9 +25,12 @@ export const EASINGS: Record<Easing, (t: number) => number> = {
   elastic: (t) => (t <= 0 ? 0 : t >= 1 ? 1 : Math.pow(2, -10 * t) * Math.sin(((t * 10 - 0.75) * (2 * Math.PI)) / 3) + 1),
 };
 
-/** What an effect does to the text. Offsets are fractions of the canvas height; blur is in 1080p pixels. */
-export type Fx = { opacity: number; dx: number; dy: number; scale: number; rotation: number; blur: number; reveal: number };
-export const IDENTITY: Fx = { opacity: 1, dx: 0, dy: 0, scale: 1, rotation: 0, blur: 0, reveal: 1 };
+/**
+ * What an effect does to the text. Offsets are fractions of the canvas height; blur is in 1080p pixels.
+ * `flash` (0..1) brightens the text toward white with a halo; `swap` (0..1) mixes its fill toward the accent colour.
+ */
+export type Fx = { opacity: number; dx: number; dy: number; scale: number; rotation: number; blur: number; reveal: number; flash: number; swap: number };
+export const IDENTITY: Fx = { opacity: 1, dx: 0, dy: 0, scale: 1, rotation: 0, blur: 0, reveal: 1, flash: 0, swap: 0 };
 export const toFx = (p: Partial<Fx>): Fx => ({ ...IDENTITY, ...p });
 
 export function combineFx(a: Fx, b: Fx): Fx {
@@ -39,7 +42,23 @@ export function combineFx(a: Fx, b: Fx): Fx {
     rotation: a.rotation + b.rotation,
     blur: Math.max(a.blur, b.blur),
     reveal: Math.min(a.reveal, b.reveal),
+    flash: Math.max(a.flash, b.flash),
+    swap: Math.max(a.swap, b.swap),
   };
+}
+
+/** Scale how far an effect moves the text from rest by `k` (opacity and reveal are left alone). */
+export function scaleFx<T extends Partial<Fx>>(p: T, k: number): T {
+  if (k === 1) return p;
+  const o: Partial<Fx> = { ...p };
+  if (p.dx !== undefined) o.dx = p.dx * k;
+  if (p.dy !== undefined) o.dy = p.dy * k;
+  if (p.rotation !== undefined) o.rotation = p.rotation * k;
+  if (p.scale !== undefined) o.scale = 1 + (p.scale - 1) * k;
+  if (p.blur !== undefined) o.blur = p.blur * k;
+  if (p.flash !== undefined) o.flash = clamp01(p.flash * k);
+  if (p.swap !== undefined) o.swap = clamp01(p.swap * k);
+  return o as T;
 }
 
 export type Phase = "in" | "out";
@@ -162,4 +181,163 @@ export const LOOPS: Record<LoopName, LoopDef> = {
 };
 
 export const LOOP_NAMES = Object.keys(LOOPS) as LoopName[];
+
+/** A loop's look scaled by `k` (energy): motion and glow grow or shrink, k = 1 leaves it as is. */
+export function scaleLoop(p: Partial<Fx> & { glow?: number }, k: number): Partial<Fx> & { glow?: number } {
+  if (k === 1) return p;
+  const o = scaleFx(p, k);
+  if (p.glow !== undefined) o.glow = clamp01(p.glow * k);
+  return o;
+}
+
+/* ---------- energy ---------- */
+
+/** Loudness (0..1) of the song at `t` seconds, linearly interpolated. No curve = 0. */
+export function energyAt(curve: EnergyCurve | undefined, t: number): number {
+  const v = curve?.values;
+  if (!v || !v.length || !(curve!.rate > 0)) return 0;
+  const x = t * curve!.rate;
+  if (x <= 0) return clamp01(v[0]);
+  if (x >= v.length - 1) return clamp01(v[v.length - 1]);
+  const i = Math.floor(x);
+  return clamp01(v[i] + (v[i + 1] - v[i]) * (x - i));
+}
+
+/**
+ * How much the song's loudness `level` boosts motion when the style's energy amount is `amount` (0..1):
+ * amount 0 = always 1 (no change), amount 1 = 0.4 in silence up to 1.6 at full loudness.
+ */
+export const energyFactor = (amount: number, level: number): number => {
+  const a = clamp01(amount || 0);
+  return a === 0 ? 1 : 1 + a * (0.4 + 1.2 * clamp01(level) - 1);
+};
+
+/**
+ * Loop clock under energy: seconds from `from` to `to` with each moment sped up by its energy factor, so loops run
+ * faster in loud parts without jumping when the level changes. Amount 0 gives back `to - from` exactly.
+ */
+export function energyClock(curve: EnergyCurve | undefined, amount: number, from: number, to: number): number {
+  const span = to - from;
+  if (!(amount > 0) || !curve?.values?.length || span <= 0) return span;
+  const step = 0.05;
+  const n = Math.ceil(span / step);
+  const dt = span / n;
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += energyFactor(amount, energyAt(curve, from + (i + 0.5) * dt)) * dt;
+  return sum;
+}
+
+/* ---------- beat reactions ---------- */
+
+export type BeatDef = {
+  label: string;
+  /** The look `since` seconds after a beat of strength `hit` (0..1, more on boosted hits); `index` counts the beats. */
+  fx: (since: number, hit: number, index: number) => Partial<Fx>;
+};
+
+/** 1 on the beat, easing out to 0 after `len` seconds. */
+const decay = (since: number, len: number) => {
+  if (since < 0 || since >= len) return 0;
+  const k = 1 - since / len;
+  return k * k;
+};
+
+/** Framings a jump cut steps through, one per beat: like cutting between camera set-ups. */
+const CUTS: Partial<Fx>[] = [
+  {},
+  { scale: 1.14, dx: 0.035, dy: -0.01, rotation: -2.5 },
+  { scale: 0.9, dx: -0.03, dy: 0.012, rotation: 2 },
+  { scale: 1.06, dx: 0.01, dy: 0.02, rotation: 1 },
+];
+
+export const BEATS: Record<BeatName, BeatDef> = {
+  none: { label: "none", fx: () => ({}) },
+  pulse: { label: "pulse", fx: (s, k) => ({ scale: 1 + 0.12 * k * decay(s, 0.22) }) },
+  flash: { label: "flash", fx: (s, k) => ({ flash: clamp01(k * decay(s, 0.25)) }) },
+  shake: {
+    label: "shake",
+    fx: (s, k) => {
+      const d = k * decay(s, 0.25);
+      return { dx: Math.cos(TAU * 22 * s) * 0.012 * d, dy: Math.sin(TAU * 17 * s) * 0.006 * d, rotation: Math.sin(TAU * 19 * s) * 1.8 * d };
+    },
+  },
+  nudge: {
+    label: "nudge",
+    fx: (s, k, i) => {
+      const d = k * decay(s, 0.2);
+      return { dx: (i % 2 ? -1 : 1) * 0.018 * d, rotation: (i % 2 ? 1 : -1) * 1.2 * d };
+    },
+  },
+  "colour-swap": { label: "colour swap", fx: (s, k) => ({ swap: clamp01(Math.max(0.35, k) * decay(s, 0.3)) }) },
+  "jump-cut": { label: "jump cut", fx: (_s, k, i) => scaleFx(CUTS[i % CUTS.length], Math.min(2, k)) },
+};
+
+export const BEAT_NAMES = Object.keys(BEATS) as BeatName[];
+
+/**
+ * The latest beat at or before `t` in `beats` (sorted by time), with its count among the beats considered (only
+ * downbeats when `downbeatsOnly`). Null before the first beat.
+ */
+export function nearestBeatBefore(beats: Beat[] | undefined, t: number, downbeatsOnly = false): { beat: Beat; index: number } | null {
+  if (!beats?.length) return null;
+  let lo = 0;
+  let hi = beats.length - 1;
+  if (beats[0].time > t) return null;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (beats[mid].time <= t) lo = mid;
+    else hi = mid - 1;
+  }
+  if (!downbeatsOnly) return { beat: beats[lo], index: lo };
+  let i = lo;
+  while (i >= 0 && !beats[i].downbeat) i--;
+  if (i < 0) return null;
+  let index = 0;
+  for (let j = 0; j < i; j++) if (beats[j].downbeat) index++;
+  return { beat: beats[i], index };
+}
+
+/**
+ * The beat reaction at time `t` for a slot: hit strength = beat strength x slot strength x energy factor at the
+ * beat (energy `amount` 0 = no energy influence). No beats or no slot = no reaction.
+ */
+export function beatFxAt(beats: Beat[] | undefined, slot: BeatSlot | undefined, t: number, curve?: EnergyCurve, amount = 0): Partial<Fx> {
+  if (!slot || slot.name === "none" || !beats?.length) return {};
+  const def = BEATS[slot.name];
+  if (!def) return {};
+  const near = nearestBeatBefore(beats, t, slot.downbeatsOnly);
+  if (!near) return {};
+  const hit = (near.beat.strength ?? 1) * (slot.strength ?? 1) * energyFactor(amount, energyAt(curve, near.beat.time));
+  if (hit <= 0) return {};
+  return def.fx(t - near.beat.time, hit, near.index);
+}
 export const EASING_NAMES = Object.keys(EASINGS) as Easing[];
+
+/* ---------- transitions between consecutive lines ---------- */
+
+export type TransitionDef = {
+  label: string;
+  /** The outgoing line at progress p (0 = transition starts, 1 = done). */
+  out: (p: number) => Partial<Fx>;
+  /** The incoming line at progress p. */
+  in: (p: number) => Partial<Fx>;
+};
+
+const smooth = EASINGS["ease-in-out"];
+
+export const TRANSITIONS: Record<TransitionType, TransitionDef> = {
+  none: { label: "none (cut)", out: () => ({}), in: () => ({}) },
+  crossfade: { label: "crossfade", out: (p) => ({ opacity: 1 - p }), in: (p) => ({ opacity: p }) },
+  "slide-push": {
+    label: "slide push",
+    out: (p) => ({ opacity: 1 - p, dy: -0.08 * smooth(p) }),
+    in: (p) => ({ opacity: p, dy: 0.08 * (1 - smooth(p)) }),
+  },
+  "zoom-through": {
+    label: "zoom through",
+    out: (p) => ({ opacity: 1 - p, scale: 1 + 0.6 * smooth(p), blur: 6 * p }),
+    in: (p) => ({ opacity: p, scale: 0.7 + 0.3 * smooth(p) }),
+  },
+};
+
+export const TRANSITION_NAMES = Object.keys(TRANSITIONS) as TransitionType[];

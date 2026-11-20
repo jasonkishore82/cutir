@@ -69,7 +69,7 @@ export function readField(p: Project, t: Target, path: string): FieldRead {
 
 /* ---------- writing ---------- */
 
-type Edit = { set?: [string, unknown][]; unset?: string[] };
+export type Edit = { set?: [string, unknown][]; unset?: string[] };
 
 function applyEdit(o: StyleOverride | undefined, e: Edit): StyleOverride | undefined {
   let out = o;
@@ -78,21 +78,24 @@ function applyEdit(o: StyleOverride | undefined, e: Edit): StyleOverride | undef
   return out;
 }
 
+/** The project with an edit applied at one level (pure; used by the editor and by chat tools). */
+export function editProjectStyle(p: Project, t: Target, e: Edit): Project {
+  if (t.scope === "project") {
+    let style = p.style as StyleOverride;
+    for (const [path, v] of e.set ?? []) style = setIn(style, path, v);
+    for (const path of e.unset ?? []) style = setIn(style, path, getIn(DEFAULT_STYLE, path)); // the project always has a value
+    return { ...p, style: style as Project["style"] };
+  }
+  if (t.scope === "layer") {
+    return { ...p, layers: p.layers.map((l) => (l.id === t.layerId ? { ...l, style: applyEdit(l.style, e) } : l)) };
+  }
+  const ids = new Set(t.ids);
+  return { ...p, lines: p.lines.map((l) => (ids.has(l.id) ? { ...l, styleOverride: applyEdit(l.styleOverride, e) } : l)) };
+}
+
 /** One undoable change to one level. Sliders pass a key so a drag merges into a single step. */
 export function editStyle(t: Target, e: Edit, coalesceKey?: string) {
-  useProject.getState().update((p) => {
-    if (t.scope === "project") {
-      let style = p.style as StyleOverride;
-      for (const [path, v] of e.set ?? []) style = setIn(style, path, v);
-      for (const path of e.unset ?? []) style = setIn(style, path, getIn(DEFAULT_STYLE, path)); // the project always has a value
-      return { ...p, style: style as Project["style"] };
-    }
-    if (t.scope === "layer") {
-      return { ...p, layers: p.layers.map((l) => (l.id === t.layerId ? { ...l, style: applyEdit(l.style, e) } : l)) };
-    }
-    const ids = new Set(t.ids);
-    return { ...p, lines: p.lines.map((l) => (ids.has(l.id) ? { ...l, styleOverride: applyEdit(l.styleOverride, e) } : l)) };
-  }, coalesceKey);
+  useProject.getState().update((p) => editProjectStyle(p, t, e), coalesceKey);
 }
 
 export const writeField = (t: Target, path: string, value: unknown, key?: string) => editStyle(t, { set: [[path, value]] }, key);
@@ -105,6 +108,7 @@ const COPY_PATHS = [
   "fontFamily", "fontSize", "color", "uppercase", "letterSpacing", "lineHeight", "maxCharsPerLine",
   "shadow.blur", "shadow.offsetX", "shadow.offsetY", "shadow.opacity", "outline.width", "outline.color",
   "animation.in.name", "animation.in.ms", "animation.in.easing", "animation.out.name", "animation.out.ms", "animation.out.easing", "animation.loop.name", "animation.loop.speed",
+  "highlight.tint", "highlight.color", "highlight.activeScale",
 ];
 
 export function snapshotOf(p: Project, lineId: string): [string, unknown][] | null {

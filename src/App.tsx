@@ -12,6 +12,9 @@ import { Icon } from "./components/ui";
 import { MediaLibrary } from "./components/MediaPool";
 import { startAutosave, useProject } from "./store/project";
 import { installUnloadSave, useLibrary } from "./store/library";
+import { useMedia } from "./store/media";
+import { startMcpBridge } from "./lib/mcpBridge";
+import { ClaudeBadge } from "./components/ClaudeControlCard";
 
 const readW = (k: string, d: number) => {
   try {
@@ -199,8 +202,9 @@ export default function App() {
 
   useEffect(() => {
     useLibrary.getState().init(); // loads the project list (and migrates the old single autosave)
+    startMcpBridge(); // connects to the Cutir MCP server only if the user switched Claude control on
     installUnloadSave();
-    return startAutosave((p) => useLibrary.getState().saveContent(p));
+    return startAutosave((doc, view) => useLibrary.getState().saveContent(doc, view));
   }, []);
 
   useEffect(() => {
@@ -222,9 +226,39 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
+  /* import from anywhere: paste files, or drop them on any part of the editor that does not take them itself */
+  useEffect(() => {
+    const inEditor = () => useLibrary.getState().screen === "editor";
+    const onPaste = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (!inEditor() || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
+      const files = Array.from(e.clipboardData?.files ?? []);
+      if (files.length) {
+        e.preventDefault();
+        void useMedia.getState().addFiles(files);
+      }
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (inEditor() && e.dataTransfer?.types.includes("Files")) e.preventDefault();
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!inEditor() || e.defaultPrevented || !e.dataTransfer?.files.length) return;
+      e.preventDefault();
+      void useMedia.getState().addFiles(Array.from(e.dataTransfer.files));
+    };
+    window.addEventListener("paste", onPaste);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("paste", onPaste);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
+
   const resetLayoutRef = useRef<() => void>(() => {});
   const iconBtn = "grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-white/[0.07] hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400";
-  const panel = "overflow-hidden rounded-2xl border border-white/[0.07] bg-panel/80 shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-xl";
+  const panel = "overflow-hidden rounded-2xl border border-white/[0.07] bg-panel/80 shadow-panel backdrop-blur-xl";
 
   useEffect(() => {
     const on = () => resetLayoutRef.current();
@@ -272,6 +306,7 @@ export default function App() {
         <SectionTabs value={section} onChange={setSection} />
 
         <div className="flex items-center justify-end gap-1">
+          <ClaudeBadge />
           <button className={iconBtn} onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)" aria-label="Undo"><Icon name="undo" /></button>
           <button className={iconBtn} onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)" aria-label="Redo"><Icon name="redo" /></button>
           <button

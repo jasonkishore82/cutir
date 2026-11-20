@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cutir": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server/cutir-mcp.mjs", "--data", "${CLAUDE_PLUGIN_DATA}"],
+      "env": { "CUTIR_MCP_PORT": "${CUTIR_MCP_PORT:-8790}" }
+    }
+  }
+}

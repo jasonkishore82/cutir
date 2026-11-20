@@ -5,6 +5,7 @@ import { useProject } from "../store/project";
 import { Icon } from "./ui";
 import Thinking from "./Thinking";
 import SyncProgress from "./SyncProgress";
+import Composer from "./Composer";
 
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
@@ -260,7 +261,7 @@ const EMPTY: ChatEntry[] = [];
 
 export default function ChatPanel() {
   const { status, statusDetail, convs, openIds, activeId, running } = useChat();
-  const { refreshModels, send, stop, newChat } = useChat.getState();
+  const { refreshModels, send, newChat } = useChat.getState();
   const messages = convs[activeId]?.messages ?? EMPTY;
   const busy = !!running[activeId];
   const { provider, baseUrl, apiKey } = useActiveConfig();
@@ -269,7 +270,6 @@ export default function ChatPanel() {
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   // re-read the model list whenever the provider, its URL or its key changes
@@ -333,7 +333,6 @@ export default function ChatPanel() {
       }
     }
     if (next.length) setAtts((x) => [...x, ...next]);
-    if (fileRef.current) fileRef.current.value = "";
   };
 
   const iconBtn = "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-gray-400 hover:bg-white/[0.07] hover:text-gray-100";
@@ -356,10 +355,7 @@ export default function ChatPanel() {
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-4 pb-6 text-center">
             <div className="flex items-center gap-2.5">
-              <img src="/favicon.svg" alt="" className="h-9 w-9" />
-              <span className="text-gradient text-[30px] leading-none" style={{ letterSpacing: "-0.02em", fontWeight: 600 }}>
-                Cutir
-              </span>
+              <img src="/favicon.svg" alt="Cutir" className="h-9 w-9" />
             </div>
             {noProvider ? (
               <div className="flex w-full max-w-[260px] flex-col items-center gap-3">
@@ -425,8 +421,9 @@ export default function ChatPanel() {
                     <SyncProgress />
                   </Row>
                 )}
-                {m.streaming && !m.content && !m.sync && (
-                  <Row dot="bg-gray-500 animate-pulse">
+                {/* a reply that is really a tool call written as text ({..}, ```json, <tool_call>) is shown as "thinking", not as raw JSON */}
+                {m.streaming && !m.sync && (!m.content || /^\s*(```|\{|\[|<tool_call>)/.test(m.content)) && (
+                  <Row dot="bg-sky-400 animate-pulse">
                     <Thinking tokens={m.tokens} />
                   </Row>
                 )}
@@ -435,7 +432,7 @@ export default function ChatPanel() {
                     <p className="text-gray-500">Thought for {m.thoughtSecs}s</p>
                   </Row>
                 )}
-                {m.content && (
+                {m.content && !(m.streaming && /^\s*(```|\{|\[|<tool_call>)/.test(m.content)) && (
                   <Row time={m.streaming ? undefined : m.at}>
                     <p className="whitespace-pre-wrap break-words leading-relaxed text-gray-300">
                       {m.content}
@@ -451,66 +448,22 @@ export default function ChatPanel() {
         <div ref={endRef} />
       </div>
 
-      {/* composer: text, attachments, model and send in one rounded box */}
-      <div className="shrink-0 p-3 pt-0">
+      <div className="shrink-0">
         {status === "offline" && !noProvider && (
-          <p className="mb-2 text-[11px] leading-snug text-red-400">
+          <p className="mx-3 mb-0 mt-2 text-[11px] leading-snug text-red-400">
             {statusDetail}{" "}
             <button className="underline hover:text-red-300" onClick={() => useSettings.getState().openDialog("ai")}>Open settings</button>
           </p>
         )}
-        {atts.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {atts.map((a, i) => (
-              <span key={i} className="inline-flex max-w-[160px] items-center gap-1.5 rounded-md border border-edge bg-bg py-0.5 pl-1.5 pr-1 text-[11px] text-gray-300">
-                {a.kind === "image" && <img src={`data:image/*;base64,${a.data}`} alt="" className="h-5 w-5 rounded object-cover" />}
-                <span className="truncate">{a.name}</span>
-                <button aria-label={`Remove ${a.name}`} className="px-0.5 leading-none text-gray-500 hover:text-gray-100" onClick={() => setAtts((x) => x.filter((_, j) => j !== i))}>
-                  <Icon name="close" className="mx-auto h-3 w-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        {attachError && <p className="mb-1 text-[11px] text-red-400">{attachError}</p>}
-        <div className="rounded-xl border border-edge bg-black/30 focus-within:border-accent/60 focus-within:shadow-[0_0_0_3px_rgb(91_157_255/0.15)]">
-          <textarea
-            className="block h-[72px] w-full resize-none bg-transparent px-3 pt-2.5 text-sm text-gray-100 placeholder:text-gray-600"
-            placeholder={noProvider ? "Choose a provider first" : "Describe an edit"}
-            value={draft}
-            disabled={noProvider}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-          />
-          <input ref={fileRef} type="file" multiple accept="image/*,.txt,.lrc,.srt,.json,.md" className="hidden" onChange={(e) => addFiles(e.target.files)} />
-          <div className="flex items-center gap-1.5 px-2 pb-2">
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              disabled={busy || noProvider}
-              title="Attach an image or a .txt, .lrc or .srt file"
-              aria-label="Attach file"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-gray-500 hover:bg-white/10 hover:text-gray-100 disabled:opacity-40"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-              </svg>
-            </button>
-            <span className="flex-1" />
-            {busy ? (
-              <button className="h-7 shrink-0 rounded-lg border border-red-700 px-3 text-xs text-red-300 hover:bg-red-950" onClick={stop}>Stop</button>
-            ) : (
-              <button className="btn-primary h-7 shrink-0 rounded-lg px-3.5 text-xs" onClick={submit} disabled={noProvider || (!draft.trim() && !atts.length)}>
-                Send
-              </button>
-            )}
-          </div>
-        </div>
+        <Composer
+          draft={draft}
+          setDraft={setDraft}
+          atts={atts}
+          setAtts={setAtts}
+          attachError={attachError}
+          onAddFiles={addFiles}
+          onSubmit={submit}
+        />
       </div>
     </div>
   );

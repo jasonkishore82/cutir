@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Project } from "../../store/project";
+import type { ProjectDoc } from "../../model/types";
 
 /**
  * Tool registry. A tool is defined ONCE here: its zod parameter schema, description and apply function.
@@ -11,7 +12,7 @@ import type { Project } from "../../store/project";
  * To add a tool: write defineTool({...}) in a group file and add it to that file's export. Nothing else.
  */
 
-export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers";
+export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers" | "transform" | "motion" | "timeline" | "kinetic";
 
 export type ToolResultOk = { project: Project; summary: string };
 
@@ -22,13 +23,20 @@ export type ToolDef<S extends z.ZodType = z.ZodType> = {
   group: ToolGroup;
   /** Extra guidance appended to this tool's line in the system prompt. */
   hint?: string;
+  /** Still runs when called, but is never offered to the model (kept for old prompts and saved replies). */
+  alias?: boolean;
   params: S;
   /** Repair common small-model mistakes before validation (wrong wrapper, flattened args...). */
   normalize?: (args: unknown) => unknown;
   /** Optional async step that runs BEFORE apply (e.g. download a font). Throw to reject the call with a message. */
   prepare?: (args: z.output<S>) => Promise<void>;
   /** Pure: returns the new project, or throws an Error whose message is shown to the user and the model. */
-  apply: (project: Project, args: z.output<S>) => ToolResultOk;
+  apply?: (project: Project, args: z.output<S>) => ToolResultOk;
+  /**
+   * For edits beyond the lyric view (timeline tracks and clips, markers, media): works on the whole document.
+   * Pure like `apply`. A tool has `apply` or `applyDoc`.
+   */
+  applyDoc?: (doc: ProjectDoc, args: z.output<S>) => { doc: ProjectDoc; summary: string };
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -89,6 +97,6 @@ export function createRegistry(tools: AnyTool[]) {
     all: tools,
     get: (name: string) => byName.get(name),
     /** All tools, or just those in the given groups. */
-    list: (groups?: ToolGroup[]) => (groups ? tools.filter((t) => groups.includes(t.group)) : tools),
+    list: (groups?: ToolGroup[]) => tools.filter((t) => !t.alias && (!groups || groups.includes(t.group))),
   };
 }

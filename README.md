@@ -52,14 +52,27 @@ Instead of `*` you can use just the dev URL, e.g. `http://localhost:5173`.
 
 In the chat panel the status dot turns green when Ollama is reachable. Pick a model from the dropdown (the refresh button re-reads `/api/tags`).
 
-### Auto-sync lyrics (optional Python helper)
+### Backend (optional): auto-sync lyrics
 
-Cutir can time your lyrics to the song automatically with [stable-ts](https://github.com/jianfch/stable-ts) (Whisper forced alignment). It runs locally; nothing is uploaded anywhere.
+The web app works on its own. The Python backend in [`backend/`](backend/) adds features that need server-side tools. Today that is **auto-sync**: it times your lyrics to the song with [stable-ts](https://github.com/jianfch/stable-ts) (Whisper forced alignment). It runs locally; nothing is uploaded anywhere.
 
 ```bash
-cd tools/aligner
-pip install -r requirements.txt      # needs ffmpeg on PATH
-python server.py                     # http://127.0.0.1:8765
+cd backend
+python -m venv .venv && .venv\Scripts\activate        # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt                       # needs ffmpeg on PATH
+python run.py                                         # http://127.0.0.1:8765
+```
+
+If you run `npm run build` first, the backend also serves the whole app at `http://127.0.0.1:8765/`, so that one command runs everything. During development keep using `npm run dev` for the web app next to it.
+
+```
+backend/
+  run.py                  start the server
+  app/main.py             app setup, CORS, serves dist/
+  app/config.py           settings (environment variables)
+  app/routers/align.py    POST /api/align, POST /api/align_stream (streams progress)
+  app/routers/health.py   GET  /api/health
+  app/services/aligner.py the aligner itself (stable-ts, Demucs)
 ```
 
 Then in the left panel use **Auto-sync lyrics** under *Lyrics*. It gives every line (and every word) a start/end time; undo with Ctrl+Z.
@@ -67,15 +80,16 @@ Then in the left panel use **Auto-sync lyrics** under *Lyrics*. It gives every l
 - `[Verse]` / `[Chorus]` tag lines (Suno adds these) are skipped and removed.
 - For produced songs (Suno, anything with a backing track) turn on **Separate vocals** (`pip install demucs`); alignment is far more accurate on the isolated voice. Use the `small` or `medium` model for better accuracy.
 - Set the **Language** (`en`, `es`, `hi`, ... or `auto`).
-- Env vars: `CUTIR_ALIGNER_PORT`, `CUTIR_ALIGNER_MODEL`, `CUTIR_ALIGNER_DEVICE`, and `CUTIR_ALIGNER_BACKEND=faster` to use faster-whisper (no PyTorch).
-- The helper only accepts requests from pages on `localhost`.
+- Env vars: `CUTIR_PORT` (default 8765), `CUTIR_HOST` (default 127.0.0.1), `CUTIR_ALIGNER_MODEL`, `CUTIR_ALIGNER_DEVICE`, and `CUTIR_ALIGNER_BACKEND=faster` to use faster-whisper (no PyTorch).
+- It listens on `127.0.0.1` only and accepts API calls only from pages on `localhost`.
 
 ## Using it
 
 1. **Audio / background / lyrics** in the left panel (or import `.lrc` / `.srt`).
 2. **Timeline:** drag blocks to move them, drag edges to resize (snaps to 0.05s). `Tap to sync` plays the song: press **Space** at the start of each line and **Enter** at the end of the current one. Mouse wheel scrolls sideways, **Ctrl+wheel** zooms, **Fit** shows the whole song, and you can drag the top edge of the timeline to make it taller.
    - **Layers:** each lane is a layer (up to 8), drawn bottom to top, with its own text. Click **+ Layer** to add one (for example a translation under the lyrics). Per layer you can rename it (double-click the name), hide it (eye), lock it, and set its position, size and colour or reorder it (⋯). Double-click empty space in a lane to add text, double-click a block to edit it, and drag a block up or down to move it to another layer. **Right-click** a block for Edit, Duplicate, Copy, Split at playhead, Set start/end to playhead, Play from here, Loop, Move to layer and Delete; right-click empty lane space for Add text here / at playhead and Paste. Shortcuts: Ctrl+D duplicate, Ctrl+C / Ctrl+V copy and paste (pastes at the playhead), Delete. The Lyrics box, Tap to sync and new lines act on the layer you last clicked; auto-sync times the first layer only. `.srt` merges visible layers and `.ass` gives each layer its own style.
-3. **Chat:** describe edits in plain English ("shift lines 4 to 8 by 0.5s", "use a pink-to-orange gradient", "delete line 2"). Each reply that changes something shows an *Applied changes* card with an Undo button. You can attach images (vision models only) or `.txt` / `.lrc` / `.srt` files.
+3. **Chat:** describe edits in plain English ("shift lines 4 to 8 by 0.5s", "use a pink-to-orange gradient", "delete line 2"). Each reply that changes something shows an *Applied changes* card with an Undo button. You can attach images (vision models only) or `.txt` / `.lrc` / `.srt` files. The gear icon in the chat box holds the Ollama URL, the model and the voice settings.
+   - **Voice:** press the microphone to speak your edit (browser Web Speech API; Chrome, Edge or Safari). Turn on the speaker button to hear replies, or **Hands-free conversation** in the gear menu to keep talking back and forth. In Chrome the default speech recognizer sends your voice to its speech service; the gear menu has an experimental on-device option. See [docs/VOICE-TTS-MODELS.md](docs/VOICE-TTS-MODELS.md) for the pipeline and low-latency TTS model choices.
 4. **Export:** the `Export` button renders MP4 (H.264 + the original audio) at 1920x1080, 1080x1920 or 1080x1080, and can also save `.srt` and `.ass` (karaoke).
 
 ### Shortcuts

@@ -2,6 +2,14 @@ import { useRef, useState } from "react";
 import { ensureFont, markFontReady } from "../lib/fonts";
 import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
+import KeyframesCard from "./KeyframesCard";
+import ClipCard from "./ClipCard";
+import AnimateCard from "./AnimateCard";
+import EffectsPanel from "./EffectsPanel";
+import TemplatesCard from "./TemplatesCard";
+import TransitionsCard from "./TransitionsCard";
+import WordCard, { FONTS } from "./WordCard";
+import KineticCard from "./KineticCard";
 import MediaPool, { PoolThumb } from "./MediaPool";
 import { useMedia, type MediaItem } from "../store/media";
 import { SECTIONS, type SectionId } from "./SectionTabs";
@@ -20,7 +28,6 @@ import {
   type Position,
 } from "../store/project";
 
-const FONTS = ["Permanent Marker", "Inter", "Arial", "Georgia", "Impact", "Courier New"];
 const POSITIONS: Position[] = ["top", "center", "bottom"];
 const ASPECTS: Aspect[] = ["16:9", "9:16", "1:1"];
 
@@ -54,7 +61,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
   const { target, ...sel } = useTarget();
   const pool = useMedia((s) => s.items);
   const audioItems = pool.filter((i) => i.kind === "audio");
-  const visualItems = pool.filter((i) => i.kind !== "audio");
+  const visualItems = pool.filter((i) => i.kind === "video" || i.kind === "image");
   const lastAudioUrl = useRef<string>();
   const [gfont, setGfont] = useState("");
   const [gfontMsg, setGfontMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -294,7 +301,10 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
 
       {tab === "style" && (
         <>
+          <WordCard />
           <ScopeBar />
+
+          <TemplatesCard />
 
           <Card title="Font">
             <PropSelect path="fontFamily" label="Typeface" options={FONTS} />
@@ -337,12 +347,23 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
             <PropColor path="outline.color" label="Colour" />
           </Card>
 
+          <Card title="Karaoke" hint="For the word highlight entrance (Motion, Animation, In): how sung words look.">
+            <PropCheck path="highlight.tint" label="Colour sung words" />
+            <PropColor path="highlight.color" label="Sung word colour" />
+            <PropSlider path="highlight.activeScale" label="Current word size" min={100} max={160} factor={100} unit="%" />
+          </Card>
+
           <StyleActions />
         </>
       )}
 
+      {tab === "effects" && <EffectsPanel />}
+
       {tab === "motion" && (
         <>
+          <ClipCard />
+          <AnimateCard />
+          <WordCard />
           <ScopeBar />
 
           <Card title="Position">
@@ -380,6 +401,9 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
           )}
 
           <AnimationCard />
+          <KineticCard />
+          <TransitionsCard />
+          <KeyframesCard />
         </>
       )}
     </div>

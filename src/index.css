@@ -3,10 +3,72 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; }
-html { color-scheme: dark; }
+
+/* ---------- theme colours (space-separated RGB so Tailwind's /opacity modifiers work) ---------- */
+:root {
+  color-scheme: dark;
+  --canvas: 4 6 12;
+  --bg: 8 11 18;
+  --panel: 13 17 24;
+  --raised: 26 34 50;
+  --edge: 34 43 60;
+  --accent: 91 157 255;
+  --white: 255 255 255;
+  --black: 0 0 0;
+  --gray-50: 249 250 251;
+  --gray-100: 243 244 246;
+  --gray-200: 229 231 235;
+  --gray-300: 209 213 219;
+  --gray-400: 156 163 175;
+  --gray-500: 107 114 128;
+  --gray-600: 75 85 99;
+  --gray-700: 55 65 81;
+  --gray-800: 31 41 55;
+  --gray-900: 17 24 39;
+  --gray-950: 3 7 18;
+  --hairline: 47 58 80;
+  --track: 36 48 73;
+  --shimmer-base: 154 163 178;
+  --shimmer-peak: 147 197 253;
+  --heading-from: 255 255 255;
+  --heading-to: 156 194 255;
+  --aura-a: 0.30;
+  --aura-b: 0.16;
+}
+/* light: surfaces turn pale, the grey scale flips (gray-100 becomes the darkest text), overlays use dark ink */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --canvas: 233 237 243;
+  --bg: 241 244 249;
+  --panel: 255 255 255;
+  --raised: 228 234 243;
+  --edge: 217 223 232;
+  --accent: 37 99 235;
+  --white: 17 24 39;
+  --black: 255 255 255;
+  --gray-50: 3 7 18;
+  --gray-100: 17 24 39;
+  --gray-200: 31 41 55;
+  --gray-300: 55 65 81;
+  --gray-400: 75 85 99;
+  --gray-500: 107 114 128;
+  --gray-600: 156 163 175;
+  --gray-700: 209 213 219;
+  --gray-800: 229 231 235;
+  --gray-900: 243 244 246;
+  --gray-950: 249 250 251;
+  --hairline: 203 211 223;
+  --track: 210 218 230;
+  --shimmer-base: 107 114 128;
+  --shimmer-peak: 29 78 216;
+  --heading-from: 17 24 39;
+  --heading-to: 37 99 235;
+  --aura-a: 0.14;
+  --aura-b: 0.08;
+}
 body {
   @apply text-gray-200 antialiased;
-  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+  font-family: "IBM Plex Sans KR", system-ui, sans-serif;
   margin: 0;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
@@ -14,23 +76,35 @@ body {
 /* blue aura: soft light pools behind the floating panels (used on body and on full-screen views) */
 .aura {
   background:
-    radial-gradient(1100px 520px at 50% -8%, rgb(60 130 255 / 0.30), transparent 70%),
-    radial-gradient(700px 420px at 108% 108%, rgb(120 190 255 / 0.16), transparent 70%),
-    radial-gradient(600px 420px at -6% 104%, rgb(60 110 255 / 0.14), transparent 70%),
-    #04060c;
+    radial-gradient(1100px 520px at 50% -8%, rgb(60 130 255 / var(--aura-a)), transparent 70%),
+    radial-gradient(700px 420px at 108% 108%, rgb(120 190 255 / var(--aura-b)), transparent 70%),
+    radial-gradient(600px 420px at -6% 104%, rgb(60 110 255 / var(--aura-b)), transparent 70%),
+    rgb(var(--canvas));
   background-attachment: fixed;
 }
 input, select, textarea, button { @apply outline-none; }
+
+/* Claude Code-style "Generating…" text: a light band sweeps across grey text */
+.shimmer {
+  background: linear-gradient(90deg, rgb(var(--shimmer-base)) 0%, rgb(var(--shimmer-base)) 35%, rgb(var(--shimmer-peak)) 50%, rgb(var(--shimmer-base)) 65%, rgb(var(--shimmer-base)) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2s linear infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .shimmer { animation: none; color: rgb(var(--shimmer-base)); background: none; } }
 button { transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s; }
-button:focus-visible, [role="tab"]:focus-visible, [role="menuitem"]:focus-visible { outline: 2px solid rgb(91 157 255 / 0.75); outline-offset: 2px; }
-::selection { background: rgb(91 157 255 / 0.35); }
-* { scrollbar-width: thin; scrollbar-color: #2f3a50 transparent; }
+button:focus-visible, [role="tab"]:focus-visible, [role="menuitem"]:focus-visible { outline: 2px solid rgb(var(--accent) / 0.75); outline-offset: 2px; }
+::selection { background: rgb(var(--accent) / 0.35); }
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--hairline)) transparent; }
 
 .field {
   @apply w-full rounded-lg border border-edge bg-black/30 px-2.5 py-1.5 text-sm text-gray-100 placeholder:text-gray-600 transition-colors;
 }
-.field:hover { border-color: #2f3a50; }
-.field:focus { @apply border-accent/70; box-shadow: 0 0 0 3px rgb(91 157 255 / 0.18); }
+.field:hover { border-color: rgb(var(--hairline)); }
+.field:focus { @apply border-accent/70; box-shadow: 0 0 0 3px rgb(var(--accent) / 0.18); }
 select.field {
   appearance: none;
   padding-right: 28px;
@@ -50,26 +124,26 @@ select.field {
 @media (prefers-reduced-motion: reduce) { .progress-stripes { animation: none; } }
 
 /* timeline: a scrollbar that is always visible (styling the pseudo-elements also disables auto-hiding overlay scrollbars) */
-.timeline-scroll { scrollbar-width: auto; scrollbar-color: #5b6577 #0f1115; }
+.timeline-scroll { scrollbar-width: auto; scrollbar-color: rgb(var(--gray-600)) rgb(var(--bg)); }
 .timeline-scroll::-webkit-scrollbar { height: 14px; }
-.timeline-scroll::-webkit-scrollbar-track { background: #0f1115; border-top: 1px solid #262c36; }
-.timeline-scroll::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 7px; border: 3px solid #0f1115; }
-.timeline-scroll::-webkit-scrollbar-thumb:hover { background: #5b9dff; }
+.timeline-scroll::-webkit-scrollbar-track { background: rgb(var(--bg)); border-top: 1px solid rgb(var(--edge)); }
+.timeline-scroll::-webkit-scrollbar-thumb { background: rgb(var(--gray-600)); border-radius: 7px; border: 3px solid rgb(var(--bg)); }
+.timeline-scroll::-webkit-scrollbar-thumb:hover { background: rgb(var(--accent)); }
 
 /* sliders: thin track, white thumb */
-input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 9999px; background: #243049; cursor: pointer; }
+input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 9999px; background: rgb(var(--track)); cursor: pointer; }
 input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 9999px; background: #fff; border: 0; box-shadow: 0 1px 4px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(0 0 0 / 0.15); }
 input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 9999px; background: #fff; border: 0; box-shadow: 0 1px 4px rgb(0 0 0 / 0.6); }
-input[type="range"]:focus-visible { outline: 2px solid rgb(91 157 255 / 0.75); outline-offset: 4px; }
+input[type="range"]:focus-visible { outline: 2px solid rgb(var(--accent) / 0.75); outline-offset: 4px; }
 
 /* colour wells: round swatches */
-input[type="color"] { -webkit-appearance: none; appearance: none; width: 30px; height: 30px; padding: 0; border: 2px solid #2f3a50; border-radius: 9999px; background: none; cursor: pointer; }
+input[type="color"] { -webkit-appearance: none; appearance: none; width: 30px; height: 30px; padding: 0; border: 2px solid rgb(var(--hairline)); border-radius: 9999px; background: none; cursor: pointer; }
 input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
 input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 9999px; }
 input[type="color"]::-moz-color-swatch { border: 0; border-radius: 9999px; }
 
-input[type="checkbox"] { accent-color: #5b9dff; }
+input[type="checkbox"] { accent-color: rgb(var(--accent)); }
 
 /* primary buttons: white to blue gradient with a blue glow */
 .btn-primary {
@@ -83,7 +157,22 @@ input[type="checkbox"] { accent-color: #5b9dff; }
 
 /* headings: white fading to light blue */
 .text-gradient {
-  background: linear-gradient(180deg, #ffffff 30%, #9cc2ff 100%);
+  background: linear-gradient(180deg, rgb(var(--heading-from)) 30%, rgb(var(--heading-to)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+:root[data-theme="light"] input[type="range"]::-webkit-slider-thumb { box-shadow: 0 1px 3px rgb(15 23 42 / 0.35), 0 0 0 1px rgb(15 23 42 / 0.2); }
+:root[data-theme="light"] .btn-primary { box-shadow: 0 4px 14px rgb(37 99 235 / 0.3), inset 0 1px 0 rgb(255 255 255 / 0.85); }
+
+/* floating panels: soft top highlight and drop shadow, lighter in light mode */
+.shadow-panel { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.07), 0 8px 30px rgb(0 0 0 / 0.4); }
+:root[data-theme="light"] .shadow-panel { box-shadow: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px rgb(15 23 42 / 0.08); }
+
+/* the "Generating…" asterisk: the logo's blue gradient */
+.glyph-gradient {
+  background: linear-gradient(135deg, #38bdf8 0%, #3b82f6 50%, #1d4ed8 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

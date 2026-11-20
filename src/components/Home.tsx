@@ -265,10 +265,9 @@ export default function Home() {
   return (
     <div className="flex h-full gap-2 p-2">
       {/* sidebar */}
-      <aside className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-white/[0.07] bg-panel/80 p-4 shadow-[inset_0_1px_0_rgb(255_255_255/0.07),0_8px_30px_rgb(0_0_0/0.4)] backdrop-blur-xl">
-        <div className="mb-6 flex items-center gap-2.5">
-          <img src="/favicon.svg" alt="" className="h-8 w-8" />
-          <span className="text-gradient text-[24px] font-semibold leading-none" style={SERIF}>Cutir</span>
+      <aside className="flex w-[240px] shrink-0 flex-col rounded-2xl border border-white/[0.07] bg-panel/80 p-4 shadow-panel backdrop-blur-xl">
+        <div className="mb-6 flex items-center justify-center">
+          <img src="/favicon.svg" alt="Cutir" className="h-8 w-8" />
         </div>
 
         <button className="btn-primary mb-2 rounded-xl px-3 py-2.5 text-sm" onClick={() => setCreating(true)}>
@@ -288,14 +287,11 @@ export default function Home() {
           <span>Settings</span>
         </button>
 
-        <p className="mt-auto text-[11px] leading-relaxed text-gray-600">
-          Projects are saved in this browser.
-        </p>
       </aside>
 
       {/* main */}
       <main className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-white/[0.07] bg-panel/60 backdrop-blur-xl">
-        <div className="mx-auto max-w-[1100px] px-8 py-8">
+        <div className="mx-auto flex min-h-full max-w-[1100px] flex-col px-8 py-8">
           <div className="mb-6 flex flex-wrap items-center gap-3">
             <h1 className="text-gradient mr-auto text-[28px] font-semibold" style={SERIF}>Projects</h1>
             <input
@@ -315,7 +311,7 @@ export default function Home() {
           {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
 
           {entries.length === 0 ? (
-            <div className="mt-24 flex flex-col items-center gap-4 text-center">
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 pb-16 text-center">
               <img src="/favicon.svg" alt="" className="h-16 w-16" />
               <h2 className="text-gradient text-3xl font-semibold" style={SERIF}>No projects yet</h2>
               <p className="max-w-sm text-sm text-gray-500">Create a project to start.</p>

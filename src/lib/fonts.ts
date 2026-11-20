@@ -6,13 +6,38 @@
 
 // Already available: loaded by index.html, or installed on virtually every system.
 const BUILTIN = new Set(
-  ["permanent marker", "inter", "arial", "georgia", "impact", "courier new", "times new roman", "verdana", "helvetica", "tahoma", "trebuchet ms", "sans-serif", "serif", "monospace"]
+  ["permanent marker", "ibm plex sans kr", "arial", "georgia", "impact", "courier new", "times new roman", "verdana", "helvetica", "tahoma", "trebuchet ms", "sans-serif", "serif", "monospace"]
 );
 
 const ready = new Set<string>(); // lower-cased families known to be usable
 const inflight = new Map<string, Promise<void>>();
 
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9 ]{0,60}$/;
+
+/* ---------- recognising "use / download this font" in chat ---------- */
+
+const FONT_VERB = /\b(use|using|download|install|get|apply|switch|set|change|try|load|add)\b/i;
+// anything that is about styling a font, not choosing one ("make the font bigger", "font size 120")
+const NOT_A_FONT_NAME = /\b(size|bigger|smaller|larger|bold|italic|colou?r|shadow|outline|spacing|height|uppercase|lowercase|animation|position|px|pt)\b|\d/i;
+const FILLER = new Set(
+  ("download this that the a an font fonts typeface use using set change switch apply install get please pls to as my for text lyrics lyric on and it can you " +
+    "could would make try with in video of new called named from google load add i want need like go back").split(" ")
+);
+
+/**
+ * "BBH Bogle\ndownload this font" -> "BBH Bogle";  "use Roboto font" -> "Roboto";  "change the font to open sans" -> "open sans".
+ * Returns null unless the message clearly asks for a font by name; everything else goes to the model.
+ */
+export function fontIntent(text: string): string | null {
+  if (!/\b(fonts?|typeface)\b/i.test(text) || !FONT_VERB.test(text) || NOT_A_FONT_NAME.test(text)) return null;
+  const words = text
+    .replace(/["'`:,.!?;()]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w && !FILLER.has(w.toLowerCase()));
+  if (!words.length || words.length > 5) return null;
+  const name = words.join(" ");
+  return SAFE_NAME.test(name) ? name : null;
+}
 
 /** "open sans" -> "Open Sans". CSS font names match case-insensitively, so this is cosmetic. */
 export const titleCaseFont = (s: string) =>

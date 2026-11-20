@@ -20,6 +20,7 @@ Phases 1 to 5 built the lyric video editor. Phases 6 to 10 add movable text, ove
 | 14 | [Edit Tools and Trimming](phase-14-edit-tools-and-trimming.md) |
 | 15 | [Playback Engine and Compositor](phase-15-playback-and-render-pipeline.md) |
 | 16 | [Proxy Media, Optimized Media and Render Cache](phase-16-proxy-media-and-render-cache.md) |
+| 16.5 | [Kinetic Foundations (Words, Beats, Emphasis and Energy)](phase-16.5-kinetic-foundations.md) |
 | 17 | [Effects, Transitions and Plugin Interface](phase-17-effects-and-transitions.md) |
 | 18 | [Keyframe Engine and Curve Editor](phase-18-keyframes-and-curve-editor.md) |
 | 19 | [Titles, Text and Shapes](phase-19-titles-and-text-engine.md) |
