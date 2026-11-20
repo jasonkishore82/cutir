@@ -70,7 +70,7 @@ check("auto_emphasis on one line only", a1.ok && Object.values(P().lines[2].word
 check("the prompt lists emphasised words", /EMPHASIS \(line: word=level\): .*3: /.test(buildSystemPrompt(P(), false, ["kinetic"])));
 
 /* ---------- beat reaction and energy ---------- */
-const b1 = await run("set_beat_reaction", { effect: "punch", strength: 150, downbeats_only: "true" });
+const b1 = await run("set_beat_reaction", { effect: "thump", strength: 150, downbeats_only: "true" });
 check("set_beat_reaction on the project (with repairs)", b1.ok && JSON.stringify(P().style.animation.beat) === JSON.stringify({ name: "pulse", strength: 1.5, downbeatsOnly: true }), P().style.animation.beat);
 const b2 = await run("set_beat_reaction", { effect: "color swap", lines: "2,3" });
 check("set_beat_reaction on lines keeps the strength they read", b2.ok && P().lines[1].styleOverride?.animation?.beat?.name === "colour-swap" && P().lines[2].styleOverride?.animation?.beat?.strength === 1.5 && !P().lines[0].styleOverride, P().lines[1].styleOverride);

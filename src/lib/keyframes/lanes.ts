@@ -67,7 +67,7 @@ export function lanesOf(c: Clip, doc: ProjectDoc): LaneInfo[] {
     const def = getEffect(fx.type);
     if (!def) continue;
     for (const spec of def.params) {
-      if (spec.type === "boolean" || spec.type === "choice" || spec.type === "curve") continue;
+      if (spec.type === "boolean" || spec.type === "choice" || spec.type === "curve" || spec.type === "lut") continue;
       const id: LaneId = { kind: "effect", fxId: fx.id, param: spec.key };
       out.push({ id, key: laneKey(id), ...specRange(spec), label: spec.label, group: def.name, valueKind: paramKind(spec), keys: (fx.keys?.[spec.key] ?? []) as Key[], base: fx.params[spec.key] as KeyValue });
     }

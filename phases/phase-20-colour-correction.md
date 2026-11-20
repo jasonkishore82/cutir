@@ -28,3 +28,8 @@ Reference: Resolve's Color page is built around primary wheels, curves, scopes a
 - A clip can be graded with wheels, curves and a LUT and the viewer and export match
 - Scopes update in real time at 1080p
 - Grades copy between clips and can be saved as presets
+
+## Status (partly built)
+Built: the Colour grade effect (lift, gamma, gain, offset with masters and RGB, contrast and pivot, saturation, hue, temperature, tint, highlights, shadows, amount), an HSL qualifier with matte preview, softness and invert, RGB curves plus hue vs hue, hue vs saturation and luma vs saturation with an inline curve editor, .cube LUT import with intensity, a colour space transform effect (Rec.709, sRGB, Rec.2020, Display P3, S-Log3, LogC, V-Log; log curves only, no camera gamut), and waveform, parade, vectorscope and histogram scopes in the Effects tab. All are ordinary effects, so they stack, keyframe (numeric params), copy and paste between clips, and save as presets. Tests: tests/grade.test.ts.
+
+Not built yet: round colour wheel controls (sliders today); a project colour space setting with an output transform; a stills gallery with wipe compare; auto balance; hue vs luma and sat vs sat curves; qualifier blur; a GPU path (grading runs on the CPU, so it is slower than the GPU effects at 1080p; scopes sample a 256 x 144 copy and stay real time); a dockable Colour workspace (phase 27).

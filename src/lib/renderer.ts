@@ -1,3 +1,4 @@
+import { drawStickers } from "./stickers";
 import {
   EASINGS, EFFECTS, IDENTITY, LOOPS, TRANSITIONS, beatFxAt, combineFx, energyAt, energyClock, energyFactor, presenceIn, presenceOut,
   scaleLoop, toFx, unitPresence, type Fx, type Info,
@@ -256,7 +257,8 @@ export function placeWords(
   items: { w: number; fontPx: number }[],
   rowCounts: number[],
   spaceW: number,
-  lineHeight: number
+  lineHeight: number,
+  align: "left" | "center" | "right" = "center"
 ): { words: PlacedWord[]; width: number; height: number } {
   const rows: { from: number; to: number; h: number; w: number }[] = [];
   let k = 0;
@@ -275,7 +277,7 @@ export function placeWords(
   const words: PlacedWord[] = [];
   let y = -height / 2;
   rows.forEach((r, ri) => {
-    let x = -r.w / 2;
+    let x = align === "left" ? -width / 2 : align === "right" ? width / 2 - r.w : -r.w / 2;
     for (let i = r.from; i < r.to; i++) {
       words.push({ row: ri, x, y: y + r.h / 2, w: items[i].w, h: r.h });
       x += items[i].w + spaceW;
@@ -314,7 +316,7 @@ function layoutWordBoxes(ctx: CanvasRenderingContext2D, project: Project, line: 
   setSpacing(ctx, style.letterSpacing * scale);
   const spaceW = ctx.measureText(" ").width;
   ctx.restore();
-  const placed = placeWords(items, rowCounts, spaceW, style.lineHeight);
+  const placed = placeWords(items, rowCounts, spaceW, style.lineHeight, style.align);
   const boxes: WordBox[] = placed.words.map((p, i) => ({
     ...p,
     index: i,
@@ -339,13 +341,27 @@ function layoutLine(
   h: number,
   withWords = hasWordOverrides(line)
 ): Layout | null {
-  const style = effectiveStyle(project, line);
+  let style = effectiveStyle(project, line);
   const scale = Math.min(w, h) / REF;
-  const fontPx = style.fontSize * scale;
-  const lineH = fontPx * style.lineHeight;
   const raw = style.uppercase ? line.text.toUpperCase() : line.text;
   const rows = wrapText(raw, style.maxCharsPerLine);
   if (!rows.length) return null;
+  const fit = style.fitWidth ?? 0;
+  if (fit > 0) {
+    // fit to frame: scale the font so the widest row spans `fit` of the width (and the block stays inside the height)
+    const px = style.fontSize * scale;
+    ctx.save();
+    ctx.font = `${px}px "${style.fontFamily}", sans-serif`;
+    if ("letterSpacing" in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${style.letterSpacing * scale}px`;
+    const widest = Math.max(...rows.map((r) => ctx.measureText(r).width));
+    ctx.restore();
+    if (widest > 0) {
+      const k = Math.min((Math.min(1, fit) * w) / widest, (0.9 * h) / (rows.length * px * style.lineHeight));
+      style = { ...style, fontSize: style.fontSize * k, letterSpacing: style.letterSpacing * k };
+    }
+  }
+  const fontPx = style.fontSize * scale;
+  const lineH = fontPx * style.lineHeight;
 
   ctx.save();
   ctx.font = `${fontPx}px "${style.fontFamily}", sans-serif`;
@@ -364,11 +380,17 @@ function layoutLine(
   let cy = h / 2;
   if (style.position === "top") cy = h * 0.1 + blockH / 2;
   if (style.position === "bottom") cy = h * 0.9 - blockH / 2;
+  if (style.align === "left") cx = w * 0.06 + textW / 2;
+  if (style.align === "right") cx = w * 0.94 - textW / 2;
   if (tf?.x !== undefined) cx = tf.x * w;
   if (tf?.y !== undefined) cy = tf.y * h;
   const words = wl?.boxes.map((b) => ({ ...b, x: b.x + cx, y: b.y + cy }));
   return { style, scale, fontPx, lineH, rows, blockH, textW, cx, cy, words };
 }
+
+/** Left edge of a row of width `rowW` inside a laid-out line, honouring its alignment. */
+const rowLeft = (L: { style: TextStyle; cx: number; textW: number }, rowW: number) =>
+  L.style.align === "left" ? L.cx - L.textW / 2 : L.style.align === "right" ? L.cx + L.textW / 2 - rowW : L.cx - rowW / 2;
 
 /** A line's box on the canvas: centre, half sizes (scale applied) and rotation in degrees. */
 export type LineBounds = { cx: number; cy: number; halfW: number; halfH: number; rotation: number };
@@ -454,14 +476,68 @@ export function drawFrame(
     const ho = handoverAt(project, lines, time);
     if (ho) {
       const def = TRANSITIONS[ho.type];
+      drawGhosts(ctx, project, lines, ho.to, w, h, ho.from);
+      drawStickers(ctx, ho.from, time, w, h);
+      drawStickers(ctx, ho.to, time, w, h);
       drawLyric(ctx, project, ho.from, time, w, h, { side: "out", fx: toFx(def.out(ho.p)) });
       drawLyric(ctx, project, ho.to, time, w, h, { side: "in", fx: toFx(def.in(ho.p)) });
       continue;
     }
     const line = activeLine(lines, time);
-    if (line) drawLyric(ctx, project, line, time, w, h);
+    if (line) {
+      drawGhosts(ctx, project, lines, line, w, h);
+      drawStickers(ctx, line, time, w, h);
+      drawLyric(ctx, project, line, time, w, h);
+    }
   }
   ctx.restore();
+}
+
+/**
+ * Ghost lines: still, faded copies of the lines before (above) and after (below) the current one, fading further
+ * the farther they are. Drawn behind the current line. Off unless the current line's style has `ghosts` > 0.
+ */
+function drawGhosts(ctx: CanvasRenderingContext2D, project: Project, lines: LyricLine[], anchor: LyricLine, w: number, h: number, skip?: LyricLine) {
+  const L0 = layoutLine(ctx, project, anchor, w, h, false);
+  const n = Math.min(4, Math.max(0, Math.round(L0?.style.ghosts ?? 0)));
+  if (!L0 || n <= 0) return;
+  const sorted = [...lines].sort((a, b) => a.start - b.start);
+  const at = sorted.indexOf(anchor);
+  if (at < 0) return;
+  const base = Math.min(1, Math.max(0, L0.style.ghostOpacity ?? 0.3));
+  const gap = Math.max(0.2, L0.style.ghostSpacing ?? 0.9) * L0.blockH;
+  // farthest first, so nearer ghosts sit on top of farther ones
+  const echo = !!L0.style.ghostEcho;
+  for (let k = n; k >= 1; k--) {
+    for (const dir of [-1, 1]) {
+      const line = echo ? anchor : sorted[at + dir * k];
+      if (!line || line === skip) continue;
+      const L = echo ? L0 : layoutLine(ctx, project, line, w, h, false);
+      if (!L) continue;
+      const alpha = base * (1 - (k - 1) / n);
+      if (alpha <= 0.01) continue;
+      const cy = L0.cy + dir * k * gap;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `${L.fontPx}px "${L.style.fontFamily}", sans-serif`;
+      ctx.textBaseline = "middle";
+      ctx.textAlign = "left";
+      ctx.lineJoin = "round";
+      if ("letterSpacing" in ctx) (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = `${L.style.letterSpacing * L.scale}px`;
+      L.rows.forEach((row, ri) => {
+        const y = cy - L.blockH / 2 + L.lineH * (ri + 0.5);
+        const rw = ctx.measureText(row).width;
+        const x = L.style.align === "left" || L.style.align === "right" ? rowLeft(L, rw) : L0.cx - rw / 2;
+        if (echo) {
+          // an outline-only copy in the text colour
+          ctx.strokeStyle = L.style.color;
+          ctx.lineWidth = Math.max(1.5, 3 * L.scale);
+          ctx.strokeText(row, x, y);
+        } else paintText(ctx, row, x, y, L.style, L.scale, 1);
+      });
+      ctx.restore();
+    }
+  }
 }
 
 /** `trans` replaces the line's own out (or in) slot while a transition hands it over to (or from) its neighbour. */
@@ -518,6 +594,15 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
   ctx.rotate((blockRot * Math.PI) / 180);
   ctx.scale(blockScale, blockScale);
   ctx.translate(-cx, -cy);
+  if (style.labelColor) {
+    const pad = (style.labelPad ?? 24) * scale;
+    const lw = L.textW + pad * 2;
+    const lh = blockH + pad * 1.2;
+    ctx.save();
+    ctx.fillStyle = style.labelColor;
+    ctx.fillRect(cx - lw / 2, cy - lh / 2, lw, lh);
+    ctx.restore();
+  }
   if (fx.blur > 0.05 && "filter" in ctx) (ctx as CanvasRenderingContext2D).filter = `blur(${fx.blur * scale}px)`;
 
   ctx.font = `${fontPx}px "${style.fontFamily}", sans-serif`;
@@ -531,6 +616,52 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
     drawWords(ctx, {
       project, line, L, t, t0, w, h, info, pIn, pOut, staggerIn, staggerOut, tIn, tOut, loopT, ef, revealFrac, highlight, dim, glow,
       tone, blockRot, blockScale,
+    });
+    ctx.restore();
+    return;
+  }
+
+  /* arch: every character sits on a circular arc and turns with it */
+  const arch = Math.max(-180, Math.min(180, style.arch ?? 0));
+  if (Math.abs(arch) >= 1) {
+    const theta = (Math.abs(arch) * Math.PI) / 180;
+    const sign = arch > 0 ? 1 : -1;
+    const mode = staggerIn ? inDef.mode : staggerOut ? outDef.mode : "none";
+    const nUnits = mode === "word" ? rows.reduce((n, r) => n + r.split(" ").filter(Boolean).length, 0) : rows.join("").replace(/ /g, "").length;
+    const revealCount = revealFrac === null ? Infinity : Math.floor(revealFrac * info.chars + 1e-6);
+    let unit = 0;
+    let before = 0;
+    rows.forEach((row, ri) => {
+      const rowW = ctx.measureText(row).width;
+      const R = rowW / theta;
+      const y0 = cy - blockH / 2 + lineH * (ri + 0.5);
+      // keep the middle of the arc on the row line; the ends swing away from it
+      let inWord = false;
+      [...row].forEach((ch, ci) => {
+        const isSpace = ch === " ";
+        if (!isSpace && (mode !== "word" || !inWord)) unit++;
+        inWord = !isSpace;
+        if (isSpace || before + ci >= revealCount) return;
+        const u = unit - 1;
+        let ufx = IDENTITY;
+        if (staggerIn) ufx = combineFx(ufx, toFx(inDef.fx(unitPresence(pIn, u, nUnits, inDef.spread ?? 0.7), "in")));
+        if (staggerOut) ufx = combineFx(ufx, toFx(outDef.fx(unitPresence(pOut, u, nUnits, outDef.spread ?? 0.7), "out")));
+        if (ufx.opacity <= 0) return;
+        const chW = ctx.measureText(ch).width;
+        const s = ctx.measureText(row.slice(0, ci)).width + chW / 2 - rowW / 2;
+        const phi = s / R;
+        const x = cx + R * Math.sin(phi);
+        const y = y0 + sign * R * (1 - Math.cos(phi));
+        const ldy = loopDef.letterDy ? loopDef.letterDy(loopT, anim.loop.speed, u) * ef : 0;
+        ctx.save();
+        ctx.globalAlpha *= Math.min(1, Math.max(0, ufx.opacity));
+        ctx.translate(x + ufx.dx * h, y + (ufx.dy + ldy) * h);
+        ctx.rotate(sign * phi + (ufx.rotation * Math.PI) / 180);
+        ctx.scale(ufx.scale, ufx.scale);
+        paintText(ctx, ch, -chW / 2, 0, style, scale, 1, glow, tone);
+        ctx.restore();
+      });
+      before += row.length;
     });
     ctx.restore();
     return;
@@ -570,7 +701,7 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
 
       const row = rows[u.row];
       const y = cy - blockH / 2 + lineH * (u.row + 0.5);
-      const x0 = cx - ctx.measureText(row).width / 2;
+      const x0 = rowLeft(L, ctx.measureText(row).width);
       const ux = x0 + ctx.measureText(row.slice(0, u.start)).width;
       const uw = ctx.measureText(u.text).width;
       ctx.save();
@@ -598,7 +729,7 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
     let wi = 0;
     rows.forEach((row, ri) => {
       const y = cy - blockH / 2 + lineH * (ri + 0.5);
-      const x0 = cx - ctx.measureText(row).width / 2;
+      const x0 = rowLeft(L, ctx.measureText(row).width);
       let pos = 0;
       for (const word of wordsByRow[ri]) {
         const start = starts[wi];
@@ -631,7 +762,7 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
   rows.forEach((row, ri) => {
     const y = cy - blockH / 2 + lineH * (ri + 0.5);
     const fullW = ctx.measureText(row).width;
-    const x0 = cx - fullW / 2;
+    const x0 = rowLeft(L, fullW);
 
     let reveal = row.length;
     if (revealFrac !== null) {
@@ -651,6 +782,17 @@ function drawLyric(ctx: CanvasRenderingContext2D, project: Project, line: LyricL
 
     const shown = row.slice(0, reveal);
     if (shown) paintText(ctx, shown, x0, y, style, scale, 1, glow, tone);
+    if (shown && style.fillColor) {
+      // fill up: the lower part of the block is repainted in the fill colour, rising over the line's length
+      const prog = EASINGS["ease-in-out"](Math.min(1, Math.max(0, t0 / dur)));
+      const top = cy + blockH / 2 - blockH * prog;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x0 - lineH, top, fullW + lineH * 2, blockH + lineH);
+      ctx.clip();
+      paintText(ctx, shown, x0, y, { ...style, color: style.fillColor }, scale, 1, 0, tone);
+      ctx.restore();
+    }
     if (dim > 0 && reveal < row.length) {
       const rest = row.slice(reveal);
       paintText(ctx, rest, x0 + ctx.measureText(shown).width, y, style, scale, dim, glow, tone);

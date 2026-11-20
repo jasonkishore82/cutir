@@ -186,7 +186,7 @@ export default function App() {
   const [section, setSectionState] = useState<SectionId>(() => {
     try {
       const v = localStorage.getItem("cutir:section");
-      return v === "media" || v === "lyrics" || v === "style" || v === "motion" ? v : "import";
+      return v === "media" || v === "lyrics" || v === "style" || v === "motion" || v === "effects" || v === "titles" ? v : "import";
     } catch {
       return "import";
     }
@@ -205,6 +205,23 @@ export default function App() {
     startMcpBridge(); // connects to the Cutir MCP server only if the user switched Claude control on
     installUnloadSave();
     return startAutosave((doc, view) => useLibrary.getState().saveContent(doc, view));
+  }, []);
+
+  // A song picked from the media library keeps its pool id when a project is saved, but its object URL only lives for a
+  // session. Once the library has opened the file again, give the song its URL back (waveform, auto-sync, beats need it).
+  useEffect(() => {
+    const restore = () => {
+      const a = useProject.getState().project.audio;
+      const url = a?.mediaId ? useMedia.getState().urls[a.mediaId] : undefined;
+      if (a && !a.url && url) useProject.setState((s) => ({ project: { ...s.project, audio: { ...a, url } } }));
+    };
+    restore();
+    const u1 = useMedia.subscribe(restore);
+    const u2 = useProject.subscribe(restore);
+    return () => {
+      u1();
+      u2();
+    };
   }, []);
 
   useEffect(() => {

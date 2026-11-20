@@ -2,7 +2,7 @@ import { Icon } from "./ui";
 import { useEffect, useRef, useState } from "react";
 import { useProject } from "../store/project";
 import { ASPECT_SIZES } from "../lib/renderer";
-import { downloadBlob, exportMp4, type ExportProgress } from "../lib/exporter";
+import { downloadBlob, exportMp4, type ExportProgress, type ExportScale } from "../lib/exporter";
 import { toAss, toSrt } from "../lib/subtitles";
 import { usePlayback } from "../lib/transport";
 
@@ -19,7 +19,10 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<{ url: string; size: number } | null>(null);
   const abort = useRef<AbortController | null>(null);
 
-  const { w, h } = ASPECT_SIZES[project.aspect];
+  const [scale, setScale] = useState<ExportScale>(1);
+  const base = ASPECT_SIZES[project.aspect];
+  const w = base.w * scale;
+  const h = base.h * scale;
   const frames = Math.ceil(duration * project.fps);
   const long = duration > 300;
 
@@ -39,6 +42,7 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
     try {
       const blob = await exportMp4(useProject.getState().project, {
         duration,
+        scale,
         onProgress: setProgress,
         signal: abort.current.signal,
       });
@@ -75,7 +79,13 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
 
         <div className="space-y-2">
           <div className="flex items-center gap-3 text-xs text-gray-400">
-            <span>{w} x {h}</span>
+            <label className="flex items-center gap-1">
+              Size
+              <select className="field !w-auto" value={scale} disabled={running} onChange={(e) => setScale(Number(e.target.value) as ExportScale)}>
+                <option value={1}>{base.w} x {base.h}</option>
+                <option value={2}>4K ({base.w * 2} x {base.h * 2})</option>
+              </select>
+            </label>
             <label className="flex items-center gap-1">
               FPS
               <select
@@ -90,6 +100,11 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
             </label>
             <span>{duration > 0 ? `${mmss(duration)}, ${frames} frames` : "no duration yet"}</span>
           </div>
+          {scale === 2 && (
+            <p className="text-[11px] text-yellow-400">
+              4K ({w} x {h}) needs a browser and GPU that can encode H.264 at that size. Otherwise it falls back to the very slow compatibility encoder. Try 30 fps.
+            </p>
+          )}
           {long && (
             <p className="text-[11px] text-yellow-400">
               Long exports run in your browser and can take a while. 30 fps is much faster than 60.

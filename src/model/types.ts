@@ -104,7 +104,92 @@ export type Track = {
 };
 
 /** A clip's content when it is not a media file. */
-export type Generator = { type: "gradient"; colors: string[]; angle: number; noise: boolean };
+export type Generator =
+  | { type: "gradient"; colors: string[]; angle: number; noise: boolean }
+  | { type: "solid"; color: string }
+  | { type: "shape"; shape: ShapeSpec }
+  | { type: "noise"; amount: number; scale: number; mono: boolean; speed: number; color: string }
+  | { type: "countdown"; from: number; color: string; ring: boolean; size: number; font: string }
+  | { type: "timecode"; color: string; size: number; font: string; fps: number; offset: number; box: boolean }
+  | { type: "title"; title: TitleSpec };
+
+/** A drawn shape (phase 19). Sizes are fractions of the frame height, positions fractions of the frame. */
+export type ShapeSpec = {
+  kind: "rectangle" | "ellipse" | "line" | "polygon" | "arrow";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Fill colour, or "" for none. */
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  /** Rectangle corner radius as a fraction of the shorter side. */
+  radius: number;
+  /** Polygon corner count (3 to 12). */
+  sides: number;
+  /** Degrees. */
+  rotation: number;
+};
+
+/** A character range with its own look; `start` is inclusive and `end` exclusive, counted in letters of the text. */
+export type TextRun = { start: number; end: number; color?: string; weight?: number; italic?: boolean; underline?: boolean; size?: number; font?: string };
+
+export type TitleAnimator = {
+  preset: "none" | "typewriter" | "word-pop" | "line-slide" | "wave" | "blur-in" | "karaoke-fill" | "roll";
+  /** Animate by letter, word or line. */
+  unit: "char" | "word" | "line";
+  /** Seconds the whole animation takes to sweep across the text (in), and how long each unit takes. */
+  duration: number;
+  /** Range selector: where the sweep starts and ends along the text (0..100) and the shift of both. */
+  rangeStart: number;
+  rangeEnd: number;
+  offset: number;
+  /** Fade the title out over the last seconds. */
+  outDuration: number;
+};
+
+/** A title: a text box with its look (phase 19). Sizes are fractions of the frame height. */
+export type TitleSpec = {
+  text: string;
+  font: string;
+  weight: number;
+  italic: boolean;
+  underline: boolean;
+  size: number;
+  color: string;
+  /** Second colour: with `gradient` the fill runs from `color` to it. */
+  color2: string;
+  gradient: boolean;
+  gradientAngle: number;
+  /** An image (data URL) used as the fill instead of colour. */
+  fillImage?: string;
+  align: "left" | "center" | "right";
+  lineHeight: number;
+  letterSpacing: number;
+  /** Box centre and width, fractions of the frame. */
+  x: number;
+  y: number;
+  width: number;
+  /** Shrink the text to fit the box when it is too tall or wide. */
+  autoFit: boolean;
+  stroke: string;
+  strokeWidth: number;
+  shadow: boolean;
+  shadowColor: string;
+  shadowBlur: number;
+  glow: number;
+  glowColor: string;
+  /** Layered strokes that fake a bevel. */
+  bevel: boolean;
+  box: { color: string; padding: number; radius: number; opacity: number } | null;
+  runs: TextRun[];
+  animator: TitleAnimator;
+  /** Credits roll: pixels (fraction of height) per second the block moves up; 0 = no roll. */
+  roll: number;
+  /** Fonts tried in order when the first is missing. */
+  fallback: string[];
+};
 
 /** Subtitle clips carry their text and its look. */
 export type TextPayload = {

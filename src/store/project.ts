@@ -13,7 +13,7 @@ export type EffectName =
 export type LoopName = "none" | "float" | "pulse" | "shake" | "glow" | "wave";
 export type Easing = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "back" | "elastic";
 /** Short decaying reactions that fire on each beat (phase 16.5). */
-export type BeatName = "none" | "pulse" | "flash" | "shake" | "nudge" | "colour-swap" | "jump-cut";
+export type BeatName = "none" | "pulse" | "flash" | "shake" | "nudge" | "colour-swap" | "jump-cut" | "bounce" | "punch" | "heartbeat" | "drop" | "rise" | "swing" | "spin" | "wobble" | "glitch" | "blur-hit" | "strobe";
 /** The beat slot: `strength` 0..2 (1 = normal); `downbeatsOnly` reacts on the first beat of each bar only. */
 export type BeatSlot = { name: BeatName; strength: number; downbeatsOnly: boolean };
 
@@ -74,6 +74,26 @@ export type TextStyle = {
   emphasis?: EmphasisLevel[];
   /** How much the song's loudness drives motion: 0 = not at all, 1 = fully (phase 16.5). Missing = 0. */
   energy?: number;
+  /** Ghost lines: faded copies of the neighbouring lines behind the current one. 0 / missing = off. */
+  ghosts?: number;
+  /** Ghost brightness 0..1 for the nearest ghost (missing = 0.3); farther ghosts fade further. */
+  ghostOpacity?: number;
+  /** Ghost distance as a multiple of the current line's block height (missing = 0.9). */
+  ghostSpacing?: number;
+  /** Label box: a filled card behind the line, like a paper sticker. Missing = none. It tilts with the line's rotation. */
+  labelColor?: string;
+  /** Label padding around the text in px at 1080p (missing = 24). */
+  labelPad?: number;
+  /** Fit to frame: size the text so its widest row spans this fraction of the canvas width (0.3..1). Missing / 0 = use fontSize. */
+  fitWidth?: number;
+  /** Arch: bend each row of text along a circular arc spanning this many degrees. Positive bows up like a rainbow, negative bows down like a smile. Missing / 0 = straight. */
+  arch?: number;
+  /** Fill up: the text fills with this colour from the bottom as the line is sung (plain entrances only). Missing = none. */
+  fillColor?: string;
+  /** Echo: ghost lines repeat the current line as outlines (a trail of copies) instead of showing the neighbouring lines. */
+  ghostEcho?: boolean;
+  /** Text alignment inside the block. Left / right also park the block at that side of the frame (until it is placed freely). Missing = centre. */
+  align?: "left" | "center" | "right";
 };
 
 /** How an emphasis level changes a word: size multiplier, optional colour and bolder weight. */
@@ -119,7 +139,12 @@ export type LyricLine = {
   transition?: Transition;
   /** Per-word overrides (phase 16.5), keyed by word index. */
   wordOverrides?: Record<number, WordOverride>;
+  /** Doodle stickers drawn behind this line's text while the line shows. */
+  stickers?: Sticker[];
 };
+
+/** A doodle drawn with the line: `x`, `y` are the centre as fractions of the canvas, `size` a fraction of the shorter side. */
+export type Sticker = { id: string; shape: string; x: number; y: number; size: number; rotation: number; color: string; outline: boolean };
 
 /** Properties a keyframe can animate. All are offsets on top of the resolved style and the in/out/loop animation. */
 export type KeyProp = "x" | "y" | "scale" | "rotation" | "opacity";

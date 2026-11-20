@@ -8,6 +8,9 @@ import * as FX from "../timeline/effects";
 import { editTimeline, tlNow, useTimelineUi } from "../timeline/ui";
 import { EASING_NAMES } from "../lib/animations";
 import { getTime } from "../lib/transport";
+import CurveParam from "./CurveParam";
+import ScopesCard from "./ScopesCard";
+import { packLut, parseCube } from "../lib/grade/math";
 
 export const EFFECT_MIME = "application/x-cutir-effect";
 export const TRANSITION_MIME = "application/x-cutir-transition";
@@ -46,6 +49,7 @@ export default function EffectsPanel() {
   return (
     <>
       <Browser targets={targets} />
+      <ScopesCard />
       {transition && <TransitionEditor tr={transition} />}
       {clip ? (
         <StackEditor clipId={clip.id} stack={clip.effects} start={clip.start} />
@@ -317,8 +321,13 @@ function ParamField({ spec, value, keys, now, onChange, onKeys }: { spec: ParamS
         </div>
       );
     }
-    case "curve":
-      return <p className="text-[11px] text-gray-500">{spec.label}: curve (edit through the chat for now)</p>;
+    case "curve": {
+      const tints: Record<string, string> = { red: "#f87171", green: "#4ade80", blue: "#60a5fa" };
+      const flat = /^(hueVs|lumaVs)/.test(spec.key);
+      return <CurveParam label={spec.label} value={(Array.isArray(value) ? value : spec.default) as [number, number][]} flat={flat} tint={tints[spec.key]} onChange={onChange} />;
+    }
+    case "lut":
+      return <LutParam label={spec.label} value={value as { name?: string } | null} onChange={onChange} />;
   }
 }
 
@@ -372,5 +381,36 @@ function TransitionEditor({ tr }: { tr: ClipTransition }) {
         Remove transition
       </button>
     </Card>
+  );
+}
+
+/** Pick a .cube file; the table is stored in the effect's params, so the project carries it. */
+function LutParam({ label, value, onChange }: { label: string; value: { name?: string } | null; onChange: (v: unknown) => void }) {
+  const [err, setErr] = useState("");
+  return (
+    <div className="space-y-1">
+      <span className="label">{label}</span>
+      <div className="flex items-center gap-2">
+        <input
+          type="file"
+          accept=".cube"
+          className="text-[11px] text-gray-400"
+          aria-label={label}
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            if (!f) return;
+            try {
+              onChange(packLut(parseCube(await f.text(), f.name.replace(/\.cube$/i, ""))));
+              setErr("");
+            } catch (x) {
+              setErr(x instanceof Error ? x.message : String(x));
+            }
+          }}
+        />
+        {value && <button className="text-[11px] text-gray-500 hover:text-red-400" onClick={() => onChange(null)}>remove</button>}
+      </div>
+      {value?.name && <p className="text-[11px] text-gray-400">{value.name}</p>}
+      {err && <p className="text-[11px] text-red-400">{err}</p>}
+    </div>
   );
 }

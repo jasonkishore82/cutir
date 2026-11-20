@@ -189,7 +189,7 @@ export function docToView(doc: ProjectDoc): Project {
   const bgClip = tl.clips.find((c) => c.id === IDS.bgClip);
   let background: Background;
   const bgMedia = media(bgClip?.mediaId);
-  if (bgClip?.generator) background = { type: "gradient", colors: bgClip.generator.colors, angle: bgClip.generator.angle, noise: bgClip.generator.noise };
+  if (bgClip?.generator?.type === "gradient") background = { type: "gradient", colors: bgClip.generator.colors, angle: bgClip.generator.angle, noise: bgClip.generator.noise };
   else background = bgMedia ? { type: "asset", asset: assetFromMedia(bgMedia) } : { type: "asset" };
 
   const songMedia = media(tl.clips.find((c) => c.id === IDS.audioClip)?.mediaId);

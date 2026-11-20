@@ -27,7 +27,7 @@ check("loops untouched at energy 0", same(scaleLoop(LOOPS.pulse.fx(0.3, 1), ener
 
 /* ---------- beats ---------- */
 
-check("BEAT_NAMES lists every effect", same(BEAT_NAMES, ["none", "pulse", "flash", "shake", "nudge", "colour-swap", "jump-cut"]));
+check("BEAT_NAMES lists every effect", same(BEAT_NAMES, ["none", "pulse", "flash", "shake", "nudge", "colour-swap", "jump-cut", "bounce", "punch", "heartbeat", "drop", "rise", "swing", "spin", "wobble", "glitch", "blur-hit", "strobe"]));
 check("none does nothing", same(BEATS.none.fx(0, 1, 0), {}));
 const decaying: BeatName[] = ["pulse", "flash", "shake", "nudge", "colour-swap"];
 const dev = (p: Partial<ReturnType<typeof toFx>>) => {

@@ -33,7 +33,9 @@ import { useMedia } from "../store/media";
  */
 
 export type ExportProgress = { stage: string; fraction: number; engine?: "gpu" | "cpu" };
-type Opts = { duration: number; onProgress: (p: ExportProgress) => void; signal: AbortSignal };
+/** Output size as a multiple of the 1080p-based canvas: 1 = 1080p, 2 = 4K (3840x2160). */
+export type ExportScale = 1 | 2;
+type Opts = { duration: number; onProgress: (p: ExportProgress) => void; signal: AbortSignal; scale?: ExportScale };
 
 const abortError = () => new DOMException("Export cancelled", "AbortError");
 const nextTask = () => new Promise<void>((r) => setTimeout(r, 0)); // let the UI repaint the progress bar
@@ -118,9 +120,11 @@ function wavOf(buf: AudioBuffer): Blob {
   return new Blob([data.buffer], { type: "audio/wav" });
 }
 
-async function setup(project: Project, duration: number) {
+async function setup(project: Project, duration: number, scale: ExportScale = 1) {
   if (!(duration > 0)) throw new Error("Nothing to export yet. Add audio or lyrics first.");
-  const { w, h } = ASPECT_SIZES[project.aspect];
+  const base = ASPECT_SIZES[project.aspect];
+  const w = base.w * scale;
+  const h = base.h * scale;
   const fps = project.fps;
   const total = Math.max(1, Math.ceil(duration * fps));
 
@@ -161,20 +165,23 @@ async function setup(project: Project, duration: number) {
 
 /* ---------- fast path: WebCodecs + Mediabunny ---------- */
 
-async function exportViaWebCodecs(project: Project, { duration, onProgress, signal }: Opts): Promise<Blob> {
+async function exportViaWebCodecs(project: Project, { duration, onProgress, signal, scale }: Opts): Promise<Blob> {
   if (typeof VideoEncoder === "undefined" || typeof VideoFrame === "undefined") throw new Unsupported("WebCodecs is not available");
 
-  const { w, h, fps, total, canvas, render } = await setup(project, duration);
+  const { w, h, fps, total, canvas, render } = await setup(project, duration, scale);
   const check = () => {
     if (signal.aborted) throw abortError();
   };
 
-  if (!(await canEncodeVideo("avc", { width: w, height: h, frameRate: fps, quality: QUALITY_HIGH }))) {
+  // Explicit bitrate (~0.25 bits per pixel per frame: 1080p30 ≈ 15 Mbps, 4K30 ≈ 62 Mbps). QUALITY_HIGH alone is far lower
+  // and smears fine text and gradients.
+  const bitrate = Math.round(w * h * fps * 0.25);
+  if (!(await canEncodeVideo("avc", { width: w, height: h, frameRate: fps, bitrate }))) {
     throw new Unsupported(`This browser cannot encode H.264 at ${w}x${h}`);
   }
 
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
-  const video = new CanvasSource(canvas, { codec: "avc", quality: QUALITY_HIGH, keyFrameInterval: 2 });
+  const video = new CanvasSource(canvas, { codec: "avc", bitrate, keyFrameInterval: 2 });
   output.addVideoTrack(video, { frameRate: fps });
 
   /* audio: mix the song and the timeline's audio clips once, then encode to AAC with the same muxer when possible */
@@ -268,7 +275,7 @@ async function muxAudioWithFfmpeg(video: Blob, audio: { url: string; name: strin
 /* ---------- compatibility path: ffmpeg.wasm ---------- */
 
 const SEGMENT_FRAMES = 150;
-const JPEG_QUALITY = 0.92;
+const JPEG_QUALITY = 0.98;
 const pad = (n: number, w = 5) => String(n).padStart(w, "0");
 
 const toJpeg = (canvas: HTMLCanvasElement) =>
@@ -284,8 +291,8 @@ const toJpeg = (canvas: HTMLCanvasElement) =>
  * Frames are encoded in segments (JPEG frames are deleted after each segment is encoded) and the segments are
  * concatenated with the original audio muxed in at the end, to keep memory bounded on long songs.
  */
-async function exportViaFfmpeg(project: Project, { duration, onProgress, signal }: Opts): Promise<Blob> {
-  const { fps, total, canvas, render } = await setup(project, duration);
+async function exportViaFfmpeg(project: Project, { duration, onProgress, signal, scale }: Opts): Promise<Blob> {
+  const { fps, total, canvas, render } = await setup(project, duration, scale);
 
   onProgress({ stage: "Loading encoder", fraction: 0 });
   const ffmpeg = new FFmpeg();
@@ -329,8 +336,8 @@ async function exportViaFfmpeg(project: Project, { duration, onProgress, signal 
         "-framerate", String(fps),
         "-i", "f%05d.jpg",
         "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "20",
+        "-preset", "superfast",
+        "-crf", "16",
         "-pix_fmt", "yuv420p",
         "-r", String(fps),
         name,

@@ -1,3 +1,4 @@
+import { scopeSource } from "../lib/scopes";
 import { Icon } from "./ui";
 import TextOverlay from "./TextOverlay";
 import ClipGizmo from "./ClipGizmo";
@@ -129,6 +130,48 @@ export default function Preview() {
   const docEnd = useProject((s) => timelineEnd(activeTimeline(s.doc)));
   const doc = useProject((s) => s.doc);
   const [showStats, setShowStats] = useState(false);
+  /* full screen: the whole preview (picture and controls) fills the screen; controls fade out when the mouse rests */
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [full, setFull] = useState(false);
+  const [idle, setIdle] = useState(false);
+  const idleTimer = useRef<number | undefined>(undefined);
+  const wake = () => {
+    setIdle(false);
+    window.clearTimeout(idleTimer.current);
+    idleTimer.current = window.setTimeout(() => setIdle(true), 2500);
+  };
+  const toggleFull = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void rootRef.current?.requestFullscreen?.().catch(() => undefined);
+  };
+  useEffect(() => {
+    const onChange = () => {
+      const on = document.fullscreenElement === rootRef.current;
+      setFull(on);
+      if (on) wake();
+      else {
+        window.clearTimeout(idleTimer.current);
+        setIdle(false);
+      }
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      window.clearTimeout(idleTimer.current);
+    };
+  }, []);
+  /* F toggles full screen (not while typing) */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "KeyF" || e.ctrlKey || e.metaKey || e.altKey || useProject.getState().syncMode) return;
+      const t = e.target as HTMLElement;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.isContentEditable) return;
+      e.preventDefault();
+      toggleFull();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [diag, setDiag] = useState({ fps: 0, dropped: 0, decoded: 0, cacheMB: 0, missing: 0 });
   const duration = usePlayback((s) => s.duration);
   const loop = usePlayback((s) => s.loop);
@@ -139,6 +182,26 @@ export default function Preview() {
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [timeLabel, setTimeLabel] = useState("0:00.00");
   const [scrub, setScrub] = useState<number | null>(null);
+  // the thumb follows the pointer while dragging, then goes back to following playback. The release can happen
+  // anywhere on the page, so listen on the window (a release outside the slider used to leave it frozen).
+  const dragging = useRef(false);
+  const scrubTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    const end = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      setScrub(null);
+    };
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    window.addEventListener("blur", end);
+    return () => {
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+      window.removeEventListener("blur", end);
+      window.clearTimeout(scrubTimer.current);
+    };
+  }, []);
 
   /* audio source follows the project */
   useEffect(() => setSource(audioUrl), [audioUrl]);
@@ -248,6 +311,7 @@ export default function Preview() {
     let suggested = false;
     let droppedAtStart = stats.dropped;
     viewSize = { w: canvas.width, h: canvas.height };
+    scopeSource.canvas = canvas;
     const sizeKey = `${canvas.width}x${canvas.height}`;
     if (cacheSize !== sizeKey) {
       cacheSize = sizeKey; // cached frames are only valid at the size they were drawn
@@ -377,8 +441,16 @@ export default function Preview() {
   const round = "grid h-9 w-9 place-items-center rounded-full text-gray-300 hover:bg-white/10 hover:text-white";
 
   return (
-    <div className="flex h-full flex-col">
-      <div ref={boxRef} className="flex min-h-0 flex-1 items-center justify-center p-5">
+    <div
+      ref={rootRef}
+      className={`flex h-full flex-col ${full ? "bg-black" : ""} ${full && idle ? "cursor-none" : ""}`}
+      onMouseMove={full ? wake : undefined}
+      onDoubleClick={(e) => {
+        if ((e.target as HTMLElement).closest("button, input")) return;
+        toggleFull();
+      }}
+    >
+      <div ref={boxRef} className={`flex min-h-0 flex-1 items-center justify-center ${full ? "p-0" : "p-5"}`}>
         <div className="relative" style={{ width: box.w, height: box.h }}>
           <canvas
             ref={canvasRef}
@@ -404,7 +476,7 @@ export default function Preview() {
         </div>
       </div>
 
-      <div className="mx-4 mb-4 flex h-12 shrink-0 items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.04] px-2.5">
+      <div className={`mx-4 mb-4 flex h-12 shrink-0 items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.04] px-2.5 transition-opacity duration-300 ${full && idle ? "pointer-events-none opacity-0" : ""}`}>
         <button className={round} onClick={() => seek(0)} title="Back to start" aria-label="Back to start"><Icon name="skipBack" /></button>
         <button
           className="grid h-9 w-9 place-items-center rounded-full bg-white text-black hover:bg-gray-200"
@@ -424,11 +496,19 @@ export default function Preview() {
           step={0.01}
           disabled={!duration}
           value={scrub ?? Math.min(getTime(), duration || 1)}
-          onChange={(e) => {
-            setScrub(Number(e.target.value));
-            seek(Number(e.target.value));
+          onPointerDown={() => {
+            dragging.current = true;
           }}
-          onPointerUp={() => setScrub(null)}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setScrub(v);
+            seek(v);
+            if (!dragging.current) {
+              // keyboard or wheel: let go shortly after the last change
+              window.clearTimeout(scrubTimer.current);
+              scrubTimer.current = window.setTimeout(() => setScrub(null), 200);
+            }
+          }}
         />
         <span className="w-14 shrink-0 text-right text-xs tabular-nums text-gray-500">{fmt(duration)}</span>
         {rate !== 1 && (
@@ -452,6 +532,14 @@ export default function Preview() {
         >
           <Icon name="loop" className="h-3.5 w-3.5" />
           Loop{loop ? ` ${loop.start.toFixed(1)} to ${loop.end.toFixed(1)}` : ""}
+        </button>
+        <button
+          className={`h-8 rounded-lg px-2.5 text-xs ${full ? "bg-accent/15 text-accent" : "text-gray-400 hover:bg-white/10 hover:text-white"}`}
+          onClick={toggleFull}
+          aria-pressed={full}
+          title={full ? "Exit full screen (Esc or F)" : "Full screen (F, or double-click the picture)"}
+        >
+          {full ? "Exit full screen" : "Full screen"}
         </button>
       </div>
     </div>

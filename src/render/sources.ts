@@ -16,6 +16,8 @@ export type Picture = CanvasImageSource & { width: number; height: number };
 
 const LOOKAHEAD = 6;
 const MAX_DECODE_WIDTH = 1920;
+/** Export decodes up to 4K so 3840-wide output is not upscaled from 1080p frames. */
+const MAX_EXPORT_DECODE_WIDTH = 3840;
 
 /* ---------- the frame cache ---------- */
 
@@ -272,7 +274,7 @@ function entry(mediaId: string, kind: "video" | "image", purpose: Purpose = "pla
       en.failed = "file not available";
       return;
     }
-    if (kind === "video") en.video = new VideoStream(mediaId, file);
+    if (kind === "video") en.video = new VideoStream(mediaId, file, purpose === "export" ? MAX_EXPORT_DECODE_WIDTH : MAX_DECODE_WIDTH);
     else {
       try {
         en.image = await createImageBitmap(file);

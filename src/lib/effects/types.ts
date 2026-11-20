@@ -18,7 +18,9 @@ export type ParamSpec =
   | { key: string; label: string; type: "boolean"; default: boolean }
   | { key: string; label: string; type: "choice"; options: { value: string; label: string }[]; default: string }
   /** Points (x, y in 0..1) of a curve, from left to right. */
-  | { key: string; label: string; type: "curve"; default: [number, number][] };
+  | { key: string; label: string; type: "curve"; default: [number, number][] }
+  /** A 3D LUT imported from a .cube file: { name, size, data (base64, 8 bit rgb) } or null. */
+  | { key: string; label: string; type: "lut"; default: null };
 
 export type Params = Record<string, unknown>;
 

@@ -3,6 +3,7 @@ import { activeTimeline } from "../model/convert";
 import { IDENTITY_TRANSFORM, type BlendMode, type Clip, type ClipEffect, type ClipTransform, type ClipTransition, type ProjectDoc, type Timeline } from "../model/types";
 import { applyStack, getTransition, poolFor, transitionAt, type LayerPool } from "../lib/effects";
 import { evalNumber, type Key } from "../lib/keyframes/engine";
+import { drawGenerator } from "../lib/generators";
 import type { Project } from "../store/project";
 import type { FrameProvider, Picture } from "./sources";
 
@@ -43,7 +44,7 @@ export function transformOf(c: Clip, t?: number): ClipTransform {
 /** Source time shown by a clip at timeline time t. */
 export const sourceTime = (c: Clip, t: number) => c.sourceIn + (t - c.start) * c.speed;
 
-type Visual = { clip: Clip; kind: "video" | "image"; st: number };
+type Visual = { clip: Clip; kind: "video" | "image" | "generator"; st: number };
 /** One thing to draw on a track at t: a clip, or a transition between two clips (either may be missing at an edge). */
 export type PlanItem = { type: "clip"; v: Visual } | { type: "transition"; tr: ClipTransition; p: number; a?: Visual; b?: Visual };
 
@@ -55,7 +56,8 @@ function stOf(c: Clip, t: number, doc: ProjectDoc): number {
 }
 
 function visualOf(c: Clip | undefined, doc: ProjectDoc, t: number): Visual | undefined {
-  if (!c || c.fill || !c.enabled || !c.mediaId) return undefined;
+  if (!c || c.fill || !c.enabled) return undefined;
+  if (!c.mediaId) return c.generator ? { clip: c, kind: "generator", st: 0 } : undefined; // solid, shape, title, noise...
   const m = doc.media.find((x) => x.id === c.mediaId);
   if (!m || (m.kind !== "video" && m.kind !== "image")) return undefined;
   return { clip: c, kind: m.kind, st: stOf(c, t, doc) };
@@ -88,7 +90,7 @@ export function visualPlan(tl: Timeline, doc: ProjectDoc, t: number): PlanItem[]
 }
 
 /** Video and image clips to draw at t (including both sides of a running transition), bottom track first. */
-export function activeVisuals(tl: Timeline, doc: ProjectDoc, t: number): { clip: Clip; kind: "video" | "image" }[] {
+export function activeVisuals(tl: Timeline, doc: ProjectDoc, t: number): { clip: Clip; kind: "video" | "image" | "generator" }[] {
   return visualPlan(tl, doc, t).flatMap((i) => (i.type === "clip" ? [i.v] : [i.a, i.b].filter((x): x is Visual => !!x))).map(({ clip, kind }) => ({ clip, kind }));
 }
 
@@ -134,7 +136,13 @@ export function compositeVisuals(ctx: CanvasRenderingContext2D, doc: ProjectDoc,
   let missing = 0;
   let pool: LayerPool | null = null;
   const layers = () => (pool ??= poolFor(w, h));
-  const pictureOf = (v: Visual) => {
+  const pictureOf = (v: Visual): Picture | null => {
+    if (v.kind === "generator") {
+      // a generator draws itself into a frame-sized layer, which then goes through the clip's transform like a picture
+      const l = layers().take();
+      drawGenerator(l.ctx, v.clip.generator!, t - v.clip.start, v.clip.duration, w, h);
+      return l.canvas as Picture;
+    }
     const pic = frames.picture(v.clip.mediaId!, v.kind, v.st);
     if (!pic) missing++;
     return pic;
@@ -172,7 +180,7 @@ export function compositeVisuals(ctx: CanvasRenderingContext2D, doc: ProjectDoc,
 export function needsAt(doc: ProjectDoc, t: number) {
   return visualPlan(activeTimeline(doc), doc, t)
     .flatMap((i) => (i.type === "clip" ? [i.v] : [i.a, i.b].filter((x): x is Visual => !!x)))
-    .map((v) => ({ mediaId: v.clip.mediaId!, kind: v.kind, sourceTime: v.st }));
+    .flatMap((v) => (v.kind === "generator" ? [] : [{ mediaId: v.clip.mediaId!, kind: v.kind, sourceTime: v.st }]));
 }
 
 /** One whole frame: lyric background, timeline pictures, lyric text. Used by the viewer and by export. */

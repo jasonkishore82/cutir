@@ -185,13 +185,13 @@ export const autoEmphasis = defineTool({
 
 /* ---------- beat reaction and energy ---------- */
 
-const BEAT_NAMES: BeatName[] = ["none", "pulse", "flash", "shake", "nudge", "colour-swap", "jump-cut"];
+const BEAT_NAMES: BeatName[] = ["none", "pulse", "flash", "shake", "nudge", "colour-swap", "jump-cut", "bounce", "punch", "heartbeat", "drop", "rise", "swing", "spin", "wobble", "glitch", "blur-hit", "strobe"];
 function toBeatName(v: unknown): unknown {
   if (typeof v !== "string") return v;
   const k = v.trim().toLowerCase().replace(/[\s_]+/g, "-").replace("color", "colour");
   if ((BEAT_NAMES as string[]).includes(k)) return k;
   if (/^(off|stop|nothing|no)$/.test(k)) return "none";
-  if (/pulse|bounce|thump|punch|pump|throb|beat/.test(k)) return "pulse";
+  if (/pulse|thump|pump|throb|beat/.test(k)) return "pulse";
   if (/flash|strobe|blink|light/.test(k)) return "flash";
   if (/shake|jitter|rattle|vibrat/.test(k)) return "shake";
   if (/nudge|bump|kick|push/.test(k)) return "nudge";
@@ -203,8 +203,8 @@ function toBeatName(v: unknown): unknown {
 export const setBeatReaction = defineTool({
   name: "set_beat_reaction",
   group: "kinetic",
-  description: "Make text react on every beat of the song (pulse, flash, shake, nudge, colour-swap, jump-cut; none = off). Big hits react more than soft ones. Needs beats (detect_beats).",
-  hint: "effect one of none,pulse,flash,shake,nudge,colour-swap,jump-cut; strength 0-2 (1 = normal); downbeatsOnly = only the first beat of each bar; lines or layer, leave both out for all lines",
+  description: "Make text react on every beat of the song (pulse, flash, shake, nudge, colour-swap, jump-cut, bounce, punch, heartbeat, drop, rise, swing, spin, wobble, glitch, blur-hit, strobe; none = off). Big hits react more than soft ones. Needs beats (detect_beats).",
+  hint: "effect one of none,pulse,flash,shake,nudge,colour-swap,jump-cut,bounce,punch,heartbeat,drop,rise,swing,spin,wobble,glitch,blur-hit,strobe; strength 0-2 (1 = normal); downbeatsOnly = only the first beat of each bar; lines or layer, leave both out for all lines",
   params: z.object({
     effect: z.enum(BEAT_NAMES as [BeatName, ...BeatName[]]),
     strength: num(0, 2).optional(),

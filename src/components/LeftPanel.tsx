@@ -7,11 +7,13 @@ import ClipCard from "./ClipCard";
 import AnimateCard from "./AnimateCard";
 import EffectsPanel from "./EffectsPanel";
 import TemplatesCard from "./TemplatesCard";
+import { POSTER_PALETTES, applyPalette } from "../lib/palettes";
 import TransitionsCard from "./TransitionsCard";
 import WordCard, { FONTS } from "./WordCard";
 import KineticCard from "./KineticCard";
 import MediaPool, { PoolThumb } from "./MediaPool";
 import { useMedia, type MediaItem } from "../store/media";
+import TitlesPanel from "./TitlesPanel";
 import { SECTIONS, type SectionId } from "./SectionTabs";
 import { ActionButton, Card, Icon, Row, Segmented } from "./ui";
 import { useLibrary } from "../store/library";
@@ -327,6 +329,35 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
             <button className={`${textBtn} w-full text-left`} onClick={() => pickFile(".ttf,.otf", loadFont)}>Upload font file (.ttf, .otf)</button>
           </Card>
 
+          <Card title="Poster palette" hint="A flat three-colour look: background, lettering and an accent for highlights. Applies to the whole project.">
+            <div className="grid grid-cols-5 gap-1.5">
+              {POSTER_PALETTES.map((pl) => (
+                <button
+                  key={pl.id}
+                  title={pl.name}
+                  aria-label={`${pl.name} palette`}
+                  className="h-9 overflow-hidden rounded-md border border-white/10"
+                  style={{ background: `linear-gradient(90deg, ${pl.bg} 0 50%, ${pl.text} 50% 80%, ${pl.accent} 80%)` }}
+                  onClick={() => useProject.getState().update((p) => applyPalette(p, pl))}
+                />
+              ))}
+            </div>
+          </Card>
+
+          <Card title="Poster size and arch" hint="Stretch each line to fill the frame, and bend it into an arch.">
+            <PropChoice path="align" label="Alignment" options={["left", "center", "right"]} columns={3} />
+            <PropSlider path="fitWidth" label="Fill width" min={0} max={1} step={0.05} factor={100} unit="%" auto={0} zero="off" />
+            <PropSlider path="arch" label="Arch" min={-180} max={180} step={5} unit=" deg" auto={0} zero="straight" />
+            <PropColor path="fillColor" label="Fill-up colour (rises as sung)" />
+            <p className="text-[11px] text-gray-500">Arch bends each row along a circle: positive bows up like a rainbow, negative bows down like a smile. Lines with per-word styling stay straight.</p>
+          </Card>
+
+          <Card title="Label box" hint="A filled card behind the text, like a paper sticker. Tilt it with Rotation in the Motion tab.">
+            <PropColor path="labelColor" label="Card colour" />
+            <PropSlider path="labelPad" label="Padding" min={0} max={80} step={2} auto={24} unit=" px" />
+            <button className={`${textBtn} w-full text-left`} onClick={() => resetFields(target, ["labelColor", "labelPad"])}>Remove label box</button>
+          </Card>
+
           <Card title="Text">
             <PropSlider path="fontSize" label="Size" min={24} max={240} />
             <PropColor path="color" label="Colour" />
@@ -358,6 +389,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
       )}
 
       {tab === "effects" && <EffectsPanel />}
+      {tab === "titles" && <TitlesPanel />}
 
       {tab === "motion" && (
         <>

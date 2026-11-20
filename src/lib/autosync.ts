@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { linesOfLayer, useProject, type LyricLine } from "../store/project";
 import { DEFAULT_ALIGNER_URL, alignLines, type AlignProgress } from "./aligner";
+import { activeTimeline } from "../model/convert";
+import { useMedia } from "../store/media";
+import type { ProjectDoc } from "../model/types";
 
 /**
  * One shared auto-sync job. The left-panel button, the chat ("auto sync") and the auto_sync tool all run it,
@@ -40,11 +43,38 @@ export function getAlignSettings() {
 
 export type SyncOverrides = { language?: string; model?: string; separate?: boolean };
 
+/**
+ * The song to time the lyrics to: the project's own song, else the first audio clip on the timeline (a file added
+ * from the media library). `url` is missing while a library file has not been opened this session; `poolId` then
+ * lets `songFile` read it.
+ */
+export type SongSource = { name: string; url?: string; poolId?: string };
+export function findSong(project: { audio?: { url?: string; name: string; mediaId?: string } }, doc: ProjectDoc, urls: Record<string, string>): SongSource | null {
+  const a = project.audio;
+  if (a?.url) return { name: a.name, url: a.url };
+  if (a?.mediaId) return { name: a.name, url: urls[a.mediaId], poolId: a.mediaId };
+  const tl = activeTimeline(doc);
+  const clip = tl?.clips.filter((c) => c.mediaId && doc.media.find((m) => m.id === c.mediaId)?.kind === "audio").sort((x, y) => y.duration - x.duration)[0];
+  const m = clip && doc.media.find((x) => x.id === clip.mediaId);
+  if (!m) return null;
+  return { name: m.name, url: m.url ?? (m.poolId ? urls[m.poolId] : undefined), poolId: m.poolId };
+}
+
+/** An object URL for the song, opening the library file if needed. */
+async function songUrl(src: SongSource): Promise<string | null> {
+  if (src.url) return src.url;
+  if (!src.poolId) return null;
+  const f = await useMedia.getState().fileOf(src.poolId);
+  return f ? URL.createObjectURL(f) : null;
+}
+
 /** Align the current project's lyrics to its song. Returns the new lines; does NOT touch the project. */
 export async function runAlignment(over: SyncOverrides = {}): Promise<{ lines: LyricLine[]; skippedTags: number }> {
   if (useSyncJob.getState().phase === "running") throw new Error("Auto-sync is already running.");
   const { project } = useProject.getState();
-  if (!project.audio?.url) throw new Error("Upload the song first (Audio, in the left panel).");
+  const src = findSong(project, useProject.getState().doc, useMedia.getState().urls);
+  const songSrc = src ? await songUrl(src) : null;
+  if (!src || !songSrc) throw new Error("Upload the song first (Audio, in the left panel).");
   const main = linesOfLayer(project, project.layers[0].id); // only the main lyrics layer is timed to the song
   if (!main.length) throw new Error(`Add the lyrics first (layer "${project.layers[0].name}").`);
 
@@ -55,7 +85,7 @@ export async function runAlignment(over: SyncOverrides = {}): Promise<{ lines: L
   try {
     const result = await alignLines(
       s.url,
-      { url: project.audio.url, name: project.audio.name },
+      { url: songSrc, name: src.name },
       main,
       { language: s.language, model: s.model, separate: s.separate },
       abortCtl.signal,

@@ -25,3 +25,8 @@ Reference: Titles are generators in Resolve. Cutir already has the best text too
 - A lower third and a credits roll can be built from templates in under a minute
 - Per-character animation works with kerning and right-to-left text
 - All existing lyric projects keep their look
+
+## Status (partly built)
+Built: generator clips on any video track (solid, gradient, noise, countdown, timecode, rectangle, ellipse, line, polygon, arrow, title); titles with rich runs (colour, weight, italic, underline, size), auto-fit, alignment, line and letter spacing, background box, gradient and image fill, stroke, shadow, glow and a layered-stroke bevel; per-letter, word or line animators with a range selector (typewriter, word pop, line slide, wave, blur in, karaoke fill); credits roll; templates (lower third, centred title, quote, credits roll, scoreboard) with fields; font fallback chain and a missing-font warning; kerning and right-to-left words. The Titles tab edits all of it. Tests: tests/titles.test.ts.
+
+Not built yet: templates saved as user presets; the lyric template pack that binds a subtitle track to the animator; per-range font family in the UI (the data supports it); animators driving rotation, position and colour per unit (the engine has rotation and offset channels, no preset uses them yet); a custom animator builder; right-to-left letter-level animation (words animate whole, by design); chat tools for titles.

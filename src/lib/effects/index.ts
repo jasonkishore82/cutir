@@ -17,6 +17,7 @@ import { mirror } from "./builtins/mirror";
 import { noise } from "./builtins/noise";
 import { pixelate } from "./builtins/pixelate";
 import { animate } from "./builtins/animate";
+import { grade, curves, lut, colourSpace } from "./builtins/colour";
 import { BUILTIN_TRANSITIONS } from "./transitions/builtins";
 
 export type * from "./types";
@@ -39,7 +40,7 @@ export function registerTransition(def: TransitionDef) {
   transitions.set(def.id, def);
 }
 
-for (const e of [transform, crop, blur, sharpen, glow, vignette, dropShadow, mask, chromaKey, invert, mirror, noise, pixelate, animate]) registerEffect(e);
+for (const e of [transform, crop, blur, sharpen, glow, vignette, dropShadow, mask, chromaKey, invert, mirror, noise, pixelate, animate, grade, curves, lut, colourSpace]) registerEffect(e);
 for (const t of BUILTIN_TRANSITIONS) registerTransition(t);
 
 export const getEffect = (id: string) => effects.get(id);
@@ -82,6 +83,10 @@ export function cleanParams(specs: ParamSpec[], params: Params): Params {
       const o = v as { x?: unknown; y?: unknown };
       if (o && Number.isFinite(Number(o.x)) && Number.isFinite(Number(o.y))) out[s.key] = { x: Number(o.x), y: Number(o.y) };
     } else if (s.type === "curve" && Array.isArray(v)) out[s.key] = v;
+    else if (s.type === "lut") {
+      const o = v as { size?: unknown; data?: unknown } | null;
+      if (v === null || (o && typeof o.data === "string" && Number.isInteger(o.size))) out[s.key] = v;
+    }
   }
   return out;
 }

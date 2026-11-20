@@ -270,6 +270,17 @@ export const BEATS: Record<BeatName, BeatDef> = {
   },
   "colour-swap": { label: "colour swap", fx: (s, k) => ({ swap: clamp01(Math.max(0.35, k) * decay(s, 0.3)) }) },
   "jump-cut": { label: "jump cut", fx: (_s, k, i) => scaleFx(CUTS[i % CUTS.length], Math.min(2, k)) },
+  bounce: { label: "bounce", fx: (s, k) => ({ dy: -0.05 * k * Math.abs(Math.sin(Math.PI * Math.min(1, s / 0.3))) * decay(s, 0.3) * 1.6, scale: 1 + 0.04 * k * decay(s, 0.2) }) },
+  punch: { label: "punch", fx: (s, k) => ({ scale: 1 + 0.3 * k * decay(s, 0.16) }) },
+  heartbeat: { label: "heartbeat", fx: (s, k) => ({ scale: 1 + 0.1 * k * (decay(s, 0.16) + 0.7 * decay(s - 0.18, 0.2)) }) },
+  drop: { label: "drop", fx: (s, k) => ({ dy: -0.07 * k * decay(s, 0.22), scale: 1 + 0.06 * k * decay(s, 0.22) }) },
+  rise: { label: "rise", fx: (s, k) => ({ dy: 0.05 * k * decay(s, 0.28), scale: 1 - 0.05 * k * decay(s, 0.28) }) },
+  swing: { label: "swing", fx: (s, k, i) => ({ rotation: (i % 2 ? -1 : 1) * 6 * k * Math.cos(TAU * 3 * s) * decay(s, 0.45) }) },
+  spin: { label: "spin", fx: (s) => ({ rotation: s < 0.35 ? 360 * (1 - Math.pow(1 - s / 0.35, 3)) : 0 }) },
+  wobble: { label: "wobble", fx: (s, k) => { const d = k * decay(s, 0.4); return { scale: 1 + 0.06 * Math.sin(TAU * 6 * s) * d, rotation: 2.5 * Math.sin(TAU * 5 * s) * d }; } },
+  glitch: { label: "glitch", fx: (s, k, i) => { const d = k * decay(s, 0.18); const j = Math.floor(s * 60) + i * 7; return { dx: (Math.sin(j * 12.9898) > 0 ? 1 : -1) * 0.03 * d, dy: Math.sin(j * 78.233) * 0.01 * d, flash: clamp01(0.4 * d) }; } },
+  "blur-hit": { label: "blur hit", fx: (s, k) => ({ blur: 14 * k * decay(s, 0.25), scale: 1 + 0.05 * k * decay(s, 0.25) }) },
+  strobe: { label: "strobe", fx: (s, k) => ({ opacity: 1 - 0.85 * clamp01(k) * (s < 0.06 ? 1 : 0) }) },
 };
 
 export const BEAT_NAMES = Object.keys(BEATS) as BeatName[];

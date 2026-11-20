@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { layerIdOf, useProject } from "../store/project";
 import { ALIGNER_HELP, DEFAULT_ALIGNER_URL, checkAligner, isTagLine } from "../lib/aligner";
-import { useSyncJob } from "../lib/autosync";
+import { findSong, useSyncJob } from "../lib/autosync";
+import { useMedia } from "../store/media";
 import { applyCalls } from "../lib/tools";
 import SyncProgress from "./SyncProgress";
 
@@ -37,7 +38,10 @@ export default function AutoSync() {
   // only the main (first) layer is timed to the song
   const sungCount = lines.filter((l) => layerIdOf({ layers }, l) === layers[0].id && !isTagLine(l.text)).length;
   const busy = phase !== "idle";
-  const canRun = !!audio?.url && sungCount > 0 && !busy;
+  const doc = useProject((s) => s.doc);
+  const urls = useMedia((s) => s.urls);
+  const hasSong = !!findSong({ audio }, doc, urls);
+  const canRun = hasSong && sungCount > 0 && !busy;
 
   const run = async () => {
     setMsg(null);
@@ -123,8 +127,8 @@ export default function AutoSync() {
         </button>
       )}
 
-      {!audio?.url && <p className="text-[11px] text-gray-500">Upload the song first.</p>}
-      {audio?.url && sungCount === 0 && <p className="text-[11px] text-gray-500">Add the lyrics first.</p>}
+      {!hasSong && <p className="text-[11px] text-gray-500">Upload the song first.</p>}
+      {hasSong && sungCount === 0 && <p className="text-[11px] text-gray-500">Add the lyrics first.</p>}
       {msg && <p className={`text-[11px] ${msg.ok ? "text-green-400" : "text-red-400"} break-words`}>{msg.text}</p>}
       <p className="text-[11px] text-gray-600">Lines like [Verse] or [Chorus] are skipped. You can also type "auto sync" in the chat.</p>
     </div>
