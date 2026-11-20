@@ -1,4 +1,5 @@
 import { EASINGS } from "../animations";
+import { evalLane, evalNumber, type Key, type KeyValue, type ValueKind } from "../keyframes/engine";
 import type { Clip, ClipEffect, ClipTransition, ParamKey, Timeline } from "../../model/types";
 import { runGpu } from "./gpu";
 import type { AnyCanvas, Canvas2D, EffectDef, EffectEnv, Layer, ParamSpec, Params, TransitionDef } from "./types";
@@ -85,25 +86,23 @@ export function cleanParams(specs: ParamSpec[], params: Params): Params {
   return out;
 }
 
-/** The value of one numeric param at `t` seconds into the clip: its keyframes when it has any, else its value. */
+/** The value of one param at `t` seconds into the clip: its keyframes when it has any, else `fallback`. */
 export function keyedValue(keys: ParamKey[] | undefined, t: number, fallback: number): number {
-  if (!keys?.length) return fallback;
-  const k = [...keys].sort((a, b) => a.t - b.t);
-  if (t <= k[0].t) return k[0].v;
-  const last = k[k.length - 1];
-  if (t >= last.t) return last.v;
-  const i = k.findIndex((x) => x.t > t);
-  const a = k[i - 1];
-  const b = k[i];
-  const e = EASINGS[a.easing ?? "linear"] ?? EASINGS.linear;
-  return a.v + (b.v - a.v) * e((t - a.t) / Math.max(1e-6, b.t - a.t));
+  return evalNumber(keys as Key[] | undefined, t, fallback);
 }
 
-/** All params of an effect at time t (keyframed ones evaluated). */
+/** The kind of a param's value, for interpolation. */
+export const paramKind = (spec: ParamSpec | undefined): ValueKind => (spec?.type === "color" ? "color" : spec?.type === "point" ? "point" : spec?.type === "angle" ? "angle" : "number");
+
+/** All params of an effect at time t (keyframed ones evaluated, whatever their kind). */
 export function paramsAt(fx: ClipEffect, t: number): Params {
   if (!fx.keys) return fx.params;
+  const def = getEffect(fx.type);
   const out = { ...fx.params };
-  for (const [k, keys] of Object.entries(fx.keys)) out[k] = keyedValue(keys, t, typeof fx.params[k] === "number" ? (fx.params[k] as number) : 0);
+  for (const [k, keys] of Object.entries(fx.keys)) {
+    const spec = def?.params.find((p) => p.key === k);
+    out[k] = evalLane(keys as Key[], t, fx.params[k] as KeyValue, paramKind(spec));
+  }
   return out;
 }
 

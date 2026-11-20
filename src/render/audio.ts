@@ -1,5 +1,6 @@
 import { activeTimeline } from "../model/convert";
 import { transitionWindow } from "../lib/effects";
+import { evalNumber, type Key } from "../lib/keyframes/engine";
 import type { Clip, ProjectDoc, Timeline } from "../model/types";
 
 /**
@@ -37,7 +38,7 @@ function fadeWindows(tl: Timeline): { clip: string; w: [number, number]; dir: "o
 
 /** Gain of an audio clip at t: its volume, times an equal-power fade inside a crossfade. */
 export function clipGain(tl: Timeline, c: Clip, t: number): number {
-  let g = c.volume ?? 1;
+  let g = c.anim?.volume?.length ? evalNumber(c.anim.volume as Key[], t - c.start, c.volume ?? 1) : c.volume ?? 1;
   for (const f of fadeWindows(tl)) {
     if (f.clip !== c.id || t < f.w[0] || t >= f.w[1]) continue;
     const p = (t - f.w[0]) / (f.w[1] - f.w[0]);
@@ -125,7 +126,18 @@ export class AudioMixer {
 /* ---------- offline mix for export ---------- */
 
 /** One clip in the export mix. `fades` are linear gain ramps (crossfades) in timeline seconds. */
-export type MixInput = { url: string; start: number; duration: number; sourceIn: number; speed: number; volume: number; fades?: { from: number; to: number; dir: "in" | "out" }[] };
+/** A clip's animated volume sampled over [from, to] in timeline seconds, 20 points per second. */
+function sampleGain(c: Clip, from: number, to: number): { t: number; v: number }[] {
+  const out: { t: number; v: number }[] = [];
+  const n = Math.max(1, Math.ceil((to - from) * 20));
+  for (let i = 0; i <= n; i++) {
+    const t = from + ((to - from) * i) / n;
+    out.push({ t, v: evalNumber(c.anim!.volume as Key[], t - c.start, c.volume ?? 1) });
+  }
+  return out;
+}
+
+export type MixInput = { url: string; start: number; duration: number; sourceIn: number; speed: number; volume: number; fades?: { from: number; to: number; dir: "in" | "out" }[]; gainCurve?: { t: number; v: number }[] };
 
 /** Clips that make up the exported sound: the song (when heard) and every audible audio clip. */
 export function mixInputs(doc: ProjectDoc, songUrl: string | undefined, length: number, urlOf: (mediaId: string) => string | undefined): MixInput[] {
@@ -150,6 +162,7 @@ export function mixInputs(doc: ProjectDoc, songUrl: string | undefined, length: 
       sourceIn: Math.max(0, c.sourceIn + (s0 - c.start) * c.speed),
       speed: c.speed,
       volume: c.volume ?? 1,
+      ...(c.anim?.volume?.length ? { gainCurve: sampleGain(c, s0, Math.min(end, length)) } : {}),
       ...(fades.length ? { fades: fades.map((f) => ({ from: f.w[0], to: f.w[1], dir: f.dir })) } : {}),
     });
   }
@@ -177,6 +190,10 @@ export async function mixdown(inputs: MixInput[], length: number, sampleRate = 4
     src.playbackRate.value = i.speed;
     const gain = ctx.createGain();
     gain.gain.value = i.volume;
+    if (i.gainCurve?.length) {
+      gain.gain.setValueAtTime(i.gainCurve[0].v, Math.max(0, i.gainCurve[0].t));
+      for (const pt of i.gainCurve.slice(1)) gain.gain.linearRampToValueAtTime(pt.v, Math.max(0, pt.t));
+    }
     for (const f of i.fades ?? []) {
       // linear ramps through the crossfade window
       gain.gain.setValueAtTime(f.dir === "out" ? i.volume : 0, f.from);

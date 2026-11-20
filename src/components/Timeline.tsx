@@ -8,6 +8,9 @@ import { getTime, play, seek, setLoop, usePlayback, pause } from "../lib/transpo
 import { addKeyAtPlayhead, copyKey, pasteKey, removeKey, splitKeyframes, updateKey, useKeyUi } from "../lib/keyframes";
 import { EASING_NAMES, TRANSITIONS, TRANSITION_NAMES } from "../lib/animations";
 import TrackLanes, { energyPath } from "./TrackLanes";
+import CurveEditor from "./CurveEditor";
+import { useKeyframeUi } from "../lib/keyframes/ui";
+import { keyframePasteApplies } from "../lib/keyframes/commands";
 import { activeTimeline, beatsOf } from "../model/convert";
 import { isBeat } from "../model/types";
 import * as TE from "../timeline/engine";
@@ -842,7 +845,7 @@ export default function Timeline() {
         copyLine(selected.id);
         return;
       }
-      if (mod && e.code === "KeyV" && clipboard) {
+      if (mod && e.code === "KeyV" && clipboard && !keyframePasteApplies()) {
         e.preventDefault();
         const lid = st.project.layers.some((l) => l.id === st.activeLayerId) ? st.activeLayerId : st.project.layers[0].id;
         if (!st.project.layers.find((l) => l.id === lid)?.locked) pasteLine(lid, getTime());
@@ -914,6 +917,7 @@ export default function Timeline() {
   const current = syncMode ? activeLines[syncIndex] : undefined;
   const btn = "px-2 py-0.5 text-xs rounded border border-edge hover:bg-edge";
   const lanesH = layers.length * LANE_H;
+  const curvesOpen = useKeyframeUi((s) => s.curves);
 
   return (
     <div className="h-full flex flex-col">
@@ -1208,6 +1212,14 @@ export default function Timeline() {
           <TrackLanes pps={pps} width={width} gutter={GUTTER} scrollRef={scrollRef} setPps={setPps} />
         </div>
       </div>
+      {curvesOpen && (
+        <div className="relative h-[42%] min-h-[140px] shrink-0 border-t-2 border-edge bg-panel" data-testid="curve-editor">
+          <button className="absolute right-1 top-1 z-10 rounded px-1 text-[11px] text-gray-500 hover:bg-white/10" title="Close the curve editor" onClick={() => useKeyframeUi.setState({ curves: false })}>
+            ✕
+          </button>
+          <CurveEditor />
+        </div>
+      )}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} items={menuItems(ctx)} onClose={closeCtx} />}
     </div>
   );

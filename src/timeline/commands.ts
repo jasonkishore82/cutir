@@ -1,4 +1,5 @@
 import { useProject } from "../store/project";
+import { handleKeyframeKey } from "../lib/keyframes/commands";
 import { useMedia } from "../store/media";
 import { getTime, seek, setLoop } from "../lib/transport";
 import * as E from "./engine";
@@ -85,6 +86,7 @@ const isTyping = (t: EventTarget | null) => {
 /** Keyboard shortcuts of the multi-track timeline. Returns true when the key was used. */
 export function handleTimelineKey(e: KeyboardEvent): boolean {
   if (isTyping(e.target) || useProject.getState().syncMode) return false;
+  if (handleKeyframeKey(e)) return true;
   const mod = e.ctrlKey || e.metaKey;
   const ui = useTimelineUi.getState();
   const lyricSelected = useProject.getState().selectedIds.length > 0;

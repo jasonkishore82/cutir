@@ -113,6 +113,40 @@ type Keyframe = { id: string; time: number; props: Partial<Record<"x" | "y" | "s
 - In the editor: K adds a keyframe at the playhead; dragging the text while the playhead is on a keyframe (or with
   auto-key on) edits keyframes instead of the resting placement (`TextOverlay.tsx`).
 
+## Clip keyframes (phase 18, `src/lib/keyframes/`)
+
+Lyric lines keep their own motion keys (above). Timeline clips use a general engine that animates any value:
+
+- **Engine** (`engine.ts`): a lane is a sorted list of keys `{ t, v, mode, easing, out, in }`. `t` is seconds from the
+  clip's start, so keys move with the clip. Modes: `hold`, `linear`, `ease` (with an easing: ease-in, ease-out,
+  ease-in-out, back, elastic, bounce) and `bezier` (`out` / `in` handles as [time fraction, value fraction] of the span).
+  Values are numbers, angles (they wrap the short way round), colours (mixed in linear light so midpoints do not go dark)
+  and points `{x, y}`.
+- **Lanes** (`lanes.ts`): `lanesOf(clip, doc)` lists what a clip can animate: x, y, scale, rotation and opacity for
+  pictures, volume for sound, and every numeric, angle, colour or point param of its effects. Placement keys live in
+  `clip.anim`, effect keys in `effect.keys`. All writers (`setLaneKey`, `moveLaneKeys`, `shapeLaneKeys`, `pasteLanes`,
+  `writePlacement`...) are pure `Timeline -> Timeline` functions, so every edit is one undo step.
+- **Render**: `transformOf(clip, t)` in the compositor and `paramsAt(effect, t)` evaluate the lanes, and the audio mixer
+  turns volume keys into a gain curve. The viewer and the export share these, so they match.
+
+### Editing
+
+- **Animate card** (Motion tab): every value of the selected clip with a ◆ key button, previous/next key, show lane ▤,
+  clear ✕, and an ease row. Auto-key and the motion path switch on here, along with the **Curve editor** button.
+- **Timeline lanes**: the selected clip's lanes with keys (or the ones you show with ▤) appear under it as rows of
+  diamonds. Click selects, Shift or Ctrl adds to the selection, drag retimes (snapping to the playhead, clip edges and
+  other keys; Shift turns snapping the other way), double-click jumps to the key, right-click removes it.
+- **Keyboard**: with keys selected, Ctrl+C copies, Ctrl+V pastes onto the selected clip (at the playhead when it is inside
+  that clip, otherwise at the same offset from the clip start), Delete removes, Esc deselects. Effect keys paste onto
+  the same effect type.
+- **Curve editor** (under the timeline): value over time for the shown lanes. Drag keys and bezier handles, double-click
+  to add a key, Ctrl+wheel to zoom time, Fit, lock time or value, and the ease menu for the selected keys.
+- **Viewer**: the selected picture clip gets a box. Drag it to move, a corner to scale, the knob to rotate (Shift snaps
+  to 15 degrees). With auto-key on, or when that value already has keys, each change writes a key at the playhead. The
+  motion path (dashed) shows where the clip travels; drag its points to move position keys, click one to jump there.
+- **Chat / MCP**: `key_clip` (`clip`, `value` such as scale or blur.radius, `keys: [{ t, v, ease }]`, `replace`) and
+  `clear_clip_keys`.
+
 ## Templates (`src/lib/templates.ts`)
 
 A template is a named `StyleOverride` (font, colours, outline, shadow, position, animation slots, highlight).

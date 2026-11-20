@@ -11,11 +11,12 @@ import { timelineTools } from "./timeline";
 import { withLineNumbers } from "./helpers";
 import { effectTools } from "./effects";
 import { kineticTools } from "./kinetic";
+import { clipKeyTools } from "./clipKeys";
 import { activeTimeline, IDS } from "../../model/convert";
 import { useMedia } from "../../store/media";
 
 /** The one list of tools. Add a tool to a group file; it is picked up everywhere from here. */
-export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools, ...kineticTools, ...effectTools]);
+export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools, ...kineticTools, ...effectTools, ...clipKeyTools]);
 
 export const TOOL_NAMES = registry.all.map((t) => t.name);
 
@@ -32,7 +33,7 @@ const MOTION_WORDS =
 
 /** Words that bring in the timeline tools (clips on video and audio tracks, markers, in/out). */
 const TIMELINE_WORDS =
-  /\b(clips?|tracks?|video|footage|b-?roll|audio|sound|music|voice.?over|image|photo|picture|trim|ripple|blade|cut|split|marker|in.?point|out.?point|insert|overwrite|append|timeline|volume|mute|solo|library|media|effects?|blur|glow|vignette|shadow|mask|chroma|green.?screen|keying|invert|mirror|flip|noise|grain|pixel\w*|sharpen|crop|dissolve|wipe|dip|fade|transitions?)\b/i;
+  /\b(clips?|tracks?|video|footage|b-?roll|audio|sound|music|voice.?over|image|photo|picture|trim|ripple|blade|cut|split|marker|in.?point|out.?point|insert|overwrite|append|timeline|volume|mute|solo|library|media|effects?|blur|glow|vignette|shadow|mask|chroma|green.?screen|keying|invert|mirror|flip|noise|grain|pixel\w*|sharpen|crop|dissolve|wipe|dip|fade|transitions?|keyframes?|key ?frames?|animat\w*|ease|easing|ken ?burns|zoom|scale|rotat\w*|opacity)\b/i;
 
 /** Words that bring in the kinetic tools (single words, emphasis, beats, energy). */
 const KINETIC_WORDS =
@@ -174,7 +175,11 @@ export function buildSystemPrompt(p: Project, fallbackJson: boolean, groups?: To
     const clips = tl.clips
       .filter((c) => !c.fill && !c.text)
       .slice(0, 80)
-      .map((c) => `${c.id} | ${tl.tracks.find((t) => t.id === c.trackId)?.name} | ${c.start.toFixed(2)}-${(c.start + c.duration).toFixed(2)} | ${doc.media.find((m) => m.id === c.mediaId)?.name ?? ""}`);
+      .map((c) => {
+        const keyed = Object.entries(c.anim ?? {}).filter(([, k]) => k?.length).map(([n, k]) => `${n}:${k!.length}`);
+        const fx = c.effects.map((f) => f.type + (Object.keys(f.keys ?? {}).length ? "(keyed)" : "")).join(",");
+        return `${c.id} | ${tl.tracks.find((t) => t.id === c.trackId)?.name} | ${c.start.toFixed(2)}-${(c.start + c.duration).toFixed(2)} | ${doc.media.find((m) => m.id === c.mediaId)?.name ?? ""}${fx ? ` | fx ${fx}` : ""}${keyed.length ? ` | keys ${keyed.join(" ")}` : ""}`;
+      });
     const media = useMedia.getState().items.slice(0, 60).map((i) => `${i.name} (${i.kind}${i.duration ? ` ${i.duration.toFixed(1)}s` : ""})`);
     parts.push(`TRACKS: ${tracks.join(", ") || "(none)"}`, `CLIPS (id | track | start-end | media):\n${clips.join("\n") || "(none)"}`, `MEDIA LIBRARY: ${media.join(", ") || "(empty)"}`);
   }

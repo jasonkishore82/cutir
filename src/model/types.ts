@@ -117,8 +117,19 @@ export type TextPayload = {
   wordOverrides?: Record<number, WordOverride>;
 };
 
-/** A keyframe of one numeric effect parameter; `t` is seconds from the clip's start. */
-export type ParamKey = { t: number; v: number; easing?: Easing };
+/**
+ * A keyframe of one animated value; `t` is seconds from the clip's start. See src/lib/keyframes/engine.ts for the
+ * value kinds (number, colour, point, angle) and shapes (hold, linear, ease, bezier). Older projects have
+ * `{ t, v, easing }` only, which still reads the same way.
+ */
+export type ParamKey = {
+  t: number;
+  v: number | string | { x: number; y: number };
+  mode?: "hold" | "linear" | "ease" | "bezier";
+  easing?: Easing | "bounce";
+  out?: [number, number];
+  in?: [number, number];
+};
 
 /** One effect in a clip's stack (phase 17). `type` names an effect in src/lib/effects; params follow its spec. */
 export type ClipEffect = {
@@ -177,6 +188,11 @@ export type Clip = {
   volume?: number;
   /** Keyframe lanes by name. Text clips keep their motion keyframes in `transform`. */
   keyframes: { transform?: Keyframe[] } & Record<string, Keyframe[] | undefined>;
+  /**
+   * Animated placement and volume (phase 18): lanes by value name ("x", "y", "scale", "rotation", "opacity",
+   * "volume"). A lane with keys overrides the plain value in `transform` / `volume` over time.
+   */
+  anim?: Partial<Record<"x" | "y" | "scale" | "rotation" | "opacity" | "volume", ParamKey[]>>;
 };
 
 export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "add" | "difference";

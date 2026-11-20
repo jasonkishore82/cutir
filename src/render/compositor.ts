@@ -2,6 +2,7 @@ import { drawFrame, type RenderAssets } from "../lib/renderer";
 import { activeTimeline } from "../model/convert";
 import { IDENTITY_TRANSFORM, type BlendMode, type Clip, type ClipEffect, type ClipTransform, type ClipTransition, type ProjectDoc, type Timeline } from "../model/types";
 import { applyStack, getTransition, poolFor, transitionAt, type LayerPool } from "../lib/effects";
+import { evalNumber, type Key } from "../lib/keyframes/engine";
 import type { Project } from "../store/project";
 import type { FrameProvider, Picture } from "./sources";
 
@@ -26,7 +27,18 @@ export const BLEND_OP: Record<BlendMode, GlobalCompositeOperation> = {
   difference: "difference",
 };
 
-export const transformOf = (c: Clip): ClipTransform => ({ ...IDENTITY_TRANSFORM, ...(c.transform ?? {}) });
+/** A clip's placement; with a time, its animated placement at t (timeline seconds) from its keyframe lanes. */
+export function transformOf(c: Clip, t?: number): ClipTransform {
+  const tf: ClipTransform = { ...IDENTITY_TRANSFORM, ...(c.transform ?? {}) };
+  if (t === undefined || !c.anim) return tf;
+  const rel = t - c.start;
+  for (const name of ["x", "y", "scale", "opacity"] as const) {
+    const keys = c.anim[name];
+    if (keys?.length) tf[name] = evalNumber(keys as Key[], rel, tf[name]);
+  }
+  if (c.anim.rotation?.length) tf.rotation = evalNumber(c.anim.rotation as Key[], rel, tf.rotation, "angle");
+  return tf;
+}
 
 /** Source time shown by a clip at timeline time t. */
 export const sourceTime = (c: Clip, t: number) => c.sourceIn + (t - c.start) * c.speed;
@@ -112,7 +124,7 @@ const effectsOf = (c: Clip, preview?: PreviewEffect) => {
 /** A clip drawn into a frame-sized layer (with its placement and opacity) and run through its effect stack. */
 function clipLayer(v: Visual, pic: Picture, t: number, w: number, h: number, pool: LayerPool, preview?: PreviewEffect) {
   const layer = pool.take();
-  drawPicture(layer.ctx as CanvasRenderingContext2D, pic, { ...transformOf(v.clip), blend: "normal" }, w, h);
+  drawPicture(layer.ctx as CanvasRenderingContext2D, pic, { ...transformOf(v.clip, t), blend: "normal" }, w, h);
   return applyStack(layer, effectsOf(v.clip, preview), t - v.clip.start, v.clip.duration, pool);
 }
 
@@ -132,7 +144,7 @@ export function compositeVisuals(ctx: CanvasRenderingContext2D, doc: ProjectDoc,
       const pic = pictureOf(item.v);
       if (!pic) continue;
       if (!effectsOf(item.v.clip, preview).length) {
-        drawPicture(ctx, pic, transformOf(item.v.clip), w, h); // no effects: the direct path of phase 15
+        drawPicture(ctx, pic, transformOf(item.v.clip, t), w, h); // no effects: the direct path of phase 15
         continue;
       }
       const out = clipLayer(item.v, pic, t, w, h, layers(), preview);

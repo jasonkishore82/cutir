@@ -1,5 +1,6 @@
 import { Icon } from "./ui";
 import TextOverlay from "./TextOverlay";
+import ClipGizmo from "./ClipGizmo";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "../store/project";
 import { ensureFont } from "../lib/fonts";
@@ -387,6 +388,7 @@ export default function Preview() {
             className="rounded-lg shadow-2xl shadow-black/70 ring-1 ring-white/10"
           />
           {box.w > 0 && <TextOverlay w={box.w} h={box.h} />}
+          {box.w > 0 && <ClipGizmo w={box.w} h={box.h} />}
           {showStats && (
             <div className="pointer-events-none absolute left-2 top-2 z-20 space-y-0.5 rounded-md bg-black/75 px-2 py-1.5 font-mono text-[10px] leading-4 text-green-300" role="status" aria-label="Playback statistics">
               <div>{diag.fps} fps drawn · {diag.dropped} dropped</div>

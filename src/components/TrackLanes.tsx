@@ -13,6 +13,8 @@ import { getTransition, transitionWindow } from "../lib/effects";
 import * as FX from "../timeline/effects";
 import { EFFECT_MIME, TRANSITION_MIME } from "./EffectsPanel";
 import { CURSOR, MODE_HINT, beatSnapOn, editCtx, editTimeline, sourceOf, tlNow, useTimelineUi, withPoolMedia } from "../timeline/ui";
+import KeyLane, { LANE_H, shownLanes } from "./KeyLane";
+import { focusClip, useKeyframeUi } from "../lib/keyframes/ui";
 
 /** Drag type used by the media pool. */
 export const POOL_MIME = "application/x-cutir-media";
@@ -65,6 +67,15 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
   const docMedia = useProject((s) => s.doc.media);
   const mediaEnergy = (id?: string) => (id ? docMedia.find((m) => m.id === id)?.analysis?.energy : undefined);
 
+  /* ---------- keyframe lanes under the focused clip (phase 18) ---------- */
+  const doc = useProject((s) => s.doc);
+  const chosenLanes = useKeyframeUi((s) => s.shownLanes);
+  const snapping = useTimelineUi((s) => s.snapping);
+  const focus = focusClip(tl, selected);
+  const keyLanes = useMemo(() => (focus ? shownLanes(focus, doc, chosenLanes) : []), [focus, doc, chosenLanes]);
+  const extraOf = (t: Track) => (focus && focus.trackId === t.id ? keyLanes.length * LANE_H : 0);
+  const rowH = (t: Track) => t.height + extraOf(t);
+
   /* ---------- visible window ---------- */
   useEffect(() => {
     const sc = scrollRef.current;
@@ -94,12 +105,13 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
   const rowTop = useMemo(() => {
     const m = new Map<string, number>();
     let y = 22; // "Video" label row
-    for (const t of video) (m.set(t.id, y), (y += t.height));
+    const h = (t: Track) => t.height + (focus && focus.trackId === t.id ? keyLanes.length * LANE_H : 0);
+    for (const t of video) (m.set(t.id, y), (y += h(t)));
     y += 22; // centre line + "Audio" label
-    for (const t of audio) (m.set(t.id, y), (y += t.height));
+    for (const t of audio) (m.set(t.id, y), (y += h(t)));
     m.set("__end", y);
     return m;
-  }, [video, audio]);
+  }, [video, audio, focus, keyLanes.length]);
   const height = rowTop.get("__end")! + 6;
 
   const local = (e: { clientX: number; clientY: number }) => {
@@ -388,7 +400,7 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
     const fill = tl.clips.filter((c) => c.trackId === t.id && c.fill);
     const audible = t.kind !== "audio" || (!t.muted && (!anySolo || t.solo));
     return (
-      <div key={t.id} className="flex border-b border-edge" style={{ height: t.height }} data-testid="track">
+      <div key={t.id} className="flex border-b border-edge" style={{ height: rowH(t) }} data-testid="track">
         <div className={`${label} justify-between`} style={{ width: gutter }} onContextMenu={(e) => (e.preventDefault(), setMenu({ x: e.clientX, y: e.clientY, trackId: t.id, time: 0 }))}>
           <span className="flex min-w-0 items-center gap-1">
             <button className={hBtn(!!t.target)} title="Insert target: edits from the pool go here" aria-pressed={!!t.target} onClick={() => editTimeline((x) => E.setTarget(x, t.id))}>
@@ -415,8 +427,8 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
           </span>
         </div>
         <div
-          className={`relative ${t.locked ? "bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgb(var(--white)/0.03)_6px,rgb(var(--white)/0.03)_12px)]" : ""} ${t.hidden ? "opacity-50" : ""}`}
-          style={{ width }}
+          className={`relative self-start ${t.locked ? "bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgb(var(--white)/0.03)_6px,rgb(var(--white)/0.03)_12px)]" : ""} ${t.hidden ? "opacity-50" : ""}`}
+          style={{ width, height: t.height }}
           onPointerDown={(e) => e.target === e.currentTarget && onLaneDown(e)}
           onPointerMove={onLaneMove}
           onPointerUp={onLaneUp}
@@ -511,6 +523,7 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
                 </button>
               );
             })}
+          {extraOf(t) > 0 && focus && <KeyLane clip={focus} lanes={keyLanes} pps={pps} snapping={snapping} />}
           {ghost?.trackId === t.id && (
             <div className="pointer-events-none absolute inset-y-1 rounded border-2 border-dashed border-accent bg-accent/20 px-1 text-[10px] text-accent" style={{ left: ghost.start * pps, width: Math.max(4, ghost.len * pps) }}>
               {ghost.name}
@@ -520,7 +533,7 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
         {/* resize the track height */}
         <span
           className="absolute left-0 h-1.5 cursor-row-resize"
-          style={{ width: gutter, top: rowTop.get(t.id)! + t.height - 3 }}
+          style={{ width: gutter, top: rowTop.get(t.id)! + rowH(t) - 3 }}
           onPointerDown={(e) => {
             e.preventDefault();
             const y0 = e.clientY;

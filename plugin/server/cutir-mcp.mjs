@@ -21461,7 +21461,18 @@ var init_esm = __esmMin((() => {
 	init_react();
 }));
 // ../src/model/types.ts
-var init_types = __esmMin((() => {}));
+var IDENTITY_TRANSFORM;
+var init_types = __esmMin((() => {
+	IDENTITY_TRANSFORM = {
+		x: .5,
+		y: .5,
+		scale: 1,
+		rotation: 0,
+		opacity: 1,
+		blend: "normal",
+		fit: "contain"
+	};
+}));
 // ../src/model/convert.ts
 function mediaFromAsset(id, slot, a, prev) {
 	const m = {
@@ -28221,12 +28232,12 @@ const REST_VALUES = {
 const ON_KEY = 1 / 60;
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
 const round = (n, d = 4) => Math.round(n * 10 ** d) / 10 ** d;
-const sortKeys = (kfs) => [...kfs].sort((a, b) => a.time - b.time);
+const sortKeys$1 = (kfs) => [...kfs].sort((a, b) => a.time - b.time);
 /** Value of every property at `t` seconds into the line. */
 function evalKeyframes(kfs, t) {
 	const out = { ...REST_VALUES };
 	if (!kfs?.length) return out;
-	const sorted = sortKeys(kfs);
+	const sorted = sortKeys$1(kfs);
 	for (const prop of KEY_PROPS) {
 		const keyed = sorted.filter((k) => k.props[prop] !== void 0);
 		if (!keyed.length) continue;
@@ -28256,7 +28267,7 @@ function withKeys(line, kfs) {
 	const kept = kfs.filter((k) => Object.keys(k.props).length > 0);
 	if (kept.length) return {
 		...line,
-		keyframes: sortKeys(kept)
+		keyframes: sortKeys$1(kept)
 	};
 	const { keyframes: _gone, ...rest } = line;
 	return rest;
@@ -28296,7 +28307,7 @@ function splitKeyframes(kfs, cut) {
 	const props = keyedProps(kfs);
 	const at = evalKeyframes(kfs, cut);
 	const edge = Object.fromEntries(props.map((p) => [p, round(at[p])]));
-	const easingAt = sortKeys(kfs).filter((k) => k.time <= cut).pop()?.easing ?? "ease-in-out";
+	const easingAt = sortKeys$1(kfs).filter((k) => k.time <= cut).pop()?.easing ?? "ease-in-out";
 	const first = [...kfs.filter((k) => k.time < cut - ON_KEY), {
 		id: uid(),
 		time: round(cut, 3),
@@ -28313,7 +28324,7 @@ function splitKeyframes(kfs, cut) {
 		id: uid(),
 		time: round(k.time - cut, 3)
 	}))];
-	return [sortKeys(first), sortKeys(second)];
+	return [sortKeys$1(first), sortKeys$1(second)];
 }
 /** Keyframes of two lines combined into one line that starts at `start`. */
 function mergeKeyframes(a, b, start) {
@@ -28322,7 +28333,7 @@ function mergeKeyframes(a, b, start) {
 		id: uid(),
 		time: round(k.time + l.start - start, 3)
 	})));
-	return all.length ? sortKeys(all) : void 0;
+	return all.length ? sortKeys$1(all) : void 0;
 }
 create(() => ({
 	autoKey: false,
@@ -31899,6 +31910,17 @@ const timelineTools = [
 		})
 	})
 ];
+// ../src/lib/keyframes/engine.ts
+const EASE_NAMES = [
+	"linear",
+	"ease-in",
+	"ease-out",
+	"ease-in-out",
+	"back",
+	"elastic",
+	"bounce"
+];
+const sortKeys = (keys) => [...keys].sort((a, b) => a.t - b.t);
 // ../src/lib/effects/gpu.ts
 /** "#rrggbb" -> [r, g, b] in 0..1. */
 function rgb(hex) {
@@ -32963,6 +32985,8 @@ function cleanParams(specs, params) {
 	}
 	return out;
 }
+/** The kind of a param's value, for interpolation. */
+const paramKind = (spec) => spec?.type === "color" ? "color" : spec?.type === "point" ? "point" : spec?.type === "angle" ? "angle" : "number";
 /** A new transition between two clips (or at one clip's edge), with the transition's default params. */
 function newTransition(trackId, type, from, to, duration = .5, align = "center") {
 	const def = getTransition(type);
@@ -33903,6 +33927,276 @@ const kineticTools = [
 		}
 	})
 ];
+// ../src/lib/keyframes/lanes.ts
+init_types();
+init_convert();
+const laneKey = (id) => id.kind === "clip" ? `clip:${id.name}` : `fx:${id.fxId}:${id.param}`;
+const CLIP_LANES = {
+	x: {
+		label: "Horizontal",
+		group: "Placement",
+		valueKind: "number",
+		min: -50,
+		max: 150,
+		step: .5,
+		unit: "%",
+		factor: 100
+	},
+	y: {
+		label: "Vertical",
+		group: "Placement",
+		valueKind: "number",
+		min: -50,
+		max: 150,
+		step: .5,
+		unit: "%",
+		factor: 100
+	},
+	scale: {
+		label: "Size",
+		group: "Placement",
+		valueKind: "number",
+		min: 5,
+		max: 400,
+		step: 1,
+		unit: "%",
+		factor: 100
+	},
+	rotation: {
+		label: "Rotation",
+		group: "Placement",
+		valueKind: "angle",
+		min: -180,
+		max: 180,
+		step: 1,
+		unit: " deg",
+		factor: 1
+	},
+	opacity: {
+		label: "Opacity",
+		group: "Placement",
+		valueKind: "number",
+		min: 0,
+		max: 100,
+		step: 1,
+		unit: "%",
+		factor: 100
+	},
+	volume: {
+		label: "Volume",
+		group: "Sound",
+		valueKind: "number",
+		min: 0,
+		max: 200,
+		step: 1,
+		unit: "%",
+		factor: 100
+	}
+};
+const baseOf = (c, name) => name === "volume" ? c.volume ?? 1 : (c.transform ?? {})[name] ?? IDENTITY_TRANSFORM[name];
+/** Every lane a clip has (placement or volume by media kind, plus every param of every effect). */
+function lanesOf(c, doc) {
+	const kind = doc.media.find((m) => m.id === c.mediaId)?.kind;
+	const out = [];
+	const names = kind === "audio" ? ["volume"] : kind === "video" || kind === "image" ? [
+		"x",
+		"y",
+		"scale",
+		"rotation",
+		"opacity"
+	] : [];
+	for (const name of names) {
+		const id = {
+			kind: "clip",
+			name
+		};
+		out.push({
+			id,
+			key: laneKey(id),
+			...CLIP_LANES[name],
+			keys: c.anim?.[name] ?? [],
+			base: baseOf(c, name)
+		});
+	}
+	for (const fx of c.effects) {
+		const def = getEffect(fx.type);
+		if (!def) continue;
+		for (const spec of def.params) {
+			if (spec.type === "boolean" || spec.type === "choice" || spec.type === "curve") continue;
+			const id = {
+				kind: "effect",
+				fxId: fx.id,
+				param: spec.key
+			};
+			out.push({
+				id,
+				key: laneKey(id),
+				...specRange(spec),
+				label: spec.label,
+				group: def.name,
+				valueKind: paramKind(spec),
+				keys: fx.keys?.[spec.key] ?? [],
+				base: fx.params[spec.key]
+			});
+		}
+	}
+	return out;
+}
+function specRange(spec) {
+	if (spec.type === "number") return {
+		min: spec.min,
+		max: spec.max,
+		step: spec.step ?? 1,
+		unit: spec.unit ? ` ${spec.unit}` : "",
+		factor: 1
+	};
+	if (spec.type === "angle") return {
+		min: -180,
+		max: 180,
+		step: 1,
+		unit: " deg",
+		factor: 1
+	};
+	if (spec.type === "point") return {
+		min: 0,
+		max: 100,
+		step: .5,
+		unit: "%",
+		factor: 100
+	};
+	return {
+		min: 0,
+		max: 1,
+		step: 1,
+		unit: "",
+		factor: 1
+	};
+}
+function writeLane(tl, clipId, id, keys) {
+	const c = tl.clips.find((x) => x.id === clipId);
+	if (!c || isLocked(tl, c.trackId)) return tl;
+	const next = { ...c };
+	if (id.kind === "clip") {
+		const anim = { ...c.anim ?? {} };
+		if (keys?.length) anim[id.name] = keys;
+		else delete anim[id.name];
+		if (Object.keys(anim).length) next.anim = anim;
+		else delete next.anim;
+	} else next.effects = c.effects.map((fx) => {
+		if (fx.id !== id.fxId) return fx;
+		const all = { ...fx.keys ?? {} };
+		if (keys?.length) all[id.param] = keys;
+		else delete all[id.param];
+		const out = { ...fx };
+		if (Object.keys(all).length) out.keys = all;
+		else delete out.keys;
+		return out;
+	});
+	return {
+		...tl,
+		clips: tl.clips.map((x) => x.id === clipId ? next : x)
+	};
+}
+const clearLane = (tl, clipId, id) => writeLane(tl, clipId, id, null);
+const replaceLane = (tl, clipId, id, keys) => writeLane(tl, clipId, id, sortKeys(keys));
+// ../src/lib/tools/clipKeys.ts
+init_convert();
+/**
+* Clip keyframe tools (phase 18): animate any value of a timeline clip (placement, opacity, volume, effect params)
+* with keys at times relative to the clip's start. Every call is one undo step; locked tracks are never changed.
+*/
+const SHAPES = [
+	"hold",
+	"linear",
+	"bezier",
+	...EASE_NAMES.filter((e) => e !== "linear")
+];
+const KeyIn = object({
+	t: number$1().min(0).describe("seconds from the clip's start"),
+	v: union([
+		number$1(),
+		string(),
+		object({
+			x: number$1(),
+			y: number$1()
+		})
+	]),
+	ease: _enum(SHAPES).optional().describe("shape of the move from this key to the next")
+});
+function findClip(doc, id) {
+	const c = activeTimeline(doc).clips.find((x) => x.id === id);
+	if (!c || c.fill) throw new Error(`no clip ${id} (clip ids are in the project summary)`);
+	if (isLocked(activeTimeline(doc), c.trackId)) throw new Error(`clip ${id} is on a locked track`);
+	return c;
+}
+/** "scale", "opacity", "blur.radius", "fx3.radius" -> a lane of the clip. */
+function resolveLane(doc, c, value) {
+	const lanes = lanesOf(c, doc);
+	const v = value.trim().toLowerCase();
+	const direct = lanes.find((l) => l.key === `clip:${v}` || l.key.toLowerCase() === v);
+	if (direct) return direct.id;
+	const [fx, param] = v.split(".");
+	if (param) {
+		const effect = c.effects.find((f) => f.id.toLowerCase() === fx) ?? c.effects.find((f) => f.type === fx);
+		const hit = effect && lanes.find((l) => l.id.kind === "effect" && l.id.fxId === effect.id && l.id.param.toLowerCase() === param);
+		if (hit) return hit.id;
+	}
+	throw new Error(`clip ${c.id} has no value "${value}". It can animate: ${lanes.map((l) => l.id.kind === "clip" ? l.id.name : `${c.effects.find((f) => f.id === l.id.fxId)?.type}.${l.id.param}`).join(", ")}`);
+}
+const toKey = (k) => {
+	const shape = k.ease ?? "ease-in-out";
+	if (shape === "hold" || shape === "linear" || shape === "bezier") return {
+		t: k.t,
+		v: k.v,
+		mode: shape
+	};
+	return {
+		t: k.t,
+		v: k.v,
+		mode: "ease",
+		easing: shape
+	};
+};
+const clipKeyTools = [defineTool({
+	name: "key_clip",
+	group: "timeline",
+	description: "Animate a value of a video, image or audio clip with keyframes. value: x / y (centre, 0..1 of the frame, 0.5 = middle), scale (1 = fitted), rotation (degrees, clockwise), opacity (0..1), volume (0..2), or an effect param as <effect type or id>.<param> (e.g. blur.radius). keys: times in seconds from the clip's start. replace: true drops the value's old keys first.",
+	params: object({
+		clip: string(),
+		value: string().min(1),
+		keys: array(KeyIn).min(1),
+		replace: boolean().default(false)
+	}),
+	applyDoc: (doc, a) => {
+		const c = findClip(doc, a.clip);
+		const id = resolveLane(doc, c, a.value);
+		const old = a.replace ? [] : lanesOf(c, doc).find((l) => l.key === laneKey(id))?.keys ?? [];
+		const added = a.keys.filter((k) => k.t <= c.duration + 1e-6).map(toKey);
+		if (!added.length) throw new Error(`every key is past the clip's end (${c.duration.toFixed(2)} s)`);
+		const keys = [...old.filter((k) => !added.some((n) => Math.abs(n.t - k.t) <= .02)), ...added];
+		return {
+			doc: onActive(doc, (t) => replaceLane(t, c.id, id, keys)),
+			summary: `${a.value} of ${c.id}: ${keys.length} keyframe(s)`
+		};
+	}
+}), defineTool({
+	name: "clear_clip_keys",
+	group: "timeline",
+	description: "Remove keyframes from a clip: of one value (same names as key_clip), or of every value when value is left out.",
+	params: object({
+		clip: string(),
+		value: string().optional()
+	}),
+	applyDoc: (doc, a) => {
+		const c = findClip(doc, a.clip);
+		const ids = a.value ? [resolveLane(doc, c, a.value)] : lanesOf(c, doc).filter((l) => l.keys.length).map((l) => l.id);
+		if (!ids.length) throw new Error(`clip ${c.id} has no keyframes`);
+		return {
+			doc: onActive(doc, (t) => ids.reduce((acc, id) => clearLane(acc, c.id, id), t)),
+			summary: `keyframes cleared on ${c.id}`
+		};
+	}
+})];
 // ../src/lib/tools/index.ts
 init_project();
 init_convert();
@@ -33919,7 +34213,8 @@ const registry = createRegistry([
 	...motionTools,
 	...timelineTools,
 	...kineticTools,
-	...effectTools
+	...effectTools,
+	...clipKeyTools
 ]);
 registry.all.map((t) => t.name);
 /** Tool definitions in Ollama's format, generated from the zod schemas. Pass groups to send a subset. */
