@@ -1,6 +1,6 @@
 import { Icon, type IconName } from "./ui";
 
-export type SectionId = "import" | "media" | "lyrics" | "style" | "motion" | "effects" | "titles";
+export type SectionId = "import" | "media" | "lyrics" | "style" | "motion" | "effects" | "titles" | "audio";
 
 export const SECTIONS: { id: SectionId; label: string; icon: IconName; title: string }[] = [
   { id: "import", label: "Import", icon: "import", title: "Import" },
@@ -9,6 +9,7 @@ export const SECTIONS: { id: SectionId; label: string; icon: IconName; title: st
   { id: "style", label: "Style", icon: "style", title: "Text style" },
   { id: "motion", label: "Motion", icon: "motion", title: "Motion" },
   { id: "titles", label: "Titles", icon: "style", title: "Titles, shapes and generators" },
+  { id: "audio", label: "Audio", icon: "music", title: "Audio mixer, loudness and voice-over" },
   { id: "effects", label: "Effects", icon: "effects", title: "Effects and transitions" },
 ];
 

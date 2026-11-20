@@ -19,6 +19,8 @@ export type ParamSpec =
   | { key: string; label: string; type: "choice"; options: { value: string; label: string }[]; default: string }
   /** Points (x, y in 0..1) of a curve, from left to right. */
   | { key: string; label: string; type: "curve"; default: [number, number][] }
+  /** Points (x, y in 0..1) of a closed mask path. */
+  | { key: string; label: string; type: "path"; default: [number, number][] }
   /** A 3D LUT imported from a .cube file: { name, size, data (base64, 8 bit rgb) } or null. */
   | { key: string; label: string; type: "lut"; default: null };
 
@@ -32,6 +34,8 @@ export type EffectEnv = {
   clipDuration: number;
   /** A cleared frame-sized scratch layer (for effects that need an extra pass). */
   scratch: () => Layer;
+  /** How far the clip's tracked point has moved since the start, in 0..1 of the frame (phase 22); absent without a tracker. */
+  track?: { x: number; y: number };
 };
 
 export type EffectCategory = "Transform" | "Blur and sharpen" | "Colour" | "Stylize" | "Keying" | "Distort" | "Animation";

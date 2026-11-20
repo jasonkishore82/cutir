@@ -1,9 +1,11 @@
 import { drawFrame, type RenderAssets } from "../lib/renderer";
 import { activeTimeline } from "../model/convert";
-import { IDENTITY_TRANSFORM, type BlendMode, type Clip, type ClipEffect, type ClipTransform, type ClipTransition, type ProjectDoc, type Timeline } from "../model/types";
-import { applyStack, getTransition, poolFor, transitionAt, type LayerPool } from "../lib/effects";
+import { IDENTITY_TRANSFORM, type BlendMode, type Clip, type ClipEffect, type ClipTransform, type ClipTransition, type ProjectDoc, type Timeline, type TrackMatte } from "../model/types";
+import { applyStack, getTransition, poolFor, transitionAt, type Layer, type LayerPool } from "../lib/effects";
 import { evalNumber, type Key } from "../lib/keyframes/engine";
 import { drawGenerator } from "../lib/generators";
+import { evaluateGraph, type GraphNode } from "../lib/graph/graph";
+import { stabiliseOffset, stabiliseZoom, trackerOffset } from "../lib/track/tracker";
 import type { Project } from "../store/project";
 import type { FrameProvider, Picture } from "./sources";
 
@@ -26,18 +28,47 @@ export const BLEND_OP: Record<BlendMode, GlobalCompositeOperation> = {
   lighten: "lighten",
   add: "lighter",
   difference: "difference",
+  softlight: "soft-light",
+  hardlight: "hard-light",
+  exclusion: "exclusion",
+  dodge: "color-dodge",
+  burn: "color-burn",
 };
 
 /** A clip's placement; with a time, its animated placement at t (timeline seconds) from its keyframe lanes. */
-export function transformOf(c: Clip, t?: number): ClipTransform {
+export function transformOf(c: Clip, t?: number, tl?: Timeline): ClipTransform {
   const tf: ClipTransform = { ...IDENTITY_TRANSFORM, ...(c.transform ?? {}) };
-  if (t === undefined || !c.anim) return tf;
+  if (t === undefined) return tf;
   const rel = t - c.start;
-  for (const name of ["x", "y", "scale", "opacity"] as const) {
-    const keys = c.anim[name];
-    if (keys?.length) tf[name] = evalNumber(keys as Key[], rel, tf[name]);
+  if (c.anim) {
+    for (const name of ["x", "y", "scale", "opacity"] as const) {
+      const keys = c.anim[name];
+      if (keys?.length) tf[name] = evalNumber(keys as Key[], rel, tf[name]);
+    }
+    if (c.anim.rotation?.length) tf.rotation = evalNumber(c.anim.rotation as Key[], rel, tf.rotation, "angle");
   }
-  if (c.anim.rotation?.length) tf.rotation = evalNumber(c.anim.rotation as Key[], rel, tf.rotation, "angle");
+  if (tl) {
+    // pinned to a tracker of another clip: move by what the tracked point has moved since the start
+    if (c.follow) {
+      const other = tl.clips.find((x) => x.id === c.follow!.clipId);
+      const tr = other?.trackers?.find((x) => x.id === c.follow!.trackerId);
+      if (other && tr) {
+        const o = trackerOffset(tr, t - other.start);
+        tf.x += o.x;
+        tf.y += o.y;
+      }
+    }
+    // steadied from its own tracker: shift against the shake and zoom to hide the borders
+    if (c.stabilize) {
+      const tr = c.trackers?.find((x) => x.id === c.stabilize!.trackerId);
+      if (tr && tr.samples.length) {
+        const o = stabiliseOffset(tr, rel, c.stabilize.smoothing);
+        tf.x += o.x;
+        tf.y += o.y;
+        tf.scale *= stabiliseZoom(tr, c.stabilize.smoothing, c.stabilize.zoom);
+      }
+    }
+  }
   return tf;
 }
 
@@ -123,11 +154,79 @@ const effectsOf = (c: Clip, preview?: PreviewEffect) => {
   return preview?.clipIds.has(c.id) ? [...own, preview.effect] : own;
 };
 
-/** A clip drawn into a frame-sized layer (with its placement and opacity) and run through its effect stack. */
-function clipLayer(v: Visual, pic: Picture, t: number, w: number, h: number, pool: LayerPool, preview?: PreviewEffect) {
+/** Where the clip's first tracker is, as a move since its start (what a "follow the tracker" mask adds), in clip time. */
+function trackerShift(c: Clip, rel: number): { x: number; y: number } | undefined {
+  const tr = c.trackers?.[0];
+  return tr && tr.samples.length ? trackerOffset(tr, rel) : undefined;
+}
+
+/** Run a clip's node graph: the picture goes in at the input node, effects and merges run in order, the output (or the previewed node) comes out. */
+function runGraph(src: Layer, c: Clip, rel: number, w: number, h: number, pool: LayerPool, track?: { x: number; y: number }): Layer {
+  const out = evaluateGraph<Layer>(c.graph!, {
+    input: () => src,
+    effect: (n: GraphNode, s: Layer) => applyStack(s, [{ id: n.id, type: n.effect!.type, enabled: true, params: n.effect!.params, ...(n.effect!.keys ? { keys: n.effect!.keys } : {}) }], rel, c.duration, pool, track),
+    merge: (n: GraphNode, bg: Layer | null, fg: Layer | null) => {
+      if (!bg && !fg) return null;
+      const l = pool.take();
+      if (bg) l.ctx.drawImage(bg.canvas, 0, 0);
+      if (fg) {
+        l.ctx.save();
+        l.ctx.globalAlpha = Math.max(0, Math.min(1, n.merge?.opacity ?? 1));
+        l.ctx.globalCompositeOperation = BLEND_OP[n.merge?.mode ?? "normal"] ?? "source-over";
+        l.ctx.drawImage(fg.canvas, 0, 0);
+        l.ctx.restore();
+      }
+      return l;
+    },
+    generator: (n: GraphNode) => {
+      if (!n.generator) return null;
+      const l = pool.take();
+      drawGenerator(l.ctx, n.generator, rel, c.duration, w, h);
+      return l;
+    },
+  });
+  return out ?? pool.take(); // a disconnected output shows nothing
+}
+
+/** A clip drawn into a frame-sized layer (with its placement and opacity) and run through its node graph or effect stack. */
+function clipLayer(v: Visual, pic: Picture, t: number, w: number, h: number, pool: LayerPool, tl: Timeline, preview?: PreviewEffect) {
   const layer = pool.take();
-  drawPicture(layer.ctx as CanvasRenderingContext2D, pic, { ...transformOf(v.clip, t), blend: "normal" }, w, h);
-  return applyStack(layer, effectsOf(v.clip, preview), t - v.clip.start, v.clip.duration, pool);
+  drawPicture(layer.ctx as CanvasRenderingContext2D, pic, { ...transformOf(v.clip, t, tl), blend: "normal" }, w, h);
+  const rel = t - v.clip.start;
+  const track = trackerShift(v.clip, rel);
+  if (v.clip.graph) return runGraph(layer, v.clip, rel, w, h, pool, track);
+  return applyStack(layer, effectsOf(v.clip, preview), rel, v.clip.duration, pool, track);
+}
+
+/**
+ * Cut `out` to a matte layer: alpha uses the matte's own transparency, luma its brightness (times its alpha);
+ * the inverted modes keep what the matte leaves out.
+ */
+export function applyMatte(out: Layer, matte: Layer, mode: TrackMatte["mode"], pool: LayerPool) {
+  const ctx = out.ctx as CanvasRenderingContext2D;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  if (mode === "alpha" || mode === "alpha-inverted") {
+    ctx.globalCompositeOperation = mode === "alpha" ? "destination-in" : "destination-out";
+    ctx.drawImage(matte.canvas, 0, 0);
+  } else {
+    const tmp = pool.take();
+    const img = (matte.ctx as CanvasRenderingContext2D).getImageData(0, 0, matte.w, matte.h);
+    const d = img.data;
+    const inv = mode === "luma-inverted";
+    for (let i = 0; i < d.length; i += 4) {
+      // premultiplied-looking luma: a transparent matte pixel counts as black
+      const luma = (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+      const a = luma * (d[i + 3] / 255);
+      d[i] = d[i + 1] = d[i + 2] = 255;
+      d[i + 3] = Math.round((inv ? 1 - a : a) * 255);
+    }
+    (tmp.ctx as CanvasRenderingContext2D).putImageData(img, 0, 0);
+    ctx.globalCompositeOperation = "destination-in";
+    ctx.drawImage(tmp.canvas, 0, 0);
+  }
+  ctx.restore();
 }
 
 /** Draw the timeline's video and image tracks at t. Returns how many clips had no picture ready yet. */
@@ -147,17 +246,34 @@ export function compositeVisuals(ctx: CanvasRenderingContext2D, doc: ProjectDoc,
     if (!pic) missing++;
     return pic;
   };
-  for (const item of visualPlan(tl, doc, t)) {
+  const plan = visualPlan(tl, doc, t);
+  // clips used as another clip's matte are not drawn themselves
+  const matteIds = new Set<string>();
+  for (const item of plan) if (item.type === "clip" && item.v.clip.matte) matteIds.add(item.v.clip.matte.clipId);
+  const matteLayer = (id: string): Layer | null => {
+    const mc = tl.clips.find((x) => x.id === id);
+    if (!mc || t < mc.start || t >= mc.start + mc.duration) return null;
+    const v = visualOf(mc, doc, t);
+    const pic = v && pictureOf(v);
+    return v && pic ? clipLayer(v, pic, t, w, h, layers(), tl, preview) : null;
+  };
+  for (const item of plan) {
     if (item.type === "clip") {
+      if (matteIds.has(item.v.clip.id)) continue;
       const pic = pictureOf(item.v);
       if (!pic) continue;
-      if (!effectsOf(item.v.clip, preview).length) {
-        drawPicture(ctx, pic, transformOf(item.v.clip, t), w, h); // no effects: the direct path of phase 15
+      const c = item.v.clip;
+      if (!effectsOf(c, preview).length && !c.graph && !c.matte) {
+        drawPicture(ctx, pic, transformOf(c, t, tl), w, h); // no effects: the direct path of phase 15
         continue;
       }
-      const out = clipLayer(item.v, pic, t, w, h, layers(), preview);
+      const out = clipLayer(item.v, pic, t, w, h, layers(), tl, preview);
+      if (c.matte) {
+        const ml = matteLayer(c.matte.clipId);
+        if (ml) applyMatte(out, ml, c.matte.mode, layers());
+      }
       ctx.save();
-      ctx.globalCompositeOperation = BLEND_OP[transformOf(item.v.clip).blend] ?? "source-over";
+      ctx.globalCompositeOperation = BLEND_OP[transformOf(c).blend] ?? "source-over";
       ctx.drawImage(out.canvas, 0, 0);
       ctx.restore();
       continue;
@@ -166,8 +282,8 @@ export function compositeVisuals(ctx: CanvasRenderingContext2D, doc: ProjectDoc,
     const def = getTransition(item.tr.type)!;
     const pa = item.a && pictureOf(item.a);
     const pb = item.b && pictureOf(item.b);
-    const la = item.a && pa ? clipLayer(item.a, pa, t, w, h, layers(), preview) : null;
-    const lb = item.b && pb ? clipLayer(item.b, pb, t, w, h, layers(), preview) : null;
+    const la = item.a && pa ? clipLayer(item.a, pa, t, w, h, layers(), tl, preview) : null;
+    const lb = item.b && pb ? clipLayer(item.b, pb, t, w, h, layers(), tl, preview) : null;
     const mix = layers().take();
     def.render(mix.ctx, la, lb, item.p, item.tr.params, { w, h, scratch: () => layers().take() });
     ctx.drawImage(mix.canvas, 0, 0);

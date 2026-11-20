@@ -5,6 +5,7 @@ import { activeTimeline } from "../../model/convert";
 import type { ClipTransform, ProjectDoc, Timeline, Track } from "../../model/types";
 import * as E from "../../timeline/engine";
 import { sourceOf, withPoolMedia } from "../../timeline/ui";
+import { processorDefaults } from "../audio/dsp";
 import { useMedia, type MediaItem } from "../../store/media";
 
 /**
@@ -145,7 +146,7 @@ export const deleteClips = defineTool({
   applyDoc: (doc, a) => ({ doc: on(doc, (x) => (a.ripple ? E.rippleDelete(x, clipIds(x, a.clips)) : E.deleteClips(x, clipIds(x, a.clips)))), summary: `${a.clips.length} clip(s) deleted${a.ripple ? " (ripple)" : ""}` }),
 });
 
-const BLENDS = ["normal", "multiply", "screen", "overlay", "darken", "lighten", "add", "difference"] as const;
+const BLENDS = ["normal", "multiply", "screen", "overlay", "softlight", "hardlight", "darken", "lighten", "add", "difference", "exclusion", "dodge", "burn"] as const;
 
 export const setClip = defineTool({
   name: "set_clip",
@@ -239,4 +240,78 @@ export const setRangeTool = defineTool({
   }),
 });
 
-export const timelineTools = [addClip, trimClip, moveClips, cutAt, deleteClips, setClip, addTrackTool, setTrackTool, addMarkerTool, setRangeTool];
+export const mixTrackTool = defineTool({
+  name: "set_track_mix",
+  group: "timeline",
+  description: "Mixer strip of an audio track: gain in dB (-60 to 12), pan (-100 left to 100 right), reverb send (0-100), group name. Also add or clear processors (eq, highpass, lowpass, compressor, limiter, gate, deesser, denoise, reverb, delay).",
+  params: z.object({
+    track: z.string(),
+    gain_db: num(-60, 12).optional(),
+    pan: num(-100, 100).optional(),
+    send: num(0, 100).optional(),
+    group: z.string().optional(),
+    add_processor: z.enum(["eq", "highpass", "lowpass", "compressor", "limiter", "gate", "deesser", "denoise", "reverb", "delay"]).optional(),
+    clear_processors: z.boolean().optional(),
+  }),
+  applyDoc: (doc, a) => {
+    const t = tl(doc);
+    const k = a.track.toLowerCase();
+    const tr = t.tracks.find((x) => x.id === a.track) ?? t.tracks.find((x) => x.name.toLowerCase() === k);
+    if (!tr || tr.kind !== "audio") throw new Error(`no audio track "${a.track}"`);
+    const patch: Partial<Track> = {};
+    if (a.gain_db !== undefined) patch.gain = a.gain_db <= -60 ? 0 : Math.pow(10, a.gain_db / 20);
+    if (a.pan !== undefined) patch.pan = a.pan / 100;
+    if (a.send !== undefined) patch.send = a.send / 100;
+    if (a.group !== undefined) patch.group = a.group || undefined;
+    if (a.clear_processors) patch.processors = [];
+    if (a.add_processor) patch.processors = [...(patch.processors ?? tr.processors ?? []), { id: `ap-${Date.now().toString(36)}`, type: a.add_processor, enabled: true, params: processorDefaults(a.add_processor) }];
+    return { doc: on(doc, (x) => E.setTrack(x, tr.id, patch)), summary: `mix of ${tr.name}: ${Object.keys(patch).join(", ") || "unchanged"}` };
+  },
+});
+
+export const masterTool = defineTool({
+  name: "set_master",
+  group: "timeline",
+  description: "Master of the audio mix: gain in dB (-24 to 12) and a peak ceiling in dB (-12 to 0, or null for none). To hit a loudness target use the Audio tab's Loudness card.",
+  params: z.object({ gain_db: num(-24, 12).optional(), ceiling_db: num(-12, 0).nullable().optional() }),
+  applyDoc: (doc, a) => ({
+    doc: on(doc, (x) => {
+      const m = { ...(x.master ?? { gainDb: 0 }) };
+      if (a.gain_db !== undefined) m.gainDb = a.gain_db;
+      if (a.ceiling_db !== undefined) m.ceiling = a.ceiling_db === null ? undefined : a.ceiling_db;
+      return { ...x, master: m };
+    }),
+    summary: "master updated",
+  }),
+});
+
+export const audioClipTool = defineTool({
+  name: "set_audio_clip",
+  group: "timeline",
+  description: "Fade in and out (seconds) and reverse for an audio clip.",
+  params: z.object({ clip: z.string(), fade_in: num(0, 30).optional(), fade_out: num(0, 30).optional(), reverse: z.boolean().optional() }),
+  applyDoc: (doc, a) => {
+    const c = tl(doc).clips.find((x) => x.id === a.clip);
+    if (!c || c.fill) throw new Error(`no clip ${a.clip}`);
+    return {
+      doc: on(doc, (x) => ({ ...x, clips: x.clips.map((y) => (y.id === c.id ? { ...y, ...(a.fade_in !== undefined ? { fadeIn: a.fade_in || undefined } : {}), ...(a.fade_out !== undefined ? { fadeOut: a.fade_out || undefined } : {}), ...(a.reverse !== undefined ? { reverse: a.reverse || undefined } : {}) } : y)) })),
+      summary: "audio clip updated",
+    };
+  },
+});
+
+export const matteTool = defineTool({
+  name: "set_matte",
+  group: "timeline",
+  description: "Use another video clip as the matte of a clip: alpha (its transparency), luma (its brightness) or the inverted versions. The matte clip is not drawn itself. Pass no matte to remove it.",
+  params: z.object({ clip: z.string(), matte: z.string().optional(), mode: z.enum(["alpha", "luma", "alpha-inverted", "luma-inverted"]).default("alpha") }),
+  applyDoc: (doc, a) => {
+    const t = tl(doc);
+    const c = t.clips.find((x) => x.id === a.clip);
+    if (!c || c.fill) throw new Error(`no clip ${a.clip}`);
+    if (a.matte && !t.clips.some((x) => x.id === a.matte && x.id !== c.id)) throw new Error(`no matte clip ${a.matte}`);
+    return { doc: on(doc, (x) => ({ ...x, clips: x.clips.map((y) => (y.id === c.id ? { ...y, matte: a.matte ? { clipId: a.matte, mode: a.mode } : undefined } : y)) })), summary: a.matte ? `${a.mode} matte from ${a.matte}` : "matte removed" };
+  },
+});
+
+export const timelineTools = [addClip, trimClip, moveClips, cutAt, deleteClips, setClip, addTrackTool, setTrackTool, mixTrackTool, masterTool, audioClipTool, matteTool, addMarkerTool, setRangeTool];

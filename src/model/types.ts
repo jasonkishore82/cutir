@@ -1,3 +1,6 @@
+import type { AudioProcessor } from "../lib/audio/dsp";
+import type { Graph } from "../lib/graph/graph";
+import type { Tracker } from "../lib/track/tracker";
 import type { Aspect, Easing, EnergyCurve, Keyframe, KeyProp, StyleOverride, TextStyle, Transition, WordOverride } from "../store/project";
 
 /**
@@ -104,7 +107,21 @@ export type Track = {
   style?: StyleOverride;
   /** Receives inserts and overwrites from the media pool (one video and one audio track at a time). */
   target?: boolean;
+  /** Audio tracks (phase 21): the strip in the mixer. Missing values mean gain 1, pan 0, no send, no processors. */
+  gain?: number;
+  /** -1 (left) to 1 (right). */
+  pan?: number;
+  /** Send to the shared reverb, 0..1. */
+  send?: number;
+  /** Tracks with the same group name move their gain together. */
+  group?: string;
+  processors?: AudioProcessor[];
+  /** Automation lanes of the strip (time in timeline seconds). */
+  anim?: Partial<Record<"gain" | "pan", ParamKey[]>>;
 };
+
+/** The master strip of a timeline's mix (phase 21). */
+export type MasterStrip = { gainDb: number; processors?: AudioProcessor[]; /** Peak ceiling in dB, held by a limiter after the gain. */ ceiling?: number };
 
 /** A clip's content when it is not a media file. */
 export type Generator =
@@ -282,6 +299,20 @@ export type Clip = {
   transform?: Partial<ClipTransform>;
   /** Clip volume for audio, 0..2 (1 = as recorded). */
   volume?: number;
+  /** Audio clip fades in seconds (equal power) and reverse playback (phase 21). */
+  fadeIn?: number;
+  fadeOut?: number;
+  reverse?: boolean;
+  /** Compositing (phase 22). */
+  matte?: TrackMatte;
+  /** Points followed through this clip's picture, by the tracker. */
+  trackers?: Tracker[];
+  /** Pin this clip's position to a tracker of another clip (a title on a moving object). */
+  follow?: { clipId: string; trackerId: string };
+  /** Steady this clip's picture from one of its own trackers. */
+  stabilize?: { trackerId: string; smoothing: number; zoom: number };
+  /** The clip's node graph; when present it replaces the effect stack (a plain chain converts back to a stack). */
+  graph?: Graph;
   /** Keyframe lanes by name. Text clips keep their motion keyframes in `transform`. */
   keyframes: { transform?: Keyframe[] } & Record<string, Keyframe[] | undefined>;
   /**
@@ -291,7 +322,10 @@ export type Clip = {
   anim?: Partial<Record<"x" | "y" | "scale" | "rotation" | "opacity" | "volume", ParamKey[]>>;
 };
 
-export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "add" | "difference";
+export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "softlight" | "hardlight" | "darken" | "lighten" | "add" | "difference" | "exclusion" | "dodge" | "burn";
+
+/** Use another clip as the matte of this one (phase 22): its alpha or its brightness decides what shows. */
+export type TrackMatte = { clipId: string; mode: "alpha" | "luma" | "alpha-inverted" | "luma-inverted" };
 
 /** How a video or image clip sits in the frame. Missing = centred, fitted inside the frame, fully opaque. */
 export type ClipTransform = {
@@ -344,6 +378,8 @@ export type Timeline = {
   transition: Transition;
   /** Transitions at cuts and clip edges on video and audio tracks (phase 17). */
   cutTransitions?: ClipTransition[];
+  /** The master of the audio mix (phase 21). */
+  master?: MasterStrip;
 };
 
 export type ProjectDoc = {

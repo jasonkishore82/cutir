@@ -10,8 +10,11 @@ import { EASING_NAMES } from "../lib/animations";
 import { getTime } from "../lib/transport";
 import CurveParam from "./CurveParam";
 import GradeWheels from "./GradeWheels";
+import PathParam from "./PathParam";
 import ScopesCard from "./ScopesCard";
 import StillsCard from "./StillsCard";
+import TrackingCard from "./TrackingCard";
+import GraphCard from "./GraphCard";
 import { packLut, parseCube } from "../lib/grade/math";
 
 export const EFFECT_MIME = "application/x-cutir-effect";
@@ -53,9 +56,14 @@ export default function EffectsPanel() {
       <Browser targets={targets} />
       <ScopesCard />
       <StillsCard />
+      <TrackingCard />
       {transition && <TransitionEditor tr={transition} />}
       {clip ? (
-        <StackEditor clipId={clip.id} stack={clip.effects} start={clip.start} />
+        <>
+          {clip.graph && <Card title="Effect stack"><p className="text-[12px] text-gray-400">This clip uses a node graph. {clip.graph.nodes.length - 2} nodes. Edit it below, or go back to the stack when the graph is a plain chain.</p></Card>}
+          {!clip.graph && <StackEditor clipId={clip.id} stack={clip.effects} start={clip.start} />}
+          <GraphCard />
+        </>
       ) : (
         <Card title="Effect stack">
           <p className="text-[12px] text-gray-500">{targets.length > 1 ? `${targets.length} clips selected: click an effect to add it to all of them.` : "Select a video or image clip on the timeline to see its effects."}</p>
@@ -231,6 +239,7 @@ function EffectCard({ clipId, fx, first, last, clipStart }: { clipId: string; fx
             spec={spec}
             value={fx.params[spec.key]}
             keys={fx.keys?.[spec.key]}
+            all={fx.params}
             now={getTime() - clipStart}
             onChange={(v) => set({ [spec.key]: v }, spec.key)}
             onKeys={(keys) => editTimeline((t) => FX.updateEffect(t, clipId, fx.id, { keys: { ...(fx.keys ?? {}), [spec.key]: keys } }))}
@@ -241,7 +250,7 @@ function EffectCard({ clipId, fx, first, last, clipStart }: { clipId: string; fx
 }
 
 /** One param, its control generated from its spec. Numeric params can be keyframed at the playhead. */
-function ParamField({ spec, value, keys, now, onChange, onKeys }: { spec: ParamSpec; value: unknown; keys?: ParamKey[]; now: number; onChange: (v: unknown) => void; onKeys: (k: ParamKey[]) => void }) {
+export function ParamField({ spec, value, keys, now, onChange, onKeys, all }: { spec: ParamSpec; value: unknown; all?: Record<string, unknown>; keys?: ParamKey[]; now: number; onChange: (v: unknown) => void; onKeys: (k: ParamKey[]) => void }) {
   const numeric = spec.type === "number" || spec.type === "angle";
   const keyBtn = numeric ? (
     <span className="flex items-center gap-1">
@@ -327,8 +336,13 @@ function ParamField({ spec, value, keys, now, onChange, onKeys }: { spec: ParamS
     }
     case "curve": {
       const tints: Record<string, string> = { red: "#f87171", green: "#4ade80", blue: "#60a5fa" };
-      const flat = /^(hueVs|lumaVs)/.test(spec.key);
+      const flat = /^(hueVs|lumaVs|satVs)/.test(spec.key);
       return <CurveParam label={spec.label} value={(Array.isArray(value) ? value : spec.default) as [number, number][]} flat={flat} tint={tints[spec.key]} onChange={onChange} />;
+    }
+    case "path": {
+      const shape = String(all?.shape ?? "");
+      if (all && shape !== "polygon" && shape !== "bezier") return null; // rectangle and ellipse use the centre and size instead
+      return <PathParam label={spec.label} value={(Array.isArray(value) ? value : spec.default) as [number, number][]} smooth={shape === "bezier"} onChange={onChange} />;
     }
     case "lut":
       return <LutParam label={spec.label} value={value as { name?: string } | null} onChange={onChange} />;

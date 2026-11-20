@@ -1,10 +1,10 @@
 import { Card, Slider } from "./ui";
 import { useProject } from "../store/project";
 import { activeTimeline } from "../model/convert";
-import { IDENTITY_TRANSFORM, type BlendMode, type ClipTransform } from "../model/types";
+import { IDENTITY_TRANSFORM, type BlendMode, type ClipTransform, type TrackMatte } from "../model/types";
 import { editTimeline, useTimelineUi } from "../timeline/ui";
 
-const BLENDS: BlendMode[] = ["normal", "multiply", "screen", "overlay", "darken", "lighten", "add", "difference"];
+const BLENDS: BlendMode[] = ["normal", "add", "multiply", "screen", "overlay", "softlight", "hardlight", "darken", "lighten", "dodge", "burn", "difference", "exclusion"];
 
 /** Placement of the selected timeline clip (video or image), or the volume of an audio clip. */
 export default function ClipCard() {
@@ -51,6 +51,37 @@ export default function ClipCard() {
               </select>
             </label>
           </div>
+          {visual.length === 1 && (
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="label">Matte from</span>
+                <select
+                  className="field"
+                  value={first.matte?.clipId ?? ""}
+                  onChange={(e) => editTimeline((t) => ({ ...t, clips: t.clips.map((c) => (c.id === first.id ? { ...c, matte: e.target.value ? { clipId: e.target.value, mode: first.matte?.mode ?? "alpha" } : undefined } : c)) }))}
+                >
+                  <option value="">none</option>
+                  {tl.clips.filter((c) => c.id !== first.id && !c.fill && tl.tracks.find((t) => t.id === c.trackId)?.kind === "video").map((c) => (
+                    <option key={c.id} value={c.id}>{c.name ?? doc.media.find((m) => m.id === c.mediaId)?.name ?? c.generator?.type ?? c.id}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="label">Matte type</span>
+                <select
+                  className="field"
+                  disabled={!first.matte}
+                  value={first.matte?.mode ?? "alpha"}
+                  onChange={(e) => editTimeline((t) => ({ ...t, clips: t.clips.map((c) => (c.id === first.id && c.matte ? { ...c, matte: { ...c.matte, mode: e.target.value as TrackMatte["mode"] } } : c)) }))}
+                >
+                  <option value="alpha">Alpha</option>
+                  <option value="alpha-inverted">Alpha, inverted</option>
+                  <option value="luma">Luma</option>
+                  <option value="luma-inverted">Luma, inverted</option>
+                </select>
+              </label>
+            </div>
+          )}
           <button
             className="w-full rounded-lg border border-edge px-3 py-1.5 text-left text-[12px] text-gray-300 hover:bg-raised"
             onClick={() => editTimeline((t) => ({ ...t, clips: t.clips.map((c) => (ids.has(c.id) ? { ...c, transform: undefined } : c)) }))}

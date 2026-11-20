@@ -26,6 +26,9 @@ export const usePlayback = create<PlaybackState>(() => ({
 const audio = new Audio();
 audio.preload = "auto";
 
+/** The song's audio element, for the mixer to route through its strips. */
+export const songElement = () => audio;
+
 let hasAudio = false;
 let fallbackDuration = 0;
 let virtualTime = 0;

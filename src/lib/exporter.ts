@@ -18,7 +18,7 @@ import { viewToDoc } from "../model/convert";
 import type { ProjectDoc } from "../model/types";
 import { needsAt, renderFrame } from "../render/compositor";
 import { exactFrames } from "../render/sources";
-import { mixInputs, mixdown } from "../render/audio";
+import { mixInputs, mixPlan, mixdown } from "../render/audio";
 import { useMedia } from "../store/media";
 
 /**
@@ -92,7 +92,7 @@ const urlOfMedia = (doc: ProjectDoc) => (mediaId: string) => {
 /** The exported sound: the song and every audible timeline audio clip, mixed to one stereo track. */
 async function exportAudio(project: Project, duration: number, signal: AbortSignal): Promise<AudioBuffer | null> {
   const doc = docFor(project);
-  return mixdown(mixInputs(doc, project.audio?.url, duration, urlOfMedia(doc)), duration, 48000, signal);
+  return mixdown(mixInputs(doc, project.audio?.url, duration, urlOfMedia(doc)), duration, 48000, signal, mixPlan(doc, duration));
 }
 
 /** 16-bit PCM WAV of a buffer, for the ffmpeg paths. */

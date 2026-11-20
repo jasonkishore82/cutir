@@ -1,4 +1,5 @@
 import { useStills } from "../lib/stills";
+import { useTrackUi } from "../lib/track/run";
 import { scopeSource } from "../lib/scopes";
 import { Icon } from "./ui";
 import TextOverlay from "./TextOverlay";
@@ -7,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "../store/project";
 import { ensureFont } from "../lib/fonts";
 import { ASPECT_RATIO, type MediaSource } from "../lib/renderer";
-import { getTime, pause, seek, setFallbackDuration, setLoop, setSongMuted, setSource, shuttle, tick, toggle, usePlayback } from "../lib/transport";
+import { songElement, getTime, pause, seek, setFallbackDuration, setLoop, setSongMuted, setSource, shuttle, tick, toggle, usePlayback } from "../lib/transport";
 import { activeVisuals, needsAt, renderFrame, visualMediaIds, type PreviewEffect } from "../render/compositor";
 import { defaultParams, getEffect } from "../lib/effects";
 import { useTimelineUi } from "../timeline/ui";
@@ -107,10 +108,10 @@ onVariantsChanged(() => {
   reopenPlayback();
   clearRenderCache();
 });
-const mixer = new AudioMixer((mediaId) => {
+export const mixer = new AudioMixer((mediaId) => {
   const pool = poolOf(mediaId);
   return pool ? useMedia.getState().urls[pool] : undefined;
-});
+}, songElement());
 
 const fmt = (t: number) => {
   const m = Math.floor(t / 60);
@@ -461,6 +462,7 @@ export default function Preview() {
             className="rounded-lg shadow-2xl shadow-black/70 ring-1 ring-white/10"
           />
           <StillCompare />
+          <TrackPointOverlay />
           {box.w > 0 && <TextOverlay w={box.w} h={box.h} />}
           {box.w > 0 && <ClipGizmo w={box.w} h={box.h} />}
           {showStats && (
@@ -559,6 +561,27 @@ function StillCompare() {
       <img src={still.url} alt="" className="absolute inset-0 h-full w-full object-fill" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }} />
       <div className="absolute inset-y-0 w-0.5 bg-white/80" style={{ left: `${pct}%` }} />
       <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">{still.name}</span>
+    </div>
+  );
+}
+
+/** The tracking point being placed: click the viewer to move it. */
+function TrackPointOverlay() {
+  const { clipId, x, y, set } = useTrackUi();
+  if (!clipId) return null;
+  return (
+    <div
+      className="absolute inset-0 z-10 cursor-crosshair"
+      onPointerDown={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        set({ x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) });
+        e.stopPropagation();
+      }}
+      aria-label="Click to place the tracking point"
+    >
+      <div className="pointer-events-none absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-yellow-300" style={{ left: `${x * 100}%`, top: `${y * 100}%` }}>
+        <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-yellow-300" />
+      </div>
     </div>
   );
 }

@@ -25,8 +25,8 @@ Phases 1 to 5 built the lyric video editor. Phases 6 to 10 add movable text, ove
 | 18 | [Keyframe Engine and Curve Editor](phase-18-keyframes-and-curve-editor.md) | ✅ |
 | 19 | [Titles, Text and Shapes](phase-19-titles-and-text-engine.md) | 🟡 |
 | 20 | [Colour Correction and Grading](phase-20-colour-correction.md) | 🟡 |
-| 21 | [Audio Editing and Mixing](phase-21-audio-mixing.md) |  |
-| 22 | [Compositing, Masks and Node Graph](phase-22-compositing-and-masks.md) |  |
+| 21 | [Audio Editing and Mixing](phase-21-audio-mixing.md) | 🟡 |
+| 22 | [Compositing, Masks and Node Graph](phase-22-compositing-and-masks.md) | 🟡 |
 | 23 | [Speed, Retiming, Freeze Frames and Nested Timelines](phase-23-speed-and-nested-clips.md) |  |
 | 24 | [Multicam and Audio Sync](phase-24-multicam-and-sync.md) |  |
 | 25 | [Captions and Subtitles](phase-25-captions-and-subtitles.md) |  |

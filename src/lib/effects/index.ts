@@ -82,7 +82,7 @@ export function cleanParams(specs: ParamSpec[], params: Params): Params {
     } else if (s.type === "point") {
       const o = v as { x?: unknown; y?: unknown };
       if (o && Number.isFinite(Number(o.x)) && Number.isFinite(Number(o.y))) out[s.key] = { x: Number(o.x), y: Number(o.y) };
-    } else if (s.type === "curve" && Array.isArray(v)) out[s.key] = v;
+    } else if ((s.type === "curve" || s.type === "path") && Array.isArray(v)) out[s.key] = v;
     else if (s.type === "lut") {
       const o = v as { size?: unknown; data?: unknown } | null;
       if (v === null || (o && typeof o.data === "string" && Number.isInteger(o.size))) out[s.key] = v;
@@ -163,14 +163,14 @@ export function poolFor(w: number, h: number): LayerPool {
  * Run a clip's effect stack over `src` (the clip already drawn into a frame-sized layer). Returns the final layer.
  * Disabled and unknown effects are skipped. The GPU version of an effect is used when WebGL2 works.
  */
-export function applyStack(src: Layer, stack: ClipEffect[], time: number, clipDuration: number, pool: LayerPool): Layer {
+export function applyStack(src: Layer, stack: ClipEffect[], time: number, clipDuration: number, pool: LayerPool, track?: { x: number; y: number }): Layer {
   let cur = src;
   for (const fx of stack) {
     if (!fx.enabled) continue;
     const def = getEffect(fx.type);
     if (!def) continue;
     const dst = pool.take();
-    const env: EffectEnv = { w: src.w, h: src.h, time, clipDuration, scratch: () => pool.take() };
+    const env: EffectEnv = { w: src.w, h: src.h, time, clipDuration, scratch: () => pool.take(), ...(track ? { track } : {}) };
     const p = paramsAt(fx, time);
     if (!(def.gpu && runGpu(def.id, def.gpu, cur, dst, p, env))) def.render(cur, dst, p, env);
     cur = dst;
