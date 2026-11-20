@@ -1,4 +1,4 @@
-import type { TextRun, TitleAnimator, TitleSpec } from "../model/types";
+import type { AnimatorFrom, TextRun, TitleAnimator, TitleSpec } from "../model/types";
 
 /**
  * Titles (phase 19): a text box with rich runs, fills, strokes, shadow, glow and After Effects style per-character
@@ -231,8 +231,10 @@ export function rollDuration(spec: TitleSpec, layout: TitleLayout, H: number): n
 
 /* ---------- animators ---------- */
 
-export type UnitFx = { opacity: number; dx: number; dy: number; scale: number; rotation: number; blur: number; fill: number };
-const REST: UnitFx = { opacity: 1, dx: 0, dy: 0, scale: 1, rotation: 0, blur: 0, fill: 0 };
+export type UnitFx = { opacity: number; dx: number; dy: number; scale: number; rotation: number; blur: number; fill: number; tint: number };
+const REST: UnitFx = { opacity: 1, dx: 0, dy: 0, scale: 1, rotation: 0, blur: 0, fill: 0, tint: 0 };
+
+export const DEFAULT_FROM: AnimatorFrom = { opacity: 0, dx: 0, dy: 0.6, scale: 1, rotation: 0, blur: 0, tint: 0 };
 
 const smoothstep = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / Math.max(1e-6, b - a)));
@@ -249,6 +251,11 @@ export const ANIMATOR_PRESETS: { id: TitleAnimator["preset"]; name: string; unit
   { id: "blur-in", name: "Blur in", unit: "char", duration: 1.2 },
   { id: "karaoke-fill", name: "Karaoke fill", unit: "word", duration: 2 },
   { id: "roll", name: "Credits roll", unit: "line", duration: 1 },
+  { id: "spin-in", name: "Spin in", unit: "char", duration: 1.4 },
+  { id: "slide-in", name: "Slide in from the left", unit: "word", duration: 1.2 },
+  { id: "drop-in", name: "Drop in", unit: "char", duration: 1.4 },
+  { id: "colour-flash", name: "Colour flash", unit: "char", duration: 1.5 },
+  { id: "custom", name: "Custom (build your own)", unit: "char", duration: 1.2 },
 ];
 
 /** The animator's effect on unit `i` of `n` at `t` seconds into the clip. Sizes are in text heights. */
@@ -291,6 +298,35 @@ export function unitFx(a: TitleAnimator, i: number, n: number, t: number, clipDu
     case "karaoke-fill":
       fx.fill = arrive;
       break;
+    case "spin-in":
+      fx.opacity *= Math.min(1, arrive * 3);
+      fx.rotation = -360 * c;
+      fx.scale = 0.2 + 0.8 * arrive;
+      break;
+    case "slide-in":
+      fx.opacity *= Math.min(1, arrive * 2);
+      fx.dx = -(1 - arrive) * 4;
+      break;
+    case "drop-in":
+      fx.opacity *= Math.min(1, arrive * 4);
+      fx.dy = -(1 - backOut(arrive)) * 1.6;
+      fx.rotation = (1 - arrive) * -25;
+      break;
+    case "colour-flash":
+      fx.tint = Math.sin(Math.PI * Math.min(1, Math.max(0, 1 - c * 1.0))) * (arrive > 0 && arrive < 1 ? 1 : 0);
+      fx.scale = 1 + 0.25 * fx.tint;
+      break;
+    case "custom": {
+      const f = a.from ?? DEFAULT_FROM;
+      fx.opacity *= f.opacity + (1 - f.opacity) * arrive;
+      fx.dx = f.dx * c;
+      fx.dy = f.dy * c;
+      fx.scale = f.scale + (1 - f.scale) * arrive;
+      fx.rotation = f.rotation * c;
+      fx.blur = f.blur * c;
+      fx.tint = f.tint * c;
+      break;
+    }
   }
   return fx;
 }
@@ -468,6 +504,12 @@ export function drawTitle(ctx: Ctx, spec: TitleSpec, t: number, clipDur: number,
     };
     paint(baseFill);
     if (fx.fill > 0) paint(spec.color2, Math.min(1, fx.fill));
+    if (fx.tint > 0.001) {
+      ctx.save();
+      ctx.globalAlpha *= Math.min(1, fx.tint);
+      paint(spec.color2, 1);
+      ctx.restore();
+    }
     ctx.restore();
   });
   ctx.restore();

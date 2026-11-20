@@ -135,8 +135,16 @@ export type ShapeSpec = {
 /** A character range with its own look; `start` is inclusive and `end` exclusive, counted in letters of the text. */
 export type TextRun = { start: number; end: number; color?: string; weight?: number; italic?: boolean; underline?: boolean; size?: number; font?: string };
 
+/**
+ * What a unit looks like before it arrives (custom animator). It eases to rest as the sweep reaches it.
+ * Offsets are in text heights, rotation in degrees, `tint` is how much of the second colour is mixed in (0..1).
+ */
+export type AnimatorFrom = { opacity: number; dx: number; dy: number; scale: number; rotation: number; blur: number; tint: number };
+
 export type TitleAnimator = {
-  preset: "none" | "typewriter" | "word-pop" | "line-slide" | "wave" | "blur-in" | "karaoke-fill" | "roll";
+  preset: "none" | "typewriter" | "word-pop" | "line-slide" | "wave" | "blur-in" | "karaoke-fill" | "roll" | "spin-in" | "slide-in" | "drop-in" | "colour-flash" | "custom";
+  /** Starting look for the `custom` preset. */
+  from?: AnimatorFrom;
   /** Animate by letter, word or line. */
   unit: "char" | "word" | "line";
   /** Seconds the whole animation takes to sweep across the text (in), and how long each unit takes. */

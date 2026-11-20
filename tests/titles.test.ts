@@ -69,7 +69,7 @@ check("an accented or emoji letter is one piece", graphemes("é\u{1F1EF}\u{1F1F
 /* ---------- animators ---------- */
 const A = (preset: (typeof ANIMATOR_PRESETS)[number]["id"], extra = {}) => ({ ...DEFAULT_ANIMATOR, preset, duration: 1, ...extra });
 const vis = (a: ReturnType<typeof A>, i: number, n: number, t: number) => unitFx(a, i, n, t, 5);
-check("no animator leaves everything at rest", JSON.stringify(vis(A("none"), 0, 4, 0)) === JSON.stringify({ opacity: 1, dx: 0, dy: 0, scale: 1, rotation: 0, blur: 0, fill: 0 }));
+check("no animator leaves everything at rest", JSON.stringify(vis(A("none"), 0, 4, 0)) === JSON.stringify({ opacity: 1, dx: 0, dy: 0, scale: 1, rotation: 0, blur: 0, fill: 0, tint: 0 }));
 check("typewriter: nothing at 0, everything at the end, in order", [0, 1, 2, 3].every((i) => vis(A("typewriter"), i, 4, 0).opacity === 0) && [0, 1, 2, 3].every((i) => vis(A("typewriter"), i, 4, 1).opacity === 1) && vis(A("typewriter"), 0, 4, 0.4).opacity === 1 && vis(A("typewriter"), 3, 4, 0.4).opacity === 0);
 check("typewriter reveals one letter after the other", (() => { let last = -1; for (let t = 0; t <= 1; t += 0.05) { const shown = [0, 1, 2, 3, 4, 5].filter((i) => vis(A("typewriter"), i, 6, t).opacity === 1).length; if (shown < last) return false; last = shown; } return last === 6; })());
 check("word pop grows from small to full size", vis(A("word-pop"), 0, 3, 0).scale < 0.5 && near(vis(A("word-pop"), 0, 3, 1).scale, 1, 1e-6));

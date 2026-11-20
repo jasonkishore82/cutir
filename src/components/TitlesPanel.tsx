@@ -8,7 +8,8 @@ import { getTime } from "../lib/transport";
 import { ensureFont } from "../lib/fonts";
 import { GENERATOR_KINDS, SHAPE_KINDS, newGenerator, shapeOf } from "../lib/generators";
 import { TITLE_TEMPLATES, addGeneratorClips, buildTemplate, updateGenerator, type TitleTemplate } from "../lib/titleTemplates";
-import { ANIMATOR_PRESETS, titleOf } from "../lib/titles";
+import { ANIMATOR_PRESETS, DEFAULT_FROM, titleOf } from "../lib/titles";
+import { deletePreset, loadPresets, savePreset, titleFromPreset, type TitlePreset } from "../lib/titlePresets";
 
 const btn = "rounded-lg border border-edge bg-black/20 px-2.5 py-1.5 text-[12px] text-gray-300 hover:bg-raised hover:text-white";
 
@@ -32,6 +33,7 @@ export default function TitlesPanel() {
   return (
     <>
       <Templates onAdd={add} />
+      <Presets onAdd={add} current={clip?.generator?.type === "title" ? clip.generator.title : undefined} />
       <Card title="Generators and shapes" hint="Added at the playhead on a free video track. Move, fade, key and add effects to them like any clip.">
         <div className="flex flex-wrap gap-1.5">
           {GENERATOR_KINDS.filter((g) => g.id !== "shape" && g.id !== "title").map((g) => (
@@ -86,6 +88,45 @@ function Templates({ onAdd }: { onAdd: (plans: Parameters<typeof addGeneratorCli
       <button className="w-full rounded-lg bg-accent/90 px-3 py-2 text-[13px] font-medium text-black hover:bg-accent" onClick={() => onAdd(buildTemplate(id, Object.fromEntries(t.fields.map((f) => [f.key, val(f.key, f.default)]))))}>
         Add {t.name.toLowerCase()} at the playhead
       </button>
+    </Card>
+  );
+}
+
+/* ---------- your saved title looks ---------- */
+
+function Presets({ onAdd, current }: { onAdd: (plans: Parameters<typeof addGeneratorClips>[1]) => void; current?: TitleSpec }) {
+  const [list, setList] = useState<TitlePreset[]>(() => loadPresets());
+  const [name, setName] = useState("");
+  const [text, setText] = useState("Your words");
+  const [error, setError] = useState("");
+  const save = () => {
+    if (!current) return;
+    try {
+      setList(savePreset(name, current));
+      setName("");
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  return (
+    <Card title="My title presets" hint="Save the look of the selected title (font, colours, box, animation) and add it again with new words.">
+      <div className="flex gap-1.5">
+        <input className="field" placeholder="Preset name" value={name} onChange={(e) => setName(e.target.value)} />
+        <button className={btn} disabled={!current || !name.trim()} onClick={save} title={current ? "Save the selected title's look" : "Select a title clip first"}>Save</button>
+      </div>
+      {error && <p className="text-[11px] text-red-400">{error}</p>}
+      {list.length > 0 && (
+        <>
+          <label className="block"><span className="label">Words for new titles</span><input className="field" value={text} onChange={(e) => setText(e.target.value)} /></label>
+          {list.map((p) => (
+            <div key={p.id} className="flex items-center gap-1.5">
+              <button className={`${btn} flex-1 text-left`} onClick={() => onAdd([{ name: p.name, generator: { type: "title", title: titleFromPreset(p, text) }, duration: 5 }])}>Add &ldquo;{p.name}&rdquo;</button>
+              <button className="text-[11px] text-gray-500 hover:text-red-400" onClick={() => setList(deletePreset(p.id))} aria-label={`Delete preset ${p.name}`}>delete</button>
+            </div>
+          ))}
+        </>
+      )}
     </Card>
   );
 }
@@ -298,10 +339,29 @@ function TitleEditor({ title: s, duration, onChange }: { title: TitleSpec; durat
           <Slider label="Range offset" value={s.animator.offset} min={-100} max={100} unit="%" onChange={(v) => anim({ offset: v }, "ro")} />
         </>
       )}
+      {s.animator.preset === "custom" && <CustomAnimator a={s.animator} onChange={(patch) => anim(patch, "from")} />}
       <Slider label="Fade out at the end (seconds)" value={s.animator.outDuration} min={0} max={3} step={0.1} onChange={(v) => anim({ outDuration: v }, "out")} />
       <Slider label="Credits roll speed (screens per second)" value={s.roll} min={0} max={0.5} step={0.01} onChange={(v) => up({ roll: v }, "roll")} />
       <RunsEditor s={s} up={up} />
     </>
+  );
+}
+
+/** The custom animator: where each unit starts (opacity, offset, scale, rotation, blur, colour) before it eases into place. */
+function CustomAnimator({ a, onChange }: { a: TitleAnimator; onChange: (p: Partial<TitleAnimator>) => void }) {
+  const f = a.from ?? DEFAULT_FROM;
+  const set = (patch: Partial<typeof f>) => onChange({ from: { ...f, ...patch } });
+  return (
+    <div className="space-y-1 rounded-lg border border-edge p-2">
+      <p className="text-[11px] text-gray-500">Each piece starts like this and eases into place as the animation reaches it.</p>
+      <Slider label="Starts at opacity" value={Math.round(f.opacity * 100)} min={0} max={100} unit="%" onChange={(v) => set({ opacity: v / 100 })} />
+      <Slider label="Starts across by" value={Math.round(f.dx * 100)} min={-500} max={500} unit="% of text height" onChange={(v) => set({ dx: v / 100 })} />
+      <Slider label="Starts down by" value={Math.round(f.dy * 100)} min={-500} max={500} unit="% of text height" onChange={(v) => set({ dy: v / 100 })} />
+      <Slider label="Starts at size" value={Math.round(f.scale * 100)} min={0} max={400} unit="%" onChange={(v) => set({ scale: v / 100 })} />
+      <Slider label="Starts rotated by" value={f.rotation} min={-720} max={720} unit=" deg" onChange={(v) => set({ rotation: v })} />
+      <Slider label="Starts blurred by" value={Math.round(f.blur * 100)} min={0} max={100} unit="%" onChange={(v) => set({ blur: v / 100 })} />
+      <Slider label="Starts mixed with 2nd colour" value={Math.round(f.tint * 100)} min={0} max={100} unit="%" onChange={(v) => set({ tint: v / 100 })} />
+    </div>
   );
 }
 
@@ -328,6 +388,10 @@ function RunsEditor({ s, up }: { s: TitleSpec; up: (p: Partial<TitleSpec>, key: 
           </div>
           <div className="flex flex-wrap items-center gap-3 text-[12px] text-gray-300">
             <input type="color" value={r.color ?? s.color} onChange={(e) => up({ runs: s.runs.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) }, `rc${i}`)} aria-label="Colour" />
+            <select className="field !w-auto" aria-label="Font for this part" value={r.font ?? ""} onChange={(e) => { void (e.target.value && ensureFont(e.target.value, s.text.slice(r.start, r.end))); up({ runs: s.runs.map((x, j) => (j === i ? { ...x, font: e.target.value || undefined } : x)) }, `rf${i}`); }}>
+              <option value="">Same font</option>
+              {(r.font && !FONTS.includes(r.font) ? [r.font, ...FONTS] : FONTS).map((f) => <option key={f}>{f}</option>)}
+            </select>
             <label className="flex items-center gap-1"><input type="checkbox" checked={(r.weight ?? s.weight) >= 800} onChange={(e) => up({ runs: s.runs.map((x, j) => (j === i ? { ...x, weight: e.target.checked ? 900 : 400 } : x)) }, `rw${i}`)} />Bold</label>
             <label className="flex items-center gap-1"><input type="checkbox" checked={r.italic ?? s.italic} onChange={(e) => up({ runs: s.runs.map((x, j) => (j === i ? { ...x, italic: e.target.checked } : x)) }, `ri${i}`)} />Italic</label>
             <label className="flex items-center gap-1"><input type="checkbox" checked={r.underline ?? s.underline} onChange={(e) => up({ runs: s.runs.map((x, j) => (j === i ? { ...x, underline: e.target.checked } : x)) }, `ru${i}`)} />Underline</label>
