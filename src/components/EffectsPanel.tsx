@@ -15,6 +15,9 @@ import ScopesCard from "./ScopesCard";
 import StillsCard from "./StillsCard";
 import TrackingCard from "./TrackingCard";
 import GraphCard from "./GraphCard";
+import SpeedCard from "./SpeedCard";
+import TimelinesCard from "./TimelinesCard";
+import MulticamCard from "./MulticamCard";
 import { packLut, parseCube } from "../lib/grade/math";
 
 export const EFFECT_MIME = "application/x-cutir-effect";
@@ -57,6 +60,9 @@ export default function EffectsPanel() {
       <ScopesCard />
       <StillsCard />
       <TrackingCard />
+      <SpeedCard />
+      <TimelinesCard />
+      <MulticamCard />
       {transition && <TransitionEditor tr={transition} />}
       {clip ? (
         <>

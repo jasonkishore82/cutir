@@ -136,6 +136,8 @@ export function viewToDoc(view: Project, prev?: ProjectDoc): ProjectDoc {
   clips.push(...(prevTl?.clips ?? []).filter((c) => keptTrackIds.has(c.trackId) || (c.trackId === IDS.bgTrack && c.id !== IDS.bgClip) || (c.trackId === IDS.audioTrack && c.id !== IDS.audioClip)));
 
   const [width, height] = SIZES[view.aspect];
+  // a timeline with a frame shape of its own (a 9:16 version) keeps the project's shape and records its own
+  const ownShape = prevTl?.aspect !== undefined;
   const timeline: Timeline = {
     ...(prevTl ?? { id: tlId, name: "Main", markers: [] }),
     id: tlId,
@@ -144,11 +146,12 @@ export function viewToDoc(view: Project, prev?: ProjectDoc): ProjectDoc {
     markers: prevTl?.markers ?? [],
     textStyle: view.style,
     transition: view.transition,
+    ...(ownShape ? { aspect: view.aspect } : {}),
   };
 
   return {
     schemaVersion: SCHEMA_VERSION,
-    settings: { sampleRate: 48000, ...(prev?.settings ?? {}), colorSpace: view.colourSpace ?? prev?.settings.colorSpace ?? "rec709", outputSpace: view.outputSpace ?? prev?.settings.outputSpace, aspect: view.aspect, fps: view.fps, width, height },
+    settings: { sampleRate: 48000, ...(prev?.settings ?? {}), colorSpace: view.colourSpace ?? prev?.settings.colorSpace ?? "rec709", outputSpace: view.outputSpace ?? prev?.settings.outputSpace, fps: view.fps, aspect: ownShape ? prev!.settings.aspect : view.aspect, width: ownShape ? prev!.settings.width : width, height: ownShape ? prev!.settings.height : height },
     media,
     bins: prev?.bins ?? [],
     timelines: prev?.timelines.some((t) => t.id === tlId) ? prev.timelines.map((t) => (t.id === tlId ? timeline : t)) : [...(prev?.timelines ?? []), timeline],
@@ -216,7 +219,7 @@ export function docToView(doc: ProjectDoc): Project {
     layers,
     lines,
     style: tl.textStyle,
-    aspect: doc.settings.aspect,
+    aspect: tl.aspect ?? doc.settings.aspect,
     fps: doc.settings.fps,
     transition: tl.transition,
   };

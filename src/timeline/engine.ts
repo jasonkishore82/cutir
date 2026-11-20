@@ -1,3 +1,4 @@
+import { sourceAtRel, splitRamp, trimRampHead } from "../lib/retime";
 import type { Clip, Marker, ProjectDoc, Timeline, Track, TrackKind } from "../model/types";
 import { isBeat } from "../model/types";
 import { beatsOf } from "../model/convert";
@@ -241,8 +242,17 @@ export function clipsInRange(tl: Timeline, t0: number, t1: number, trackIds: str
 /* ---------- the core primitive: make room on a track ---------- */
 
 function splitAt(c: Clip, t: number): [Clip, Clip] {
-  const left: Clip = { ...c, duration: tidy(t - c.start), sourceOut: tidy(c.sourceIn + (t - c.start) * c.speed) };
-  const right: Clip = { ...c, id: newId("c"), start: tidy(t), duration: tidy(clipEnd(c) - t), sourceIn: tidy(c.sourceIn + (t - c.start) * c.speed) };
+  const rel = t - c.start;
+  const at = sourceAtRel(c, rel); // the source time at the cut, whatever the retiming
+  const [lr, rr] = c.ramp?.keys.length ? splitRamp(c.ramp, rel) : [undefined, undefined];
+  const ramp = (r?: typeof c.ramp) => (r ? { ramp: r } : {});
+  // a reversed clip plays from its out point back: the left part keeps the later source, the right part the earlier
+  const left: Clip = c.reverse
+    ? { ...c, duration: tidy(rel), sourceIn: tidy(at), ...ramp(lr) }
+    : { ...c, duration: tidy(rel), sourceOut: tidy(at), ...ramp(lr) };
+  const right: Clip = c.reverse
+    ? { ...c, id: newId("c"), start: tidy(t), duration: tidy(clipEnd(c) - t), sourceOut: tidy(at), ...ramp(rr) }
+    : { ...c, id: newId("c"), start: tidy(t), duration: tidy(clipEnd(c) - t), sourceIn: tidy(at), ...ramp(rr) };
   return [left, right];
 }
 
@@ -396,15 +406,34 @@ function edgeRange(tl: Timeline, c: Clip, edge: Edge, ripple: boolean, ctx: Edit
   const lim = sourceLimit(c, ctx);
   const track = clipsOn(tl, c.trackId);
   const i = track.findIndex((x) => x.id === c.id);
+  // how fast the source passes on average (a ramp has no single speed), and which end of the source an edge eats into
+  const sp = c.ramp?.keys.length && c.duration > 0 ? Math.max(1e-3, (c.sourceOut - c.sourceIn) / c.duration) : c.speed;
+  const rev = !!c.reverse;
   if (edge === "end") {
-    let max = lim === undefined ? Infinity : (lim - c.sourceOut) / c.speed;
+    let max = rev ? c.sourceIn / sp : lim === undefined ? Infinity : (lim - c.sourceOut) / sp;
     if (!ripple && track[i + 1]) max = Math.min(max, track[i + 1].start - clipEnd(c));
     return [f - c.duration, max];
   }
   // start edge
-  let min = -c.sourceIn / c.speed;
+  let min = rev ? (lim === undefined ? -Infinity : -(lim - c.sourceOut) / sp) : -c.sourceIn / sp;
   if (!ripple) min = Math.max(min, track[i - 1] ? clipEnd(track[i - 1]) - c.start : -c.start);
   return [min, c.duration - f];
+}
+
+/** A clip with its end moved by d (positive: longer), source range following the retiming. */
+function trimmedEnd(c: Clip, d: number): Clip {
+  const duration = tidy(c.duration + d);
+  const next = { ...c, duration };
+  const far = sourceAtRel(next, duration); // where the source ends now
+  return c.reverse ? { ...next, sourceIn: tidy(far) } : { ...next, sourceOut: tidy(far) };
+}
+
+/** A clip with its head moved by d (positive: shorter); `move` also moves its start (a normal trim, not a ripple). */
+function trimmedHead(c: Clip, d: number, move: boolean): Clip {
+  const at = sourceAtRel(c, d);
+  const ramp = c.ramp?.keys.length ? { ramp: d >= 0 ? trimRampHead(c.ramp, d) : c.ramp } : {};
+  const base = { ...c, duration: tidy(c.duration - d), ...(move ? { start: tidy(c.start + d) } : {}), ...ramp };
+  return c.reverse ? { ...base, sourceOut: tidy(at) } : { ...base, sourceIn: tidy(at) };
 }
 
 /**
@@ -433,9 +462,9 @@ export function trimEdge(tl: Timeline, id: string, edge: Edge, dt: number, rippl
     ...tl,
     clips: tl.clips.map((c) => {
       if (touched.has(c.id)) {
-        if (edge === "end") return { ...c, duration: tidy(c.duration + d), sourceOut: tidy(c.sourceOut + d * c.speed) };
-        if (ripple) return { ...c, duration: tidy(c.duration - d), sourceIn: tidy(c.sourceIn + d * c.speed) };
-        return { ...c, start: tidy(c.start + d), duration: tidy(c.duration - d), sourceIn: tidy(c.sourceIn + d * c.speed) };
+        if (edge === "end") return trimmedEnd(c, d);
+        if (ripple) return trimmedHead(c, d, false);
+        return trimmedHead(c, d, true);
       }
       if (ripple && tracks.has(c.trackId) && editable(c)) {
         const ref = group.find((g) => g.trackId === c.trackId)!;

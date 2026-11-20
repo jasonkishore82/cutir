@@ -1,6 +1,7 @@
 import type { AudioProcessor } from "../lib/audio/dsp";
 import type { Graph } from "../lib/graph/graph";
 import type { Tracker } from "../lib/track/tracker";
+import type { Ramp } from "../lib/retime";
 import type { Aspect, Easing, EnergyCurve, Keyframe, KeyProp, StyleOverride, TextStyle, Transition, WordOverride } from "../store/project";
 
 /**
@@ -63,6 +64,8 @@ export type MediaRef = {
   hasAudio?: boolean;
   /** Why it cannot be played here (unsupported codec...). */
   note?: string;
+  /** Start timecode of the recording in seconds since midnight, for syncing by timecode (phase 24). */
+  timecode?: number;
   /** The media-pool item this came from. */
   poolId?: string;
   /** Object URL for this session only; never saved. */
@@ -311,6 +314,16 @@ export type Clip = {
   follow?: { clipId: string; trackerId: string };
   /** Steady this clip's picture from one of its own trackers. */
   stabilize?: { trackerId: string; smoothing: number; zoom: number };
+  /** Retiming (phase 23). `speed` is the constant speed; a ramp replaces it with a curve. `reverse` plays video backwards too. */
+  ramp?: Ramp;
+  /** Keep the pitch when the speed changes (default on). */
+  pitch?: boolean;
+  /** Slow motion between source frames: "nearest" repeats a frame, "blend" mixes the two around it. */
+  interp?: "nearest" | "blend";
+  /** A nested timeline played as this clip (a compound clip or a placed timeline): its time runs from sourceIn at `speed`. */
+  timelineId?: string;
+  /** Several synced angles with the cuts between them (phase 24). */
+  multicam?: MulticamSpec;
   /** The clip's node graph; when present it replaces the effect stack (a plain chain converts back to a stack). */
   graph?: Graph;
   /** Keyframe lanes by name. Text clips keep their motion keyframes in `transform`. */
@@ -321,6 +334,11 @@ export type Clip = {
    */
   anim?: Partial<Record<"x" | "y" | "scale" | "rotation" | "opacity" | "volume", ParamKey[]>>;
 };
+
+/** One camera or recorder of a multicam clip. Its source time is the multicam time plus `offset` seconds. */
+export type MulticamAngle = { id: string; name: string; mediaId: string; offset: number };
+export type MulticamCut = { /** Seconds from the start of the multicam clip's own time (sourceIn + rel * speed). */ t: number; video: string; /** Angle whose sound plays; the video angle's own when missing. */ audio?: string };
+export type MulticamSpec = { angles: MulticamAngle[]; cuts: MulticamCut[]; /** Sound from a separate recorder (media id), synced with `audioOffset`; used when set and a cut has no audio angle. */ audioMediaId?: string; audioOffset?: number };
 
 export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "softlight" | "hardlight" | "darken" | "lighten" | "add" | "difference" | "exclusion" | "dodge" | "burn";
 
@@ -380,6 +398,8 @@ export type Timeline = {
   cutTransitions?: ClipTransition[];
   /** The master of the audio mix (phase 21). */
   master?: MasterStrip;
+  /** A frame shape of its own (a 9:16 version of an edit); the project's when missing. */
+  aspect?: Aspect;
 };
 
 export type ProjectDoc = {
@@ -389,6 +409,10 @@ export type ProjectDoc = {
   bins: Bin[];
   timelines: Timeline[];
   activeTimelineId: string;
+  /** Named ranges of media from source marks (phase 23). */
+  subclips?: Subclip[];
 };
+
+export type Subclip = { id: string; name: string; mediaId: string; in: number; out: number };
 
 export type { Easing, KeyProp };

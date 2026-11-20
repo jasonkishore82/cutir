@@ -1,3 +1,4 @@
+import { Breadcrumb } from "./components/TimelinesCard";
 import { useEffect, useRef, useState } from "react";
 import LeftPanel from "./components/LeftPanel";
 import Preview from "./components/Preview";
@@ -367,7 +368,12 @@ export default function App() {
 
       <TimelineResizeHandle height={tlH} set={setTlH} />
       <footer style={{ height: tlH }} className={`${panel} shrink-0`}>
-        <Timeline />
+        <div className="flex h-full flex-col">
+          <Breadcrumb />
+          <div className="min-h-0 flex-1 [&>*]:h-full">
+            <Timeline />
+          </div>
+        </div>
       </footer>
     </div>
   );

@@ -5,6 +5,8 @@ import { applyStack, getTransition, poolFor, transitionAt, type Layer, type Laye
 import { evalNumber, type Key } from "../lib/keyframes/engine";
 import { drawGenerator } from "../lib/generators";
 import { evaluateGraph, type GraphNode } from "../lib/graph/graph";
+import { blendFrames, sourceAtRel, speedOf } from "../lib/retime";
+import { videoAt } from "../lib/multicam";
 import { stabiliseOffset, stabiliseZoom, trackerOffset } from "../lib/track/tracker";
 import type { Project } from "../store/project";
 import type { FrameProvider, Picture } from "./sources";
@@ -73,25 +75,45 @@ export function transformOf(c: Clip, t?: number, tl?: Timeline): ClipTransform {
 }
 
 /** Source time shown by a clip at timeline time t. */
-export const sourceTime = (c: Clip, t: number) => c.sourceIn + (t - c.start) * c.speed;
+export const sourceTime = (c: Clip, t: number) => sourceAtRel(c, t - c.start);
 
-type Visual = { clip: Clip; kind: "video" | "image" | "generator"; st: number };
+type VisualKind = "video" | "image" | "generator" | "nested";
+/**
+ * One clip to draw. `mediaId` is set when it differs from the clip's own (the angle of a multicam clip); `st2` and `w2`
+ * are the second source frame and its weight for blended slow motion; a nested clip carries its timeline and time.
+ */
+type Visual = { clip: Clip; kind: VisualKind; st: number; mediaId?: string; st2?: number; w2?: number; nested?: Timeline };
 /** One thing to draw on a track at t: a clip, or a transition between two clips (either may be missing at an edge). */
 export type PlanItem = { type: "clip"; v: Visual } | { type: "transition"; tr: ClipTransition; p: number; a?: Visual; b?: Visual };
 
-/** Source time of a clip at t, kept inside its media (frames just past a cut come from the handles). */
-function stOf(c: Clip, t: number, doc: ProjectDoc): number {
-  const len = doc.media.find((m) => m.id === c.mediaId)?.duration;
-  const st = sourceTime(c, t);
-  return Math.max(0, len !== undefined ? Math.min(st, Math.max(0, len - 0.001)) : st);
-}
+/** Source time kept inside its media (frames just past a cut come from the handles). */
+const inside = (st: number, len: number | undefined) => Math.max(0, len !== undefined ? Math.min(st, Math.max(0, len - 0.001)) : st);
 
 function visualOf(c: Clip | undefined, doc: ProjectDoc, t: number): Visual | undefined {
   if (!c || c.fill || !c.enabled) return undefined;
+  const rel = t - c.start;
+  if (c.timelineId) {
+    // a nested timeline: its own time runs from sourceIn at the clip's speed
+    const nested = doc.timelines.find((x) => x.id === c.timelineId);
+    return nested ? { clip: c, kind: "nested", st: sourceAtRel(c, rel), nested } : undefined;
+  }
+  if (c.multicam) {
+    // the angle on at this time, read at its own offset
+    const v = videoAt(c.multicam, sourceAtRel(c, rel));
+    const m = v && doc.media.find((x) => x.id === v.angle.mediaId);
+    return v && m && (m.kind === "video" || m.kind === "image") ? { clip: c, kind: m.kind, st: inside(v.st, m.duration), mediaId: v.angle.mediaId } : undefined;
+  }
   if (!c.mediaId) return c.generator ? { clip: c, kind: "generator", st: 0 } : undefined; // solid, shape, title, noise...
   const m = doc.media.find((x) => x.id === c.mediaId);
   if (!m || (m.kind !== "video" && m.kind !== "image")) return undefined;
-  return { clip: c, kind: m.kind, st: stOf(c, t, doc) };
+  const st = inside(sourceAtRel(c, rel), m.duration);
+  const out: Visual = { clip: c, kind: m.kind, st };
+  // slow motion between frames: mix the two source frames around the time
+  if (c.interp === "blend" && m.kind === "video" && m.fps && speedOf(c, rel) < 0.999) {
+    const b = blendFrames(st, m.fps);
+    if (b.w > 0) (out.st = b.a), (out.st2 = inside(b.b, m.duration)), (out.w2 = b.w);
+  }
+  return out;
 }
 
 /**
@@ -121,7 +143,7 @@ export function visualPlan(tl: Timeline, doc: ProjectDoc, t: number): PlanItem[]
 }
 
 /** Video and image clips to draw at t (including both sides of a running transition), bottom track first. */
-export function activeVisuals(tl: Timeline, doc: ProjectDoc, t: number): { clip: Clip; kind: "video" | "image" | "generator" }[] {
+export function activeVisuals(tl: Timeline, doc: ProjectDoc, t: number): { clip: Clip; kind: VisualKind }[] {
   return visualPlan(tl, doc, t).flatMap((i) => (i.type === "clip" ? [i.v] : [i.a, i.b].filter((x): x is Visual => !!x))).map(({ clip, kind }) => ({ clip, kind }));
 }
 
@@ -229,21 +251,56 @@ export function applyMatte(out: Layer, matte: Layer, mode: TrackMatte["mode"], p
   ctx.restore();
 }
 
-/** Draw the timeline's video and image tracks at t. Returns how many clips had no picture ready yet. */
+/** Draw the active timeline's video and image tracks at t. Returns how many clips had no picture ready yet. */
 export function compositeVisuals(ctx: CanvasRenderingContext2D, doc: ProjectDoc, t: number, w: number, h: number, frames: FrameProvider, preview?: PreviewEffect): number {
-  const tl = activeTimeline(doc);
+  return compositeTimeline(ctx, doc, activeTimeline(doc), t, w, h, frames, preview, 0);
+}
+
+/** Layers for blended frames, kept per clip so two blended clips in one frame do not share a canvas. */
+const blendCanvases = new Map<string, HTMLCanvasElement | OffscreenCanvas>();
+const NEST_LIMIT = 4;
+
+/** Draw any timeline's tracks at t; nested clips draw their own timeline through the same path (up to NEST_LIMIT deep). */
+function compositeTimeline(ctx: CanvasRenderingContext2D, doc: ProjectDoc, tl: Timeline, t: number, w: number, h: number, frames: FrameProvider, preview: PreviewEffect | undefined, depth: number): number {
   let missing = 0;
   let pool: LayerPool | null = null;
   const layers = () => (pool ??= poolFor(w, h));
   const pictureOf = (v: Visual): Picture | null => {
+    if (v.kind === "nested") {
+      if (depth >= NEST_LIMIT || !v.nested) return null;
+      const l = layers().take();
+      missing += compositeTimeline(l.ctx as CanvasRenderingContext2D, doc, v.nested, v.st, w, h, frames, undefined, depth + 1);
+      return l.canvas as Picture;
+    }
     if (v.kind === "generator") {
       // a generator draws itself into a frame-sized layer, which then goes through the clip's transform like a picture
       const l = layers().take();
       drawGenerator(l.ctx, v.clip.generator!, t - v.clip.start, v.clip.duration, w, h);
       return l.canvas as Picture;
     }
-    const pic = frames.picture(v.clip.mediaId!, v.kind, v.st);
+    const id = v.mediaId ?? v.clip.mediaId!;
+    const pic = frames.picture(id, v.kind, v.st);
     if (!pic) missing++;
+    if (pic && v.st2 !== undefined && v.w2) {
+      const pic2 = frames.picture(id, v.kind, v.st2);
+      if (pic2) {
+        const key = `${v.clip.id}:${pic.width}x${pic.height}`;
+        let cv = blendCanvases.get(key);
+        if (!cv) {
+          if (blendCanvases.size > 8) blendCanvases.clear();
+          cv = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(pic.width, pic.height) : Object.assign(document.createElement("canvas"), { width: pic.width, height: pic.height });
+          blendCanvases.set(key, cv);
+        }
+        const bctx = cv.getContext("2d") as CanvasRenderingContext2D;
+        bctx.globalAlpha = 1;
+        bctx.clearRect(0, 0, pic.width, pic.height);
+        bctx.drawImage(pic, 0, 0, pic.width, pic.height);
+        bctx.globalAlpha = v.w2;
+        bctx.drawImage(pic2, 0, 0, pic.width, pic.height);
+        bctx.globalAlpha = 1;
+        return cv as Picture;
+      }
+    }
     return pic;
   };
   const plan = visualPlan(tl, doc, t);
@@ -292,11 +349,22 @@ export function compositeVisuals(ctx: CanvasRenderingContext2D, doc: ProjectDoc,
   return missing;
 }
 
-/** What export must decode before drawing the frame at t (both sides of a running transition too). */
-export function needsAt(doc: ProjectDoc, t: number) {
-  return visualPlan(activeTimeline(doc), doc, t)
-    .flatMap((i) => (i.type === "clip" ? [i.v] : [i.a, i.b].filter((x): x is Visual => !!x)))
-    .flatMap((v) => (v.kind === "generator" ? [] : [{ mediaId: v.clip.mediaId!, kind: v.kind, sourceTime: v.st }]));
+/** What export must decode before drawing the frame at t (both sides of a running transition, nested timelines and blended frames too). */
+export function needsAt(doc: ProjectDoc, t: number, tl: Timeline = activeTimeline(doc), depth = 0): { mediaId: string; kind: "video" | "image"; sourceTime: number }[] {
+  const out: { mediaId: string; kind: "video" | "image"; sourceTime: number }[] = [];
+  for (const i of visualPlan(tl, doc, t)) {
+    for (const v of i.type === "clip" ? [i.v] : [i.a, i.b]) {
+      if (!v || v.kind === "generator") continue;
+      if (v.kind === "nested") {
+        if (depth < NEST_LIMIT && v.nested) out.push(...needsAt(doc, v.st, v.nested, depth + 1));
+        continue;
+      }
+      const id = v.mediaId ?? v.clip.mediaId!;
+      out.push({ mediaId: id, kind: v.kind, sourceTime: v.st });
+      if (v.st2 !== undefined) out.push({ mediaId: id, kind: v.kind, sourceTime: v.st2 });
+    }
+  }
+  return out;
 }
 
 /** One whole frame: lyric background, timeline pictures, lyric text. Used by the viewer and by export. */
@@ -311,6 +379,11 @@ export function renderFrame(ctx: CanvasRenderingContext2D, doc: ProjectDoc, view
 /** Media ids the timeline uses for pictures (to keep their decoders open). */
 export function visualMediaIds(doc: ProjectDoc): Set<string> {
   const ids = new Set<string>();
-  for (const tl of doc.timelines) for (const c of tl.clips) if (c.mediaId && !c.fill) ids.add(c.mediaId);
+  for (const tl of doc.timelines) {
+    for (const c of tl.clips) {
+      if (c.mediaId && !c.fill) ids.add(c.mediaId);
+      for (const a of c.multicam?.angles ?? []) ids.add(a.mediaId); // every angle stays open so a switch is instant
+    }
+  }
   return ids;
 }

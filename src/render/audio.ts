@@ -4,6 +4,8 @@ import { evalNumber, type Key } from "../lib/keyframes/engine";
 import type { Clip, MasterStrip, ProjectDoc, Timeline, Track } from "../model/types";
 import { mixTracks, type MasterMix, type TrackMix } from "../lib/audio/mix";
 import { PROCESSORS, dbToGain, filterBands, type AudioProcessor, type Channels } from "../lib/audio/dsp";
+import { sourceAtRel, speedOf, timeStretch } from "../lib/retime";
+import { soundSegments } from "../lib/multicam";
 
 /**
  * Sound of the timeline's audio tracks in the viewer.
@@ -63,7 +65,28 @@ export function clipGain(tl: Timeline, c: Clip, t: number): number {
 /** Audio clips playing at t (excluding the lyric song, which the transport plays), including crossfade overlaps. */
 export function activeAudio(tl: Timeline, t: number): Clip[] {
   const fading = new Set(fadeWindows(tl).filter((f) => t >= f.w[0] && t < f.w[1]).map((f) => f.clip));
-  return tl.clips.filter((c) => !c.fill && c.mediaId && audible(tl, c) && ((t >= c.start && t < c.start + c.duration) || fading.has(c.id)));
+  const plain = tl.clips.filter((c) => !c.fill && c.mediaId && !c.multicam && audible(tl, c) && ((t >= c.start && t < c.start + c.duration) || fading.has(c.id)));
+  return [...plain, ...multicamAudioAt(tl, t)];
+}
+
+/** The audio track a multicam clip's sound goes through (so it has a strip), or the clip's own track. */
+const soundTrackOf = (tl: Timeline, c: Clip) => tl.tracks.find((x) => x.kind === "audio" && !x.hidden)?.id ?? c.trackId;
+
+/**
+ * A multicam clip plays the sound of the angle (or the separate recorder) the cuts name. For the live mixer each
+ * (clip, source) pair is a stand-in audio clip, present while its stretch of the cuts is on.
+ */
+export function multicamAudioAt(tl: Timeline, t: number): Clip[] {
+  const out: Clip[] = [];
+  for (const c of tl.clips) {
+    if (!c.multicam || !c.enabled || t < c.start || t >= c.start + c.duration) continue;
+    const mt = sourceAtRel(c, t - c.start);
+    const seg = soundSegments(c.multicam, c.sourceIn, c.duration * c.speed).find((x) => mt >= x.from && mt < x.to);
+    if (!seg) continue;
+    // a stand-in clip: media time = multicam time + offset, so sourceIn is where the clip's own time zero would sit in the media
+    out.push({ ...c, id: `${c.id}:mc:${seg.mediaId}`, trackId: soundTrackOf(tl, c), mediaId: seg.mediaId, multicam: undefined, effects: [], sourceIn: c.sourceIn + seg.offset, sourceOut: c.sourceOut + seg.offset, volume: c.volume ?? 1, enabled: true });
+  }
+  return out;
 }
 
 /** Whether the lyric song should be heard (its track can be muted or left out by a solo). */
@@ -227,7 +250,7 @@ export class AudioMixer {
     for (const [id, el] of this.els) {
       if (keep.has(id)) continue;
       el.pause();
-      if (!tl.clips.some((c) => c.id === id)) {
+      if (!tl.clips.some((c) => c.id === id.split(":mc:")[0])) {
         this.srcNodes.get(id)?.node.disconnect();
         this.srcNodes.delete(id);
         el.removeAttribute("src");
@@ -294,8 +317,13 @@ export class AudioMixer {
         }
         n.gain.gain.value = gain;
       } else el.volume = Math.min(1, gain);
-      const target = c.sourceIn + (t - c.start) * c.speed;
-      const r = Math.max(0.0625, Math.min(16, c.speed * rate));
+      const rel = t - c.start;
+      const target = sourceAtRel(c, rel);
+      const want = speedOf(c, rel) * rate;
+      // a media element plays between 1/16 and 16 times speed; faster is silent
+      const r = Math.max(0.0625, Math.min(16, want));
+      el.muted = want > 16 || !!c.reverse; // reversed sound is only heard in the export
+      el.preservesPitch = c.pitch !== false;
       if (Math.abs(el.playbackRate - r) > 1e-3) el.playbackRate = r;
       if (el.paused || Math.abs(el.currentTime - target) > DRIFT) {
         try {
@@ -340,7 +368,7 @@ function sampleGain(c: Clip, from: number, to: number): { t: number; v: number }
   return [...times].sort((x, y) => x - y).map((t) => ({ t, v: (c.anim?.volume?.length ? evalNumber(c.anim.volume as Key[], t - c.start, c.volume ?? 1) : c.volume ?? 1) * clipFade(c, t) }));
 }
 
-export type MixInput = { trackId: string; url: string; start: number; duration: number; sourceIn: number; speed: number; volume: number; reverse?: boolean; /** Source end, needed to place a reversed clip. */ sourceOut?: number; fades?: { from: number; to: number; dir: "in" | "out" }[]; gainCurve?: { t: number; v: number }[] };
+export type MixInput = { trackId: string; /** Playback rate over time (timeline seconds), for speed ramps. */ rate?: { t: number; v: number }[]; /** Keep the pitch at constant speeds other than 1. */ keepPitch?: boolean; url: string; start: number; duration: number; sourceIn: number; speed: number; volume: number; reverse?: boolean; /** Source end, needed to place a reversed clip. */ sourceOut?: number; fades?: { from: number; to: number; dir: "in" | "out" }[]; gainCurve?: { t: number; v: number }[] };
 
 /** Clips that make up the exported sound: the song (when heard) and every audible audio clip. */
 export function mixInputs(doc: ProjectDoc, songUrl: string | undefined, length: number, urlOf: (mediaId: string) => string | undefined): MixInput[] {
@@ -350,7 +378,9 @@ export function mixInputs(doc: ProjectDoc, songUrl: string | undefined, length: 
   const songTrack = tl.clips.find((c) => c.fill && tl.tracks.find((t) => t.id === c.trackId)?.kind === "audio")?.trackId ?? "song";
   if (songUrl && songAudible(doc)) out.push({ trackId: songTrack, url: songUrl, start: 0, duration: length, sourceIn: 0, speed: 1, volume: 1 });
   for (const c of tl.clips) {
-    if (c.fill || !c.mediaId || !audible(tl, c)) continue;
+    if (c.timelineId && c.enabled && !c.fill) out.push(...nestedInputs(doc, c, length, urlOf));
+    if (c.multicam && c.enabled && !c.fill) out.push(...multicamInputs(tl, c, length, urlOf));
+    if (c.fill || !c.mediaId || c.multicam || !audible(tl, c)) continue;
     const url = urlOf(c.mediaId);
     if (!url) continue;
     // a crossfade extends the clip into its neighbour's side of the cut
@@ -365,14 +395,78 @@ export function mixInputs(doc: ProjectDoc, songUrl: string | undefined, length: 
       url,
       start: s0,
       duration: e0 - s0,
-      sourceIn: Math.max(0, c.sourceIn + (s0 - c.start) * c.speed),
+      sourceIn: Math.max(0, c.reverse ? c.sourceIn + (s0 - c.start) * c.speed : sourceAtRel(c, s0 - c.start)),
       sourceOut: c.sourceOut,
-      speed: c.speed,
+      speed: c.ramp?.keys.length ? 1 : c.speed,
+      ...(c.ramp?.keys.length ? { rate: sampleRate(c, s0, e0) } : {}),
+      ...(c.pitch !== false && !c.ramp?.keys.length && c.speed !== 1 ? { keepPitch: true } : {}),
       volume: c.volume ?? 1,
       ...(c.reverse ? { reverse: true } : {}),
       ...(c.anim?.volume?.length || c.fadeIn || c.fadeOut ? { gainCurve: sampleGain(c, s0, e0) } : {}),
       ...(fades.length ? { fades: fades.map((f) => ({ from: f.w[0], to: f.w[1], dir: f.dir })) } : {}),
     });
+  }
+  return out;
+}
+
+/** A ramped clip's playback speed sampled 20 times a second over [from, to] (timeline seconds). */
+function sampleRate(c: Clip, from: number, to: number): { t: number; v: number }[] {
+  const n = Math.max(1, Math.ceil((to - from) * 20));
+  return Array.from({ length: n + 1 }, (_, i) => {
+    const t = from + ((to - from) * i) / n;
+    return { t, v: Math.max(0.0625, Math.min(16, speedOf(c, t - c.start))) };
+  });
+}
+
+/** Sound of a nested timeline's clips, moved to where the nested clip sits on this timeline. */
+function nestedInputs(doc: ProjectDoc, c: Clip, length: number, urlOf: (mediaId: string) => string | undefined, depth = 0): MixInput[] {
+  const nested = doc.timelines.find((x) => x.id === c.timelineId);
+  if (!nested || depth > 3) return [];
+  const inner = mixInputs({ ...doc, activeTimelineId: nested.id }, undefined, c.sourceIn + c.duration * c.speed, urlOf);
+  const win0 = c.sourceIn;
+  const win1 = c.sourceIn + c.duration * c.speed;
+  const map = (tn: number) => c.start + (tn - win0) / c.speed;
+  const out: MixInput[] = [];
+  for (const i of inner) {
+    const a = Math.max(i.start, win0);
+    const b = Math.min(i.start + i.duration, win1);
+    if (b - a <= 1e-3 || map(a) >= length) continue;
+    out.push({
+      ...i,
+      start: map(a),
+      duration: (b - a) / c.speed,
+      sourceIn: i.sourceIn + (a - i.start) * i.speed,
+      speed: i.speed * c.speed,
+      volume: i.volume * (c.volume ?? 1),
+      ...(i.gainCurve ? { gainCurve: i.gainCurve.map((p) => ({ t: map(p.t), v: p.v })) } : {}),
+      ...(i.fades ? { fades: i.fades.map((f) => ({ ...f, from: map(f.from), to: map(f.to) })) } : {}),
+    });
+  }
+  return out;
+}
+
+/** Sound of a multicam clip: for each stretch between cuts, the angle's (or the recorder's) audio at its offset. */
+function multicamInputs(tl: Timeline, c: Clip, length: number, urlOf: (mediaId: string) => string | undefined): MixInput[] {
+  const out: MixInput[] = [];
+  const spec = c.multicam!;
+  const trackId = soundTrackOf(tl, c);
+  for (const seg of soundSegments(spec, c.sourceIn, c.duration * c.speed)) {
+    const url = urlOf(seg.mediaId);
+    if (!url) continue;
+    const start = c.start + (seg.from - c.sourceIn) / c.speed;
+    if (start >= length) continue;
+    let srcIn = seg.from + seg.offset;
+    let dur = (seg.to - seg.from) / c.speed;
+    let at = start;
+    if (srcIn < 0) {
+      // the recorder started after this stretch began: skip the part before it
+      const skip = -srcIn / c.speed;
+      at += skip;
+      dur -= skip;
+      srcIn = 0;
+    }
+    if (dur <= 1e-3) continue;
+    out.push({ trackId, url, start: at, duration: Math.min(dur, length - at), sourceIn: srcIn, speed: c.speed, volume: c.volume ?? 1, ...(c.pitch !== false && c.speed !== 1 ? { keepPitch: true } : {}) });
   }
   return out;
 }
@@ -396,6 +490,21 @@ export function mixPlan(doc: ProjectDoc, length: number, masterOverride?: Partia
 }
 
 /** One track's clips placed on the timeline, as stereo samples. */
+const stretchCache = new Map<string, AudioBuffer>();
+/** A buffer made `1/speed` times as long without changing its pitch (cached by file and speed). */
+function stretched(key: string, buf: AudioBuffer, speed: number): AudioBuffer {
+  const k = `${key}@${speed}`;
+  let r = stretchCache.get(k);
+  if (!r) {
+    if (stretchCache.size > 6) stretchCache.clear();
+    const ch = timeStretch(Array.from({ length: buf.numberOfChannels }, (_, c) => buf.getChannelData(c)), 1 / speed, buf.sampleRate);
+    r = new AudioBuffer({ numberOfChannels: ch.length, length: ch[0].length, sampleRate: buf.sampleRate });
+    ch.forEach((d, c) => r!.copyToChannel(d as Float32Array<ArrayBuffer>, c));
+    stretchCache.set(k, r);
+  }
+  return r;
+}
+
 async function renderTrack(inputs: MixInput[], length: number, sr: number, decode: (url: string) => Promise<AudioBuffer | null>, reversed: (url: string, buf: AudioBuffer) => AudioBuffer, signal?: AbortSignal): Promise<Channels> {
   const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(length * sr)), sr);
   for (const i of inputs) {
@@ -409,8 +518,18 @@ async function renderTrack(inputs: MixInput[], length: number, sr: number, decod
       offset = Math.max(0, buf.duration - (i.sourceOut ?? buf.duration));
     }
     const src = ctx.createBufferSource();
+    let playSpeed = i.speed;
+    if (i.keepPitch && i.speed !== 1 && !i.rate) {
+      // same pitch at another speed: stretch the sound by 1/speed, then play it at normal rate
+      buf = stretched(i.url + (i.reverse ? ":r" : ""), buf, i.speed);
+      offset = offset / i.speed;
+      playSpeed = 1;
+    }
     src.buffer = buf;
-    src.playbackRate.value = i.speed;
+    if (i.rate?.length) {
+      src.playbackRate.setValueAtTime(i.rate[0].v, Math.max(0, i.start));
+      for (const p of i.rate.slice(1)) src.playbackRate.linearRampToValueAtTime(p.v, Math.max(0, p.t));
+    } else src.playbackRate.value = playSpeed;
     const gain = ctx.createGain();
     gain.gain.value = i.volume;
     if (i.gainCurve?.length) {
@@ -423,7 +542,10 @@ async function renderTrack(inputs: MixInput[], length: number, sr: number, decod
       gain.gain.linearRampToValueAtTime(f.dir === "out" ? 0 : i.volume, f.to);
     }
     src.connect(gain).connect(ctx.destination);
-    src.start(i.start, offset, i.duration * i.speed);
+    if (i.rate?.length) {
+      src.start(i.start, offset);
+      src.stop(i.start + i.duration);
+    } else src.start(i.start, offset, i.duration * playSpeed);
   }
   const rendered = await ctx.startRendering();
   return [rendered.getChannelData(0), rendered.getChannelData(1)];

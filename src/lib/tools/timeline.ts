@@ -6,6 +6,8 @@ import type { ClipTransform, ProjectDoc, Timeline, Track } from "../../model/typ
 import * as E from "../../timeline/engine";
 import { sourceOf, withPoolMedia } from "../../timeline/ui";
 import { processorDefaults } from "../audio/dsp";
+import { RAMP_PRESETS, clampSpeed, rampSourceSpan } from "../retime";
+import { durationFor, duplicateTimeline, makeCompound, reframeTimeline, retimeClips } from "../../timeline/compound";
 import { useMedia, type MediaItem } from "../../store/media";
 
 /**
@@ -314,4 +316,66 @@ export const matteTool = defineTool({
   },
 });
 
-export const timelineTools = [addClip, trimClip, moveClips, cutAt, deleteClips, setClip, addTrackTool, setTrackTool, mixTrackTool, masterTool, audioClipTool, matteTool, addMarkerTool, setRangeTool];
+export const speedTool = defineTool({
+  name: "set_clip_speed",
+  group: "timeline",
+  description: "Retime a video or audio clip: constant speed in percent (1 to 10000, the clip's length follows), reverse, keep pitch, slow-motion frame blending, or a speed ramp preset (ease-in = slow then normal, ease-out, speed-up, pulse) or remove_ramp.",
+  params: z.object({
+    clip: z.string(),
+    speed_percent: num(1, 10000).optional(),
+    reverse: z.boolean().optional(),
+    keep_pitch: z.boolean().optional(),
+    blend_frames: z.boolean().optional(),
+    ramp: z.enum(["ease-in", "ease-out", "speed-up", "pulse"]).optional(),
+    remove_ramp: z.boolean().optional(),
+  }),
+  applyDoc: (doc, a) => {
+    const c = tl(doc).clips.find((x) => x.id === a.clip);
+    if (!c || c.fill) throw new Error(`no clip ${a.clip}`);
+    const next = on(doc, (t) =>
+      retimeClips(t, [c.id], (k) => {
+        const out: Partial<typeof k> = {};
+        if (a.speed_percent !== undefined) Object.assign(out, { speed: clampSpeed(a.speed_percent / 100), ramp: undefined, duration: durationFor(Math.abs(k.sourceOut - k.sourceIn), clampSpeed(a.speed_percent / 100)) });
+        if (a.reverse !== undefined) out.reverse = a.reverse || undefined;
+        if (a.keep_pitch !== undefined) out.pitch = a.keep_pitch ? undefined : false;
+        if (a.blend_frames !== undefined) out.interp = a.blend_frames ? "blend" : undefined;
+        if (a.remove_ramp) Object.assign(out, { ramp: undefined, duration: durationFor(Math.abs(k.sourceOut - k.sourceIn), k.speed) });
+        const preset = RAMP_PRESETS.find((p) => p.id === a.ramp);
+        if (preset) {
+          const ramp = preset.make(k.duration, k.speed);
+          const covered = rampSourceSpan(ramp, k.duration);
+          Object.assign(out, { ramp }, k.reverse ? { sourceIn: Math.max(0, k.sourceOut - covered) } : { sourceOut: k.sourceIn + covered });
+        }
+        return out;
+      })
+    );
+    return { doc: next, summary: "clip retimed" };
+  },
+});
+
+export const compoundTool = defineTool({
+  name: "make_compound_clip",
+  group: "timeline",
+  description: "Turn clips into one compound clip (a nested timeline). Edits inside change every use. Pass the clip ids.",
+  params: z.object({ clips: z.array(z.string()).min(1), name: z.string().optional() }),
+  applyDoc: (doc, a) => {
+    const r = makeCompound(doc, a.clips, a.name ?? "Compound clip");
+    if (!r) throw new Error("none of those clips can be made into a compound clip (locked tracks or unknown ids)");
+    return { doc: r.doc, summary: `compound clip ${r.clipId} made` };
+  },
+});
+
+export const versionTool = defineTool({
+  name: "make_version",
+  group: "timeline",
+  description: "Duplicate the current timeline as a version in another frame shape (9:16 or 1:1). Picture clips fill the new frame, following a tracker where a clip has one. The new timeline becomes the one being edited.",
+  params: z.object({ aspect: z.enum(["9:16", "1:1", "16:9"]), name: z.string().optional() }),
+  applyDoc: (doc, a) => {
+    const dup = duplicateTimeline(doc, doc.activeTimelineId, a.name ?? `${tl(doc).name} ${a.aspect}`);
+    if (!dup) throw new Error("no timeline to duplicate");
+    const re = reframeTimeline(dup.doc, dup.timelineId, a.aspect) ?? dup.doc;
+    return { doc: { ...re, activeTimelineId: dup.timelineId }, summary: `${a.aspect} version made and opened` };
+  },
+});
+
+export const timelineTools = [addClip, trimClip, moveClips, cutAt, deleteClips, setClip, addTrackTool, setTrackTool, mixTrackTool, masterTool, audioClipTool, matteTool, speedTool, compoundTool, versionTool, addMarkerTool, setRangeTool];

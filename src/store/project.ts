@@ -427,6 +427,8 @@ type State = {
   loadProject: (p: Project) => void;
   /** Open a whole document (keeps tracks, clips and timelines the lyric view does not show). */
   loadDoc: (doc: ProjectDoc) => void;
+  /** Show another timeline (a nested clip being opened, a version). Not an undo step. */
+  setActiveTimeline: (id: string) => void;
   /** Select a line; with `add`, toggle it in the selection instead. */
   select: (id: string | null, add?: boolean) => void;
   selectMany: (ids: string[]) => void;
@@ -579,6 +581,14 @@ export const useProject = create<State>((set, get) => ({
     const project = docToView(doc);
     lastKey = undefined;
     set({ doc, project, past: [], future: [], selectedLineId: null, selectedIds: [], selectedWord: null, activeLayerId: project.layers[0].id });
+  },
+  setActiveTimeline: (id) => {
+    const { doc } = get();
+    if (doc.activeTimelineId === id || !doc.timelines.some((t) => t.id === id)) return;
+    const next = { ...doc, activeTimelineId: id };
+    const project = docToView(next);
+    lastKey = undefined;
+    set({ doc: next, project, selectedLineId: null, selectedIds: [], selectedWord: null, activeLayerId: project.layers[0].id });
   },
   select: (id, add) =>
     set((s) => {

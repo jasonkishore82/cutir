@@ -34,7 +34,7 @@ const MOTION_WORDS =
 
 /** Words that bring in the timeline tools (clips on video and audio tracks, markers, in/out). */
 const TIMELINE_WORDS =
-  /\b(clips?|tracks?|video|footage|b-?roll|audio|sound|music|voice.?over|image|photo|titles?|lower.?third|credits?|picture|trim|ripple|blade|cut|split|marker|in.?point|out.?point|insert|overwrite|append|timeline|volume|mute|solo|library|media|effects?|blur|glow|vignette|shadow|mask|chroma|green.?screen|keying|invert|mirror|flip|noise|grain|pixel\w*|sharpen|crop|dissolve|wipe|dip|fade|transitions?|keyframes?|key ?frames?|animat\w*|ease|easing|ken ?burns|zoom|scale|rotat\w*|opacity)\b/i;
+  /\b(clips?|tracks?|video|footage|b-?roll|audio|sound|music|voice.?over|image|photo|titles?|lower.?third|credits?|picture|trim|ripple|blade|cut|split|marker|in.?point|out.?point|insert|overwrite|append|timeline|volume|mute|solo|library|media|effects?|blur|glow|vignette|shadow|mask|chroma|green.?screen|keying|invert|mirror|flip|noise|grain|pixel\w*|sharpen|crop|dissolve|wipe|dip|fade|transitions?|keyframes?|key ?frames?|animat\w*|ease|easing|ken ?burns|zoom|scale|rotat\w*|opacity|speed|slow\w*|reverse|ramp|freeze|compound|nested|version|vertical|matte|mixer|pan|loudness|multicam|angles?)\b/i;
 
 /** Words that bring in the kinetic tools (single words, emphasis, beats, energy). */
 const KINETIC_WORDS =
