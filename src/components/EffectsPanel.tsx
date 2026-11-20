@@ -11,6 +11,7 @@ import { getTime } from "../lib/transport";
 import CurveParam from "./CurveParam";
 import GradeWheels from "./GradeWheels";
 import ScopesCard from "./ScopesCard";
+import StillsCard from "./StillsCard";
 import { packLut, parseCube } from "../lib/grade/math";
 
 export const EFFECT_MIME = "application/x-cutir-effect";
@@ -51,6 +52,7 @@ export default function EffectsPanel() {
     <>
       <Browser targets={targets} />
       <ScopesCard />
+      <StillsCard />
       {transition && <TransitionEditor tr={transition} />}
       {clip ? (
         <StackEditor clipId={clip.id} stack={clip.effects} start={clip.start} />

@@ -43,15 +43,16 @@ export const grade: EffectDef = {
     slider("qLumLow", "Brightness from", 0, 0, 100),
     slider("qLumHigh", "Brightness to", 100, 0, 100),
     slider("qSoft", "Softness", 20, 0, 100),
+    slider("qBlur", "Matte blur", 0, 0, 100),
   ],
-  render: (src, dst, p) => viaPixels(src, dst, (d) => gradePixels(d, p)),
+  render: (src, dst, p) => viaPixels(src, dst, (d) => gradePixels(d, p, src.w)),
 };
 
 export const curves: EffectDef = {
   id: "curves",
   name: "Curves",
   category: "Colour",
-  description: "RGB curves, hue vs hue, hue vs saturation, luma vs saturation",
+  description: "RGB curves, hue vs hue, hue vs saturation, luma vs saturation, hue vs luma, saturation vs saturation",
   params: [
     { key: "master", label: "Master", type: "curve", default: structuredClone(LINEAR_CURVE) },
     { key: "red", label: "Red", type: "curve", default: structuredClone(LINEAR_CURVE) },
@@ -60,6 +61,8 @@ export const curves: EffectDef = {
     { key: "hueVsHue", label: "Hue vs hue", type: "curve", default: structuredClone(FLAT_CURVE) },
     { key: "hueVsSat", label: "Hue vs saturation", type: "curve", default: structuredClone(FLAT_CURVE) },
     { key: "lumaVsSat", label: "Luma vs saturation", type: "curve", default: structuredClone(FLAT_CURVE) },
+    { key: "hueVsLuma", label: "Hue vs luma", type: "curve", default: structuredClone(FLAT_CURVE) },
+    { key: "satVsSat", label: "Saturation vs saturation", type: "curve", default: structuredClone(FLAT_CURVE) },
     slider("mix", "Amount", 100, 0, 100),
   ],
   render: (src, dst, p) => viaPixels(src, dst, (d) => curvePixels(d, readCurves(p), num(p, "mix", 100))),

@@ -36,8 +36,34 @@ const put = (d: Uint8ClampedArray, i: number, r0: number, g0: number, b0: number
   d[i + 2] = b0 + (b1 - b0) * m;
 };
 
+/** The qualifier matte of a frame (0..1 per pixel), softened with a box blur of `blurPct` (0..100, of up to 5% of the frame width). */
+export function blurMatte(d: Uint8ClampedArray, q: Qualifier, w: number, blurPct: number): Float32Array {
+  const count = d.length >> 2;
+  const h = Math.floor(count / w);
+  let a = new Float32Array(count);
+  for (let i = 0; i < count; i++) a[i] = d[i * 4 + 3] === 0 ? 0 : qualify(q, d[i * 4] / 255, d[i * 4 + 1] / 255, d[i * 4 + 2] / 255);
+  const rad = Math.round((blurPct / 100) * w * 0.05);
+  if (rad < 1) return a;
+  let t = new Float32Array(count);
+  const pass = (src: Float32Array, dst: Float32Array, len: number, stride: number, lines: number, lineStride: number) => {
+    const span = rad * 2 + 1;
+    for (let l = 0; l < lines; l++) {
+      const base = l * lineStride;
+      let sum = 0;
+      for (let k = -rad; k <= rad; k++) sum += src[base + Math.min(len - 1, Math.max(0, k)) * stride];
+      for (let x = 0; x < len; x++) {
+        dst[base + x * stride] = sum / span;
+        sum += src[base + Math.min(len - 1, x + rad + 1) * stride] - src[base + Math.max(0, x - rad) * stride];
+      }
+    }
+  };
+  pass(a, t, w, 1, h, w);
+  pass(t, a, h, w, w, 1);
+  return a;
+}
+
 /** The primary grade over a frame, optionally limited by an HSL qualifier and mixed with the original. */
-export function gradePixels(d: Uint8ClampedArray, p: Params): void {
+export function gradePixels(d: Uint8ClampedArray, p: Params, width = 0): void {
   const g = readGrade(p);
   const [tr, tg, tb] = toneTables(g);
   const m = colourMatrix(g);
@@ -45,6 +71,9 @@ export function gradePixels(d: Uint8ClampedArray, p: Params): void {
   const useQ = b(p, "qualify");
   const q = readQualifier(p);
   const show = useQ && b(p, "qShow");
+  // with blur, the matte is made first, blurred, then used (needs the frame width to know the rows)
+  const blur = useQ && width > 0 ? n(p, "qBlur", 0) : 0;
+  const matte = blur > 0 ? blurMatte(d, q, width, blur) : null;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] === 0) continue;
     const r = d[i];
@@ -58,7 +87,7 @@ export function gradePixels(d: Uint8ClampedArray, p: Params): void {
     const b1 = (m[6] * a + m[7] * c + m[8] * e) * 255;
     let w = mix;
     if (useQ) {
-      const sel = qualify(q, r / 255, gg / 255, bb / 255);
+      const sel = matte ? matte[i >> 2] : qualify(q, r / 255, gg / 255, bb / 255);
       if (show) {
         const v = sel * 255;
         d[i] = d[i + 1] = d[i + 2] = v;
@@ -70,11 +99,11 @@ export function gradePixels(d: Uint8ClampedArray, p: Params): void {
   }
 }
 
-export type CurveSet = { master?: CurvePoints; r?: CurvePoints; g?: CurvePoints; b?: CurvePoints; hueVsHue?: CurvePoints; hueVsSat?: CurvePoints; lumaVsSat?: CurvePoints };
+export type CurveSet = { master?: CurvePoints; r?: CurvePoints; g?: CurvePoints; b?: CurvePoints; hueVsHue?: CurvePoints; hueVsSat?: CurvePoints; lumaVsSat?: CurvePoints; hueVsLuma?: CurvePoints; satVsSat?: CurvePoints };
 
 export function readCurves(p: Params): CurveSet {
   const c = (k: string) => (Array.isArray(p[k]) ? (p[k] as CurvePoints) : undefined);
-  return { master: c("master"), r: c("red"), g: c("green"), b: c("blue"), hueVsHue: c("hueVsHue"), hueVsSat: c("hueVsSat"), lumaVsSat: c("lumaVsSat") };
+  return { master: c("master"), r: c("red"), g: c("green"), b: c("blue"), hueVsHue: c("hueVsHue"), hueVsSat: c("hueVsSat"), lumaVsSat: c("lumaVsSat"), hueVsLuma: c("hueVsLuma"), satVsSat: c("satVsSat") };
 }
 
 /** RGB curves (master then per channel) and the hue and luma curves. */
@@ -87,6 +116,8 @@ export function curvePixels(d: Uint8ClampedArray, c: CurveSet, mixPct = 100): vo
   const hh = !isIdentityCurve(c.hueVsHue, true);
   const hs = !isIdentityCurve(c.hueVsSat, true);
   const ls = !isIdentityCurve(c.lumaVsSat, true);
+  const hl = !isIdentityCurve(c.hueVsLuma, true);
+  const ss = !isIdentityCurve(c.satVsSat, true);
   // per degree: the hue shift as a rotation matrix and the saturation multiplier
   const rot: number[][] = [];
   const hueSat = new Float32Array(360);
@@ -94,6 +125,11 @@ export function curvePixels(d: Uint8ClampedArray, c: CurveSet, mixPct = 100): vo
     rot.push(hh ? hueMatrix((evalCurve(c.hueVsHue, h / 360) - 0.5) * 120) : [1, 0, 0, 0, 1, 0, 0, 0, 1]);
     hueSat[h] = hs ? evalCurve(c.hueVsSat, h / 360) * 2 : 1;
   }
+  // hue vs luma: brightness added per degree of hue (-0.5..0.5 of full scale); sat vs sat: saturation multiplier per 1% of saturation
+  const hueLuma = new Float32Array(360);
+  for (let h = 0; h < 360; h++) hueLuma[h] = hl ? (evalCurve(c.hueVsLuma, h / 360) - 0.5) * 255 : 0;
+  const satSat = new Float32Array(101);
+  for (let i = 0; i <= 100; i++) satSat[i] = ss ? evalCurve(c.satVsSat, i / 100) * 2 : 1;
   const lumSat = new Float32Array(256);
   for (let i = 0; i < 256; i++) lumSat[i] = ls ? evalCurve(c.lumaVsSat, i / 255) * 2 : 1;
   const mix = clamp01(mixPct / 100);
@@ -110,7 +146,7 @@ export function curvePixels(d: Uint8ClampedArray, c: CurveSet, mixPct = 100): vo
       g = tg[master[g]];
       bl = tb[master[bl]];
     }
-    if (hh || hs || ls) {
+    if (hh || hs || ls || hl || ss) {
       const col = hsl(r / 255, g / 255, bl / 255);
       const h = Math.min(359, Math.floor(col.h));
       const m = rot[h];
@@ -118,14 +154,15 @@ export function curvePixels(d: Uint8ClampedArray, c: CurveSet, mixPct = 100): vo
       let g2 = m[3] * r + m[4] * g + m[5] * bl;
       let b2 = m[6] * r + m[7] * g + m[8] * bl;
       // saturation scales with how far the colour is from its own colour (only where it has colour)
-      const k = col.s < 0.02 ? 1 : hueSat[h] * lumSat[Math.min(255, Math.round(col.l * 255))];
+      const k = col.s < 0.02 ? 1 : hueSat[h] * lumSat[Math.min(255, Math.round(col.l * 255))] * satSat[Math.min(100, Math.round(col.s * 100))];
       const y = 0.2126 * r2 + 0.7152 * g2 + 0.0722 * b2;
       r2 = y + (r2 - y) * k;
       g2 = y + (g2 - y) * k;
       b2 = y + (b2 - y) * k;
-      r = r2;
-      g = g2;
-      bl = b2;
+      const dl = col.s < 0.02 ? 0 : hueLuma[h] * Math.min(1, col.s * 2);
+      r = r2 + dl;
+      g = g2 + dl;
+      bl = b2 + dl;
     }
     put(d, i, r0, g0, b0, r, g, bl, mix);
   }

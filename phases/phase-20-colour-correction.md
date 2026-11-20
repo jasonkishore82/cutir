@@ -34,4 +34,6 @@ Built: the Colour grade effect (lift, gamma, gain, offset with masters and RGB, 
 
 Also built: round colour wheels for lift, gamma, gain and offset (drag the puck, master slider under each, double-click to reset) and an Auto balance button (gray-world balance plus a levels stretch from the viewer frame; `src/lib/grade/auto.ts`).
 
-Not built yet: a project colour space setting with an output transform; a stills gallery with wipe compare; hue vs luma and sat vs sat curves; qualifier blur; a GPU path (grading runs on the CPU, so it is slower than the GPU effects at 1080p; scopes sample a 256 x 144 copy and stay real time); a dockable Colour workspace (phase 27).
+Also built: hue vs luma and saturation vs saturation curves, a qualifier matte blur (box blur up to 5% of the frame width), a project working space and output space (Canvas card; the composed frame is converted at the end of drawFrame, so preview and export match; per-clip input transforms use the Colour space transform effect), and a Stills card (save the viewer frame with the clip's colour effects, wipe compare against the live frame, apply a still's grade to a clip).
+
+Not built yet: a GPU path (grading runs on the CPU, so it is slower than the GPU effects at 1080p; scopes sample a 256 x 144 copy and stay real time); a dockable Colour workspace (phase 27); stills are kept in memory for the session, not saved with the project.

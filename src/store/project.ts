@@ -173,6 +173,9 @@ export type Project = {
   style: TextStyle;
   aspect: Aspect;
   fps: 30 | 60;
+  /** Colour management (phase 20): the working space and the space the preview and export are converted to. */
+  colourSpace?: "rec709" | "srgb" | "rec2020" | "p3";
+  outputSpace?: "rec709" | "srgb" | "rec2020" | "p3";
   /** Default transition between consecutive lines; a line's own `transition` overrides it. */
   transition: Transition;
   /**
@@ -416,6 +419,7 @@ type State = {
 
   setStyle: (patch: Partial<TextStyle>, coalesceKey?: string) => void;
   setAspect: (a: Aspect) => void;
+  setColourSpaces: (working: "rec709" | "srgb" | "rec2020" | "p3", output: "rec709" | "srgb" | "rec2020" | "p3") => void;
   setBackground: (b: Background) => void;
   setAudio: (a?: AssetRef) => void;
   setLinesFromText: (text: string) => void;
@@ -557,6 +561,7 @@ export const useProject = create<State>((set, get) => ({
   setStyle: (patch, key) =>
     get().update((p) => ({ ...p, style: { ...p.style, ...patch } }), key ?? `style:${Object.keys(patch).join(",")}`),
   setAspect: (aspect) => get().update((p) => ({ ...p, aspect })),
+  setColourSpaces: (colourSpace, outputSpace) => get().update((p) => ({ ...p, colourSpace, outputSpace })),
   setBackground: (background) => get().update((p) => ({ ...p, background })),
   setAudio: (audio) => get().update((p) => ({ ...p, audio })),
   // the lyrics box edits only the ACTIVE layer's lines; other layers are untouched

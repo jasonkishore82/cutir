@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { SPACES } from "../lib/grade/math";
 import { ensureFont, markFontReady } from "../lib/fonts";
 import { parseSubtitleFile } from "../lib/subtitles";
 import AutoSync from "./AutoSync";
@@ -50,6 +51,8 @@ function pickFile(accept: string, onFile: (f: File) => void) {
   input.click();
 }
 
+type ProjectSpace = "rec709" | "srgb" | "rec2020" | "p3";
+const PROJECT_SPACES = SPACES.filter((sp) => ["rec709", "srgb", "rec2020", "p3"].includes(sp.id));
 export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s: SectionId) => void }) {
   const project = useProject((s) => s.project);
   const activeLayerId = useProject((s) => s.activeLayerId);
@@ -57,6 +60,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
   const layer = project.layers.find((l) => l.id === activeLayerId) ?? project.layers[0];
   const layerLines = linesOfLayer(project, layer.id);
   const setAspect = useProject((s) => s.setAspect);
+  const setColourSpaces = useProject((s) => s.setColourSpaces);
   const setBackground = useProject((s) => s.setBackground);
   const setAudio = useProject((s) => s.setAudio);
   const setLinesFromText = useProject((s) => s.setLinesFromText);
@@ -252,6 +256,16 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
 
           <Card title="Canvas">
             <Segmented label="Aspect ratio" value={project.aspect} options={ASPECTS} onChange={(a) => setAspect(a)} />
+            <Row label="Working space">
+              <select className="field" value={project.colourSpace ?? "rec709"} onChange={(e) => setColourSpaces(e.target.value as ProjectSpace, project.outputSpace ?? project.colourSpace ?? "rec709")}>
+                {PROJECT_SPACES.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+              </select>
+            </Row>
+            <Row label="Output space">
+              <select className="field" value={project.outputSpace ?? project.colourSpace ?? "rec709"} onChange={(e) => setColourSpaces(project.colourSpace ?? "rec709", e.target.value as ProjectSpace)}>
+                {PROJECT_SPACES.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+              </select>
+            </Row>
           </Card>
         </>
       )}

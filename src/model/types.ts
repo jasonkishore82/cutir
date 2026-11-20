@@ -38,7 +38,10 @@ export type ProjectSettings = {
   width: number;
   height: number;
   fps: 30 | 60;
-  colorSpace: "rec709";
+  /** The space the project is graded and composed in (clips are assumed to be in it). */
+  colorSpace: "rec709" | "srgb" | "rec2020" | "p3";
+  /** The space the preview and export are converted to; the working space when missing. */
+  outputSpace?: "rec709" | "srgb" | "rec2020" | "p3";
   sampleRate: 44100 | 48000;
 };
 

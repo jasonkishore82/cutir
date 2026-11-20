@@ -144,3 +144,38 @@ console.log("all passed");
   if (wheelToRgb(0, 0).some((v) => v !== 0)) throw new Error("centre is neutral");
   console.log("auto balance ok");
 }
+
+// ---- phase 20 remainder: hue vs luma, sat vs sat, matte blur, stills ----
+{
+  const { curvePixels, gradePixels, blurMatte, readQualifier } = await import("../src/lib/grade/pixels");
+  const { defaultParams, getEffect } = await import("../src/lib/effects");
+  const { gradeOf } = await import("../src/lib/stills");
+  const red = () => new Uint8ClampedArray([200, 40, 40, 255]);
+  const up = red();
+  curvePixels(up, { hueVsLuma: [[0, 1], [1, 1]] });
+  if (!(up[0] > 200 && up[1] > 40)) throw new Error(`hue vs luma should brighten: ${Array.from(up)}`);
+  const flat = red();
+  curvePixels(flat, { hueVsLuma: [[0, 0.5], [1, 0.5]], satVsSat: [[0, 0.5], [1, 0.5]] });
+  if (flat[0] !== 200 || flat[1] !== 40) throw new Error("flat curves change nothing");
+  const desat = red();
+  curvePixels(desat, { satVsSat: [[0, 0], [1, 0]] });
+  if (!(desat[0] - desat[1] < 160)) throw new Error(`sat vs sat should desaturate: ${Array.from(desat)}`);
+  if (!getEffect("curves")!.params.some((p) => p.key === "hueVsLuma") || !getEffect("curves")!.params.some((p) => p.key === "satVsSat")) throw new Error("curves params");
+
+  // matte blur: a red column in a grey frame spreads sideways
+  const w = 20, h = 4;
+  const img = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) img.set(i % w === 10 ? [255, 0, 0, 255] : [128, 128, 128, 255], i * 4);
+  const q = readQualifier({ qHue: 0, qWidth: 30, qSatLow: 0, qSatHigh: 100, qLumLow: 0, qLumHigh: 100, qSoft: 5 });
+  const sharp = blurMatte(img, q, w, 0);
+  const soft = blurMatte(img, q, w, 100);
+  if (!(sharp[9] < 0.05 && soft[9] > 0.05 && soft[10] < sharp[10])) throw new Error(`matte blur: ${sharp[9]} ${soft[9]} ${soft[10]}`);
+  const gp = { ...defaultParams(getEffect("grade")!.params), saturation: -100, qualify: true, qHue: 0, qBlur: 100 };
+  const out = new Uint8ClampedArray(img);
+  gradePixels(out, gp, w);
+  if (out.length !== img.length) throw new Error("blurred grade length");
+
+  const kept = gradeOf([{ id: "a", type: "grade", enabled: true, params: {} }, { id: "b", type: "blur", enabled: true, params: {} }]);
+  if (kept.length !== 1 || kept[0].type !== "grade") throw new Error("gradeOf keeps grade effects only");
+  console.log("phase 20 remainder ok");
+}

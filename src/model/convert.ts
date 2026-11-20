@@ -148,7 +148,7 @@ export function viewToDoc(view: Project, prev?: ProjectDoc): ProjectDoc {
 
   return {
     schemaVersion: SCHEMA_VERSION,
-    settings: { colorSpace: "rec709", sampleRate: 48000, ...(prev?.settings ?? {}), aspect: view.aspect, fps: view.fps, width, height },
+    settings: { sampleRate: 48000, ...(prev?.settings ?? {}), colorSpace: view.colourSpace ?? prev?.settings.colorSpace ?? "rec709", outputSpace: view.outputSpace ?? prev?.settings.outputSpace, aspect: view.aspect, fps: view.fps, width, height },
     media,
     bins: prev?.bins ?? [],
     timelines: prev?.timelines.some((t) => t.id === tlId) ? prev.timelines.map((t) => (t.id === tlId ? timeline : t)) : [...(prev?.timelines ?? []), timeline],
@@ -220,6 +220,8 @@ export function docToView(doc: ProjectDoc): Project {
     fps: doc.settings.fps,
     transition: tl.transition,
   };
+  if (doc.settings.colorSpace && doc.settings.colorSpace !== "rec709") view.colourSpace = doc.settings.colorSpace;
+  if (doc.settings.outputSpace) view.outputSpace = doc.settings.outputSpace;
   if (songMedia) view.audio = assetFromMedia(songMedia);
   // derived, read-only: beats from the timeline's beat markers, energy from the song's analysis
   const beats = beatsOf(tl);

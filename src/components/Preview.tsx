@@ -1,3 +1,4 @@
+import { useStills } from "../lib/stills";
 import { scopeSource } from "../lib/scopes";
 import { Icon } from "./ui";
 import TextOverlay from "./TextOverlay";
@@ -459,6 +460,7 @@ export default function Preview() {
             style={{ width: box.w, height: box.h }}
             className="rounded-lg shadow-2xl shadow-black/70 ring-1 ring-white/10"
           />
+          <StillCompare />
           {box.w > 0 && <TextOverlay w={box.w} h={box.h} />}
           {box.w > 0 && <ClipGizmo w={box.w} h={box.h} />}
           {showStats && (
@@ -542,6 +544,21 @@ export default function Preview() {
           {full ? "Exit full screen" : "Full screen"}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** A saved still laid over the viewer: the still shows left of the divider, the live frame right of it. */
+function StillCompare() {
+  const { stills, compare } = useStills();
+  const still = stills.find((s) => s.id === compare.id);
+  if (!still || compare.mode === "off") return null;
+  const pct = compare.pos * 100;
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden rounded-lg" aria-label="Still comparison">
+      <img src={still.url} alt="" className="absolute inset-0 h-full w-full object-fill" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }} />
+      <div className="absolute inset-y-0 w-0.5 bg-white/80" style={{ left: `${pct}%` }} />
+      <span className="absolute left-2 top-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] text-white">{still.name}</span>
     </div>
   );
 }

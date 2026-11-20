@@ -1,3 +1,4 @@
+import { spacePixels } from "./grade/pixels";
 import { drawStickers } from "./stickers";
 import {
   EASINGS, EFFECTS, IDENTITY, LOOPS, TRANSITIONS, beatFxAt, combineFx, energyAt, energyClock, energyFactor, presenceIn, presenceOut,
@@ -491,6 +492,14 @@ export function drawFrame(
     }
   }
   ctx.restore();
+  // output transform: the project is composed in its working space, the preview and export are in the output space
+  const from = project.colourSpace ?? "rec709";
+  const to = project.outputSpace ?? from;
+  if (from !== to) {
+    const img = ctx.getImageData(0, 0, w, h);
+    spacePixels(img.data, from, to);
+    ctx.putImageData(img, 0, 0);
+  }
 }
 
 /**
