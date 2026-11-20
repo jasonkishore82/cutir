@@ -127,3 +127,20 @@ void px;
 
 if (fails) process.exit(1);
 console.log("all passed");
+
+// ---- auto balance and wheel mapping ----
+{
+  const { autoBalance, wheelToRgb, rgbToWheel } = await import("../src/lib/grade/auto");
+  const px = (r: number, g: number, b: number, n = 100) => new Uint8ClampedArray(Array.from({ length: n }, () => [r, g, b, 255]).flat());
+  const cast = autoBalance(px(150, 110, 70));
+  if (!(cast.gainR < 0 && cast.gainB > 0)) throw new Error(`auto balance should cool a warm cast: ${JSON.stringify(cast)}`);
+  const neutral = autoBalance(px(120, 120, 120));
+  if (Math.abs(neutral.gainR) > 0.01 || Math.abs(neutral.gainB) > 0.01) throw new Error("neutral grey should not be tinted");
+  if (autoBalance(new Uint8ClampedArray(0)).gainM !== 0) throw new Error("empty frame");
+  const [r, g, b] = wheelToRgb(0.5, 0.3);
+  if (Math.abs(r + g + b) > 0.5) throw new Error("wheel deltas sum to zero");
+  const [x, y] = rgbToWheel(r, g, b);
+  if (Math.abs(x - 0.5) > 0.03 || Math.abs(y - 0.3) > 0.03) throw new Error(`wheel round trip ${x},${y}`);
+  if (wheelToRgb(0, 0).some((v) => v !== 0)) throw new Error("centre is neutral");
+  console.log("auto balance ok");
+}

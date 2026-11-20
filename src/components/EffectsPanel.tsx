@@ -9,6 +9,7 @@ import { editTimeline, tlNow, useTimelineUi } from "../timeline/ui";
 import { EASING_NAMES } from "../lib/animations";
 import { getTime } from "../lib/transport";
 import CurveParam from "./CurveParam";
+import GradeWheels from "./GradeWheels";
 import ScopesCard from "./ScopesCard";
 import { packLut, parseCube } from "../lib/grade/math";
 
@@ -220,6 +221,7 @@ function EffectCard({ clipId, fx, first, last, clipStart }: { clipId: string; fx
         <button className={small} title="Reset to defaults" onClick={() => editTimeline((t) => FX.resetEffect(t, clipId, fx.id))}>↺</button>
         <button className={`${small} hover:!text-red-400`} title="Remove" onClick={() => editTimeline((t) => FX.removeEffect(t, clipId, fx.id))}>✕</button>
       </div>
+      {open && fx.type === "grade" && <GradeWheels params={{ ...Object.fromEntries(def.params.map((s) => [s.key, s.default])), ...fx.params }} onChange={(patch) => set({ ...fx.params, ...patch }, "wheels")} />}
       {open &&
         def.params.map((spec) => (
           <ParamField
