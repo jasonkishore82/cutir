@@ -5,6 +5,7 @@ import { lineTools } from "./lines";
 import { styleTools } from "./style";
 import { sceneTools } from "./scene";
 import { syncTools } from "./sync";
+import { captionTools } from "./captions";
 import { layerTools } from "./layers";
 import { animationTools, motionTools, transformTools } from "./motion";
 import { timelineTools } from "./timeline";
@@ -17,7 +18,7 @@ import { activeTimeline, IDS } from "../../model/convert";
 import { useMedia } from "../../store/media";
 
 /** The one list of tools. Add a tool to a group file; it is picked up everywhere from here. */
-export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools, ...titleTools, ...kineticTools, ...effectTools, ...clipKeyTools]);
+export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools, ...titleTools, ...kineticTools, ...effectTools, ...clipKeyTools, ...captionTools]);
 
 export const TOOL_NAMES = registry.all.map((t) => t.name);
 
@@ -37,6 +38,7 @@ const TIMELINE_WORDS =
   /\b(clips?|tracks?|video|footage|b-?roll|audio|sound|music|voice.?over|image|photo|titles?|lower.?third|credits?|picture|trim|ripple|blade|cut|split|marker|in.?point|out.?point|insert|overwrite|append|timeline|volume|mute|solo|library|media|effects?|blur|glow|vignette|shadow|mask|chroma|green.?screen|keying|invert|mirror|flip|noise|grain|pixel\w*|sharpen|crop|dissolve|wipe|dip|fade|transitions?|keyframes?|key ?frames?|animat\w*|ease|easing|ken ?burns|zoom|scale|rotat\w*|opacity|speed|slow\w*|reverse|ramp|freeze|compound|nested|version|vertical|matte|mixer|pan|loudness|multicam|angles?)\b/i;
 
 /** Words that bring in the kinetic tools (single words, emphasis, beats, energy). */
+const CAPTION_WORDS = /\b(captions?|subtitles?|transcri\w*|fillers?|filler words?|ums?|uhs?|pauses?|silences?|reading speed|safe area|burn(?:ed)?[- ]?in)\b/i;
 const KINETIC_WORDS =
   /\b(beats?|bpm|tempo|rhythm|pulse|pulsing|flash|flashing|strobe|shake|drums?|kick|snare|downbeats?|on the beat|snap|emphasis|emphasi[sz]e[sd]?|emphasi[sz]ing|stress|key ?words?|highlight (the |a |one |that )?words?|energy|energetic|intense|loudness|kinetic|words?|hook)\b/i;
 
@@ -52,6 +54,7 @@ export function selectToolGroups(text: string, p: Project): ToolGroup[] {
   if (MOTION_WORDS.test(text)) groups.push("motion");
   if (TIMELINE_WORDS.test(text)) groups.push("timeline");
   if (KINETIC_WORDS.test(text)) groups.push("kinetic");
+  if (CAPTION_WORDS.test(text)) groups.push("captions");
   return groups;
 }
 

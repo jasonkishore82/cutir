@@ -108,3 +108,27 @@ def align(path: Path, lines: list[str], language: Optional[str], model_name: str
             }
         )
     return out
+
+
+def transcribe(path: Path, language: Optional[str], model_name: str, vocabulary: str = "") -> dict:
+    """Speech to text with word times. `vocabulary` (names, jargon) is given to Whisper as a prompt so it spells them right."""
+    model = get_model(model_name)
+    with _lock:
+        result = model.transcribe(
+            str(path),
+            language=language,
+            initial_prompt=vocabulary.strip() or None,
+            word_timestamps=True,
+            verbose=None,
+        )
+    segments = []
+    for seg in result.segments:
+        words = [
+            {"text": w.word.strip(), "start": round(float(w.start), 3), "end": round(float(w.end), 3)}
+            for w in seg.words
+            if w.word.strip()
+        ]
+        text = seg.text.strip()
+        if text:
+            segments.append({"text": text, "start": round(float(seg.start), 3), "end": round(float(seg.end), 3), "words": words})
+    return {"language": getattr(result, "language", None), "segments": segments}

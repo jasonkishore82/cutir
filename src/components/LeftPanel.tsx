@@ -8,6 +8,7 @@ import ClipCard from "./ClipCard";
 import AnimateCard from "./AnimateCard";
 import EffectsPanel from "./EffectsPanel";
 import AudioPanel from "./AudioPanel";
+import CaptionsPanel from "./CaptionsPanel";
 import TemplatesCard from "./TemplatesCard";
 import { POSTER_PALETTES, applyPalette } from "../lib/palettes";
 import TransitionsCard from "./TransitionsCard";
@@ -405,6 +406,7 @@ export default function LeftPanel({ tab, onGoto }: { tab: SectionId; onGoto?: (s
 
       {tab === "effects" && <EffectsPanel />}
       {tab === "audio" && <AudioPanel />}
+      {tab === "captions" && <CaptionsPanel />}
       {tab === "titles" && <TitlesPanel />}
 
       {tab === "motion" && (

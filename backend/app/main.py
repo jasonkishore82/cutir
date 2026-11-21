@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 
 from . import __version__
 from .config import settings
-from .routers import align, beats, health
+from .routers import align, beats, health, transcribe
 
 # Windows can map these to the wrong type; browsers refuse module scripts / streamed wasm with a wrong MIME type.
 mimetypes.add_type("text/javascript", ".js")
@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(align.router)
     app.include_router(beats.router)
+    app.include_router(transcribe.router)
     _serve_frontend(app)
     return app
 
