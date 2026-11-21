@@ -1,7 +1,8 @@
 // Phases 23 and 24: retiming maths, time stretch, multicam cuts, beat montage, audio sync.
 import { RAMP_PRESETS, blendFrames, clampSpeed, rampIntegral, speedAt, speedOf, sourceAtRel, splitRamp, timeStretch, trimRampHead } from "../src/lib/retime";
-import { activeCut, addCut, montagePlan, removeCut, segments, snapToBeats, soundSegments, videoAt } from "../src/lib/multicam";
-import { downsampleMono, fft, findLag, formatTimecode, lagFromMarkers, lagFromTimecode, parseTimecode } from "../src/lib/sync";
+import { activeCut, addCut, crossfadeOf, cutStrip, montagePlan, removeCut, segments, snapToBeats, soundSegments, videoAt } from "../src/lib/multicam";
+import { downsampleMono, fft, findLag, formatTimecode, lagFromMarkers, lagFromTimecode, measureDrift, parseTimecode } from "../src/lib/sync";
+import { readFileTimecode, type Reader } from "../src/lib/fileTimecode";
 import type { MulticamSpec } from "../src/model/types";
 
 let fails = 0;
@@ -96,6 +97,72 @@ check("the lag search can be limited", Math.abs(findLag(event, rec, SYNC, 1).lag
 check("downsampling averages and removes the mean", (() => { const d = downsampleMono([new Float32Array(48000).fill(0.5)], 48000, 4000); return d.length === 4000 && Math.abs(d[10]) < 1e-6; })());
 check("marker and timecode lags", lagFromMarkers(12, 4) === 8 && lagFromTimecode(100, 103.5) === 3.5);
 check("timecode parsing and formatting", parseTimecode("01:02:03:15", 30) === 3723.5 && parseTimecode("nonsense") === null && formatTimecode(3723.5, 30) === "01:02:03:15");
+
+/* ---------- drift ---------- */
+{
+  const SR = 4000;
+  // band-limited like real sound (a 4 kHz copy of speech or music has little above a few hundred Hz)
+  const white = Float32Array.from({ length: SR * 120 + 8 }, () => rnd());
+  const noise = Float32Array.from({ length: SR * 120 }, (_, i) => { let s = 0; for (let k = 0; k < 8; k++) s += white[i + k]; return s / 8; });
+  const slide = (s: number, from = 3) => Float32Array.from({ length: SR * 100 }, (_, i) => noise[Math.round(from * SR + i * (1 + s))] ?? 0);
+  const steady = slide(0);
+  const d0 = await measureDrift(noise, steady, SR, 3);
+  check("no drift is measured as none", d0.reliable && Math.abs(d0.ppm) < 150 && Math.abs(d0.speed - 1) < 2e-4, d0);
+  const d1 = await measureDrift(noise, slide(0.0003), SR, 3);
+  check("a recorder 300 ppm off is found and the speed that fixes it is given", d1.reliable && near(d1.ppm, 300, 80) && near(d1.speed, 1 / 1.0003, 1e-4) && near(d1.total, 0.03, 0.008), d1);
+  const d2 = await measureDrift(noise, Float32Array.from({ length: SR * 100 }, () => rnd()), SR, 3);
+  check("unrelated sound is not trusted", !d2.reliable, d2);
+  check("a short clip is not trusted", !(await measureDrift(noise, steady.subarray(0, SR * 10), SR, 3)).reliable);
+}
+
+/* ---------- crossfade between sound sources ---------- */
+{
+  const spec: MulticamSpec = { angles: [{ id: "a", name: "A", mediaId: "ma", offset: 0 }, { id: "b", name: "B", mediaId: "mb", offset: 1 }], cuts: [{ t: 0, video: "a" }, { t: 4, video: "b" }] };
+  const hard = soundSegments(spec, 0, 8);
+  check("without a crossfade the stretches meet exactly", hard.length === 2 && hard[0].to === 4 && hard[1].from === 4 && hard[0].fadeOut === undefined);
+  const x = soundSegments(spec, 0, 8, 0.2);
+  check("a crossfade overlaps the two stretches around the cut", near(x[0].to, 4.1, 1e-9) && near(x[1].from, 3.9, 1e-9) && near(x[0].fadeOut!, 0.2, 1e-9) && near(x[1].fadeIn!, 0.2, 1e-9), x);
+  check("the clip's outer edges are not extended", x[0].from === 0 && x[1].to === 8);
+  const tiny = soundSegments({ ...spec, cuts: [{ t: 0, video: "a" }, { t: 0.1, video: "b" }] }, 0, 8, 1);
+  check("a crossfade never grows past half of a short stretch", tiny[0].to <= 0.1 + 0.05 + 1e-9 && tiny[1].from >= 0.1 - 0.05 - 1e-9, tiny);
+  check("the same source across a cut is not crossfaded", (() => { const s = soundSegments({ ...spec, audioMediaId: "rec", audioOffset: 0 }, 0, 8, 0.2); return s.length === 1 && s[0].fadeIn === undefined; })());
+  check("the crossfade length has a default and limits", crossfadeOf(spec) === 0.12 && crossfadeOf({ ...spec, crossfade: 9 }) === 2 && crossfadeOf({ ...spec, crossfade: 0 }) === 0);
+  const strip = cutStrip({ ...spec, cuts: [{ t: 0, video: "a" }, { t: 4, video: "b", audio: "a" }] }, { sourceIn: 2, duration: 4, speed: 2 });
+  check("the timeline strip lists each stretch in clip time", strip.length === 2 && strip[0].from === 0 && strip[0].to === 1 && strip[1].from === 1 && strip[1].to === 4 && strip[1].number === 2 && strip[1].audioOnly === "A", strip);
+  check("a retimed clip draws no strip", cutStrip(spec, { sourceIn: 0, duration: 4, speed: 1, ramp: {} }).length === 0);
+}
+
+/* ---------- timecode from files ---------- */
+{
+  const be = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+  const le = (n: number) => [n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255];
+  const str = (s: string) => [...s].map((c) => c.charCodeAt(0));
+  const box = (type: string, ...parts: number[][]) => { const body = parts.flat(); return [...be(8 + body.length), ...str(type), ...body]; };
+  const readerOf = (bytes: number[]): Reader => async (o, l) => Uint8Array.from(bytes.slice(o, o + l));
+  // MOV: ftyp, mdat with the 4-byte frame counter, moov > trak > mdia > minf > stbl > stsd(tmcd) + stco
+  const frames = ((1 * 3600 + 2 * 60 + 3) * 25) + 7; // 01:02:03:07 at 25 fps
+  const ftyp = box("ftyp", str("qt  "), be(0));
+  const mdat = box("mdat", be(frames));
+  const dataAt = ftyp.length + 8;
+  const stsd = box("stsd", be(0), be(1), be(34 - 2), str("tmcd"), [0, 0, 0, 0, 0, 0], [0, 1], be(0), be(0), be(25000), be(1000), [25, 0]);
+  const stco = box("stco", be(0), be(1), be(dataAt));
+  const moov = box("moov", box("trak", box("mdia", box("minf", box("stbl", stsd, stco)))));
+  const mov = [...ftyp, ...mdat, ...moov];
+  const tc = await readFileTimecode(readerOf(mov), mov.length);
+  check("MOV timecode track is read", tc !== null && near(tc, 3723 + 7 / 25, 0.001), tc);
+  check("a file with no timecode track gives none", (await readFileTimecode(readerOf([...ftyp, ...mdat, ...box("moov", box("trak", box("mdia")))]), ftyp.length + mdat.length + 16)) === null);
+  // Broadcast WAV: fmt + bext (time reference in samples) + data
+  const bext = new Array(346).fill(0);
+  const ref = 48000 * 36000 + 24000; // 10:00:00.5 at 48 kHz
+  bext.splice(338, 8, ...le(ref >>> 0), ...le(Math.floor(ref / 4294967296)));
+  const fmt = [...str("fmt "), ...le(16), 1, 0, 1, 0, ...le(48000), ...le(96000), 2, 0, 16, 0];
+  const wavBody = [...str("WAVE"), ...fmt, ...str("bext"), ...le(346), ...bext, ...str("data"), ...le(4), 0, 0, 0, 0];
+  const wav = [...str("RIFF"), ...le(wavBody.length), ...wavBody];
+  const wtc = await readFileTimecode(readerOf(wav), wav.length);
+  check("Broadcast WAV time reference is read", wtc !== null && near(wtc, 36000.5, 0.001), wtc);
+  check("a plain WAV has no timecode", (await readFileTimecode(readerOf([...str("RIFF"), ...le(20), ...str("WAVE"), ...fmt, ...str("data"), ...le(0)]), 44)) === null);
+  check("garbage gives none rather than an error", (await readFileTimecode(readerOf([1, 2, 3]), 3)) === null);
+}
 
 if (fails) process.exit(1);
 console.log("all passed");

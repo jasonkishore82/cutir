@@ -18,6 +18,8 @@ export type ProbeInfo = {
   hasAudio?: boolean;
   canDecodeVideo?: boolean;
   canDecodeAudio?: boolean;
+  /** Start timecode written in the file, seconds since midnight (phase 24). */
+  timecode?: number;
 };
 
 let worker: Worker | null = null;

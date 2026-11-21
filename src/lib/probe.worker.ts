@@ -1,5 +1,6 @@
 import { ALL_FORMATS, BlobSource, Input } from "mediabunny";
 import type { ProbeInfo } from "./probe";
+import { readFileTimecode, readerOf } from "./fileTimecode";
 
 /**
  * Reads container and track information from a media file off the main thread. mediabunny only reads the parts of
@@ -29,6 +30,7 @@ self.onmessage = async (e: MessageEvent<{ id: number; file: File }>) => {
         info.sampleRate = a.sampleRate;
         info.canDecodeAudio = await a.canDecode();
       }
+      info.timecode = (await readFileTimecode(readerOf(file), file.size)) ?? undefined;
       info.hasVideo = !!v;
       info.hasAudio = !!a;
     }

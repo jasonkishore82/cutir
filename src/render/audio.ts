@@ -5,7 +5,7 @@ import type { Clip, MasterStrip, ProjectDoc, Timeline, Track } from "../model/ty
 import { mixTracks, type MasterMix, type TrackMix } from "../lib/audio/mix";
 import { PROCESSORS, dbToGain, filterBands, type AudioProcessor, type Channels } from "../lib/audio/dsp";
 import { sourceAtRel, speedOf, timeStretch } from "../lib/retime";
-import { soundSegments } from "../lib/multicam";
+import { crossfadeOf, soundSegments } from "../lib/multicam";
 
 /**
  * Sound of the timeline's audio tracks in the viewer.
@@ -69,8 +69,11 @@ export function activeAudio(tl: Timeline, t: number): Clip[] {
   return [...plain, ...multicamAudioAt(tl, t)];
 }
 
-/** The audio track a multicam clip's sound goes through (so it has a strip), or the clip's own track. */
-const soundTrackOf = (tl: Timeline, c: Clip) => tl.tracks.find((x) => x.kind === "audio" && !x.hidden)?.id ?? c.trackId;
+/** The audio track a multicam clip's sound goes through (so it has a strip): the one chosen in the clip, else the first audio track, else the clip's own. */
+export const soundTrackOf = (tl: Timeline, c: Clip) => {
+  const chosen = c.multicam?.audioTrackId && tl.tracks.find((x) => x.id === c.multicam!.audioTrackId && x.kind === "audio");
+  return chosen ? chosen.id : tl.tracks.find((x) => x.kind === "audio" && !x.hidden)?.id ?? c.trackId;
+};
 
 /**
  * A multicam clip plays the sound of the angle (or the separate recorder) the cuts name. For the live mixer each
@@ -81,10 +84,28 @@ export function multicamAudioAt(tl: Timeline, t: number): Clip[] {
   for (const c of tl.clips) {
     if (!c.multicam || !c.enabled || t < c.start || t >= c.start + c.duration) continue;
     const mt = sourceAtRel(c, t - c.start);
-    const seg = soundSegments(c.multicam, c.sourceIn, c.duration * c.speed).find((x) => mt >= x.from && mt < x.to);
-    if (!seg) continue;
-    // a stand-in clip: media time = multicam time + offset, so sourceIn is where the clip's own time zero would sit in the media
-    out.push({ ...c, id: `${c.id}:mc:${seg.mediaId}`, trackId: soundTrackOf(tl, c), mediaId: seg.mediaId, multicam: undefined, effects: [], sourceIn: c.sourceIn + seg.offset, sourceOut: c.sourceOut + seg.offset, volume: c.volume ?? 1, enabled: true });
+    const end = c.sourceIn + c.duration * c.speed;
+    // two stretches overlap while the sound crossfades from one source to the next
+    for (const seg of soundSegments(c.multicam, c.sourceIn, c.duration * c.speed, crossfadeOf(c.multicam)).filter((x) => mt >= x.from && mt < x.to)) {
+      // a stand-in clip for this stretch: media time = multicam time + offset; its own start keeps the same source position as the whole clip would have
+      const sIn = seg.from + seg.offset;
+      out.push({
+        ...c,
+        id: `${c.id}:mc:${seg.mediaId}:${seg.offset}`,
+        trackId: soundTrackOf(tl, c),
+        mediaId: seg.mediaId,
+        multicam: undefined,
+        effects: [],
+        start: c.start + (seg.from - c.sourceIn) / c.speed,
+        duration: (seg.to - seg.from) / c.speed,
+        sourceIn: sIn,
+        sourceOut: sIn + (seg.to - seg.from),
+        fadeIn: seg.fadeIn ? seg.fadeIn / c.speed : seg.from <= c.sourceIn + 1e-6 ? c.fadeIn : 0,
+        fadeOut: seg.fadeOut ? seg.fadeOut / c.speed : seg.to >= end - 1e-6 ? c.fadeOut : 0,
+        volume: c.volume ?? 1,
+        enabled: true,
+      });
+    }
   }
   return out;
 }
@@ -450,11 +471,14 @@ function multicamInputs(tl: Timeline, c: Clip, length: number, urlOf: (mediaId: 
   const out: MixInput[] = [];
   const spec = c.multicam!;
   const trackId = soundTrackOf(tl, c);
-  for (const seg of soundSegments(spec, c.sourceIn, c.duration * c.speed)) {
+  const clipEnd = c.sourceIn + c.duration * c.speed;
+  for (const seg of soundSegments(spec, c.sourceIn, c.duration * c.speed, crossfadeOf(spec))) {
     const url = urlOf(seg.mediaId);
     if (!url) continue;
     const start = c.start + (seg.from - c.sourceIn) / c.speed;
     if (start >= length) continue;
+    const fadeIn = seg.fadeIn ? seg.fadeIn / c.speed : seg.from <= c.sourceIn + 1e-6 ? c.fadeIn ?? 0 : 0;
+    const fadeOut = seg.fadeOut ? seg.fadeOut / c.speed : seg.to >= clipEnd - 1e-6 ? c.fadeOut ?? 0 : 0;
     let srcIn = seg.from + seg.offset;
     let dur = (seg.to - seg.from) / c.speed;
     let at = start;
@@ -466,7 +490,11 @@ function multicamInputs(tl: Timeline, c: Clip, length: number, urlOf: (mediaId: 
       srcIn = 0;
     }
     if (dur <= 1e-3) continue;
-    out.push({ trackId, url, start: at, duration: Math.min(dur, length - at), sourceIn: srcIn, speed: c.speed, volume: c.volume ?? 1, ...(c.pitch !== false && c.speed !== 1 ? { keepPitch: true } : {}) });
+    const d = Math.min(dur, length - at);
+    const fades: NonNullable<MixInput["fades"]> = [];
+    if (fadeIn > 0) fades.push({ from: at, to: at + Math.min(fadeIn, d), dir: "in" });
+    if (fadeOut > 0) fades.push({ from: at + d - Math.min(fadeOut, d), to: at + d, dir: "out" });
+    out.push({ trackId, url, start: at, duration: d, sourceIn: srcIn, speed: c.speed, volume: c.volume ?? 1, ...(fades.length ? { fades } : {}), ...(c.pitch !== false && c.speed !== 1 ? { keepPitch: true } : {}) });
   }
   return out;
 }

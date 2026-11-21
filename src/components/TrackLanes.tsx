@@ -15,6 +15,7 @@ import { EFFECT_MIME, TRANSITION_MIME } from "./EffectsPanel";
 import { CURSOR, MODE_HINT, beatSnapOn, editCtx, editTimeline, sourceOf, tlNow, useTimelineUi, withPoolMedia } from "../timeline/ui";
 import KeyLane, { LANE_H, shownLanes } from "./KeyLane";
 import { focusClip, useKeyframeUi } from "../lib/keyframes/ui";
+import { cutStrip } from "../lib/multicam";
 
 /** Drag type used by the media pool. */
 export const POOL_MIME = "application/x-cutir-media";
@@ -493,6 +494,15 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
                   <span className="truncate">{c.name ?? media?.name ?? "clip"}</span>
                 </div>
                 <div className="relative px-1.5 text-[9px] text-white/70">{c.duration.toFixed(2)}s</div>
+                {c.multicam && (
+                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-3" aria-hidden>
+                    {cutStrip(c.multicam, c).map((s, i) => (
+                      <span key={i} className="absolute top-0 h-full overflow-hidden whitespace-nowrap border-l border-black/60 px-0.5 text-[8px] leading-3 text-black" style={{ left: s.from * pps, width: Math.max(1, (s.to - s.from) * pps), background: s.color }} title={`${s.name}${s.audioOnly ? `, sound from ${s.audioOnly}` : ""}`}>
+                        {s.number}{s.audioOnly ? "♪" : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {tl.markers.filter((m) => m.clipId === c.id).map((m) => (
                   <span key={m.id} className="absolute bottom-0 h-1.5 w-1.5 rounded-full" style={{ left: (m.time - c.start) * pps - 3, background: m.color }} title={m.name || "Marker"} />
                 ))}

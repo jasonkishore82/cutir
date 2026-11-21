@@ -86,6 +86,9 @@ export function withPoolMedia(doc: ProjectDoc, item: MediaItem): ProjectDoc {
     ...(item.note ? { note: item.note } : {}),
   };
   const cur = doc.media.find((m) => m.id === id);
+  // a timecode typed by hand wins over the one read from the file
+  const tc = cur?.timecode ?? item.timecode;
+  if (tc !== undefined) ref.timecode = tc;
   if (cur && JSON.stringify(cur) === JSON.stringify(ref)) return doc;
   return { ...doc, media: cur ? doc.media.map((m) => (m.id === id ? ref : m)) : [...doc.media, ref] };
 }

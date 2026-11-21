@@ -5,13 +5,13 @@ import { activeTimeline, beatsOf } from "../model/convert";
 import { editTimeline, useTimelineUi, tlNow } from "../timeline/ui";
 import * as C from "../timeline/compound";
 import * as E from "../timeline/engine";
-import { activeCut, addCut, angleOf, removeCut, snapToBeats, montagePlan } from "../lib/multicam";
+import { activeCut, addCut, angleColor, angleOf, crossfadeOf, removeCut, snapToBeats, montagePlan } from "../lib/multicam";
 import { sourceAtRel } from "../lib/retime";
 import { getTime, usePlayback } from "../lib/transport";
 import { liveFrames } from "../render/sources";
 import { useMedia } from "../store/media";
 import { lagInWorker, syncSignal } from "../lib/syncAudio";
-import { formatTimecode, parseTimecode } from "../lib/sync";
+import { SYNC_RATE, formatTimecode, measureDrift, parseTimecode } from "../lib/sync";
 import type { Clip, MulticamSpec } from "../model/types";
 
 const btn = "rounded-md border border-edge px-2 py-0.5 text-[11px] text-gray-300 hover:bg-white/10 disabled:opacity-40";
@@ -20,6 +20,12 @@ const urlOf = (doc: { media: { id: string; poolId?: string }[] }, mediaId: strin
   return pool ? useMedia.getState().urls[pool] : undefined;
 };
 type Mode = "both" | "video" | "audio";
+
+/** A media item's start timecode: the one typed by hand, else the one read from the file. */
+const timecodeOf = (doc: { media: { id: string; poolId?: string; timecode?: number }[] }, mediaId: string | undefined): number | undefined => {
+  const m = doc.media.find((x) => x.id === mediaId);
+  return m?.timecode ?? (m?.poolId ? useMedia.getState().items.find((i) => i.id === m.poolId)?.timecode : undefined);
+};
 
 /** Sync, multicam and beat montage (phase 24). */
 export default function MulticamCard() {
@@ -64,6 +70,46 @@ export default function MulticamCard() {
       setBusy(false);
     }
   };
+  const fixDrift = async () => {
+    if (picked.length < 2) return setMsg("Select the clips that are already synced; the first selected is the anchor the others are measured against.");
+    setBusy(true);
+    setMsg("Measuring drift along the recordings...");
+    try {
+      const anchor = picked[0];
+      const signals = new Map<string, Float32Array>();
+      const signal = async (mediaId: string) => {
+        let s = signals.get(mediaId);
+        if (!s) {
+          const url = urlOf(doc, mediaId);
+          if (!url) throw new Error("A clip has no sound to read.");
+          signals.set(mediaId, (s = await syncSignal(url)));
+        }
+        return s;
+      };
+      const a = await signal(anchor.mediaId!);
+      const done: string[] = [];
+      const skipped: string[] = [];
+      const fixes: { id: string; speed: number }[] = [];
+      for (const c of picked.slice(1)) {
+        const name = c.name ?? doc.media.find((m) => m.id === c.mediaId)?.name ?? c.id;
+        const b = await signal(c.mediaId!);
+        const first = await lagInWorker(a, b);
+        const d = await measureDrift(a, b, SYNC_RATE, first.lag, lagInWorker);
+        if (!d.reliable) skipped.push(`${name} (too short or too uneven to measure)`);
+        else if (Math.abs(d.total) < 0.02) skipped.push(`${name} (${Math.round(d.total * 1000)} ms over its length, fine as it is)`);
+        else {
+          fixes.push({ id: c.id, speed: d.speed });
+          done.push(`${name} ${d.ppm >= 0 ? "ran slow" : "ran fast"} by ${Math.abs(Math.round(d.ppm))} ppm (${d.total >= 0 ? "+" : "-"}${Math.abs(d.total).toFixed(2)} s over the clip)`);
+        }
+      }
+      if (fixes.length) editTimeline((t) => fixes.reduce((acc, f) => C.applyDrift(acc, f.id, f.speed), t));
+      setMsg(`${done.length ? `Corrected: ${done.join("; ")}. ` : "Nothing needed correcting. "}${skipped.length ? `Left alone: ${skipped.join("; ")}.` : ""}`);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Could not measure drift");
+    } finally {
+      setBusy(false);
+    }
+  };
   const syncMarkers = () => {
     const anchor = picked[0];
     const mark = (c: Clip) => tl.markers.filter((m) => m.clipId === c.id).sort((x, y) => x.time - y.time)[0];
@@ -76,7 +122,7 @@ export default function MulticamCard() {
   };
   const syncTimecode = () => {
     const anchor = picked[0];
-    const tcOf = (c: Clip) => doc.media.find((m) => m.id === c.mediaId)?.timecode;
+    const tcOf = (c: Clip) => timecodeOf(doc, c.mediaId);
     const a = anchor && tcOf(anchor);
     if (a === undefined) return setMsg("Enter a start timecode for each clip's media below first.");
     const lags = picked.slice(1).flatMap((c) => (tcOf(c) === undefined ? [] : [{ clipId: c.id, lag: tcOf(c)! - a }]));
@@ -135,17 +181,18 @@ export default function MulticamCard() {
           <button className={btn} disabled={busy || picked.length < 2} onClick={syncAudio}>By audio</button>
           <button className={btn} disabled={picked.length < 2} onClick={syncMarkers}>By marker</button>
           <button className={btn} disabled={picked.length < 2} onClick={syncTimecode}>By timecode</button>
+          <button className={btn} disabled={busy || picked.length < 2} onClick={fixDrift} title="For long recordings: measures how far a recorder's clock has wandered from the anchor's and plays the clip slightly faster or slower to match">Correct drift</button>
         </div>
         {picked.map((c) => {
           const m = doc.media.find((x) => x.id === c.mediaId)!;
           return (
             <label key={c.id} className="flex items-center gap-1 text-[11px] text-gray-400">
               <span className="w-24 truncate" title={m.name}>{m.name}</span>
-              <input className="field !w-28 !py-0.5" placeholder="hh:mm:ss:ff" defaultValue={m.timecode !== undefined ? formatTimecode(m.timecode, doc.settings.fps) : ""} onBlur={(e) => { const v = e.target.value.trim() === "" ? undefined : parseTimecode(e.target.value, doc.settings.fps); if (v !== null) useProject.getState().editDoc((d) => ({ ...d, media: d.media.map((x) => (x.id === m.id ? { ...x, timecode: v } : x)) })); }} aria-label={`Start timecode of ${m.name}`} />
+              <input className="field !w-28 !py-0.5" placeholder="hh:mm:ss:ff" key={`${m.id}:${timecodeOf(doc, m.id) ?? ""}`} defaultValue={timecodeOf(doc, m.id) !== undefined ? formatTimecode(timecodeOf(doc, m.id)!, doc.settings.fps) : ""} onBlur={(e) => { const v = e.target.value.trim() === "" ? undefined : parseTimecode(e.target.value, doc.settings.fps); if (v !== null) useProject.getState().editDoc((d) => ({ ...d, media: d.media.map((x) => (x.id === m.id ? { ...x, timecode: v } : x)) })); }} aria-label={`Start timecode of ${m.name}`} />
             </label>
           );
         })}
-        <p className="text-[10px] text-gray-500">The first selected clip stays; the others move to line up with it and are linked to it.</p>
+        <p className="text-[10px] text-gray-500">The first selected clip stays; the others move to line up with it and are linked to it. Timecode is read from the file when it has one (camera MP4 and MOV, field-recorder WAV); type it otherwise.</p>
       </div>
       <div className="space-y-1 border-t border-edge pt-2">
         <div className="text-[12px] text-gray-300">Multicam</div>
@@ -175,6 +222,7 @@ export default function MulticamCard() {
 function AngleViewer({ clip, beats }: { clip: Clip; beats: number[] }) {
   const spec = clip.multicam!;
   const doc = useProject((s) => s.doc);
+  const tracks = activeTimeline(doc).tracks;
   const [mode, setMode] = useState<Mode>("both");
   const [snap, setSnap] = useState(true);
   const playing = usePlayback((s) => s.playing);
@@ -264,14 +312,30 @@ function AngleViewer({ clip, beats }: { clip: Clip; beats: number[] }) {
       <div className="space-y-1">
         {spec.cuts.map((c, i) => (
           <div key={i} className="flex items-center gap-1 text-[11px] text-gray-300">
+            <CutThumb spec={spec} cut={c} />
             <input className="field !w-16 !py-0.5" type="number" step={0.1} min={0} value={Math.round(c.t * 100) / 100} onChange={(e) => set({ ...spec, cuts: spec.cuts.map((x, j) => (j === i ? { ...x, t: Math.max(0, Number(e.target.value)) } : x)).sort((a, b) => a.t - b.t) })} aria-label="Cut time" />
             <select className="field !py-0.5" value={c.video} onChange={(e) => set({ ...spec, cuts: spec.cuts.map((x, j) => (j === i ? { ...x, video: e.target.value } : x)) })} aria-label="Video angle">
               {spec.angles.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+            <select className="field !py-0.5" value={c.audio ?? ""} onChange={(e) => set({ ...spec, cuts: spec.cuts.map((x, j) => { if (j !== i) return x; const { audio: _a, ...rest } = x; return e.target.value ? { ...rest, audio: e.target.value } : rest; }) })} aria-label="Sound from" title="Whose sound plays during this cut">
+              <option value="">sound: with picture</option>
+              {spec.angles.map((a) => <option key={a.id} value={a.id}>sound: {a.name}</option>)}
             </select>
             <button className={btn} aria-label="Remove cut" onClick={() => set(removeCut(spec, i))}>×</button>
           </div>
         ))}
         {!spec.cuts.length && <p className="text-[11px] text-gray-500">No cuts yet: it shows {angleOf(spec, undefined)?.name}.</p>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+        <label className="flex items-center gap-1">Sound through
+          <select className="field !w-auto !py-0.5" value={spec.audioTrackId ?? ""} onChange={(e) => set({ ...spec, audioTrackId: e.target.value || undefined })} aria-label="Audio track for the multicam sound">
+            <option value="">first audio track</option>
+            {tracks.filter((t) => t.kind === "audio").map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-1" title="When the sound changes from one source to another it fades over this long instead of jumping">Crossfade
+          <input className="field !w-14 !py-0.5" type="number" min={0} max={2} step={0.05} value={Math.round(crossfadeOf(spec) * 100) / 100} onChange={(e) => set({ ...spec, crossfade: Math.max(0, Math.min(2, Number(e.target.value) || 0)) })} aria-label="Crossfade seconds" /> s
+        </label>
       </div>
       <div className="flex flex-wrap gap-1">
         <button className={btn} disabled={!spec.cuts.length} onClick={() => set({ ...spec, cuts: [] })}>Clear cuts</button>
@@ -279,6 +343,32 @@ function AngleViewer({ clip, beats }: { clip: Clip; beats: number[] }) {
       </div>
     </div>
   );
+}
+
+/** A small still of the angle a cut switches to, taken at the cut. It fills in once the frame has loaded. */
+function CutThumb({ spec, cut }: { spec: MulticamSpec; cut: { t: number; video: string } }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const a = angleOf(spec, cut.video);
+  useEffect(() => {
+    let tries = 0;
+    let done = false;
+    const draw = () => {
+      const cv = ref.current;
+      const ctx = cv?.getContext("2d");
+      if (!cv || !ctx || !a) return true;
+      const pic = liveFrames(false).picture(a.mediaId, "video", Math.max(0, cut.t + a.offset));
+      if (!pic) return false;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      const s = Math.min(cv.width / pic.width, cv.height / pic.height);
+      ctx.drawImage(pic, (cv.width - pic.width * s) / 2, (cv.height - pic.height * s) / 2, pic.width * s, pic.height * s);
+      return true;
+    };
+    if (draw()) return;
+    const id = setInterval(() => { if (done || draw() || ++tries > 20) (done = true), clearInterval(id); }, 300);
+    return () => { done = true; clearInterval(id); };
+  }, [a?.mediaId, a?.offset, cut.t]);
+  return <canvas ref={ref} width={48} height={27} className="h-[27px] w-12 shrink-0 rounded-sm bg-black" style={{ outline: `2px solid ${angleColor(spec, cut.video)}` }} aria-label={`${a?.name ?? "Angle"} at the cut`} />;
 }
 
 void tlNow;

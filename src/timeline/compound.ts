@@ -288,6 +288,24 @@ export function applySync(tl: Timeline, anchorId: string, lags: { clipId: string
   };
 }
 
+/**
+ * Correct clock drift: a clip (and the clips linked to it that show the same media, such as its own sound) plays at
+ * `speed` so it keeps time with the anchor for its whole length. It stays put at its start. Ramped clips are left alone.
+ */
+export function applyDrift(tl: Timeline, clipId: string, speed: number): Timeline {
+  const target = tl.clips.find((c) => c.id === clipId);
+  if (!target || !(speed > 0.5 && speed < 2)) return tl;
+  let next = tl;
+  for (const c of tl.clips) {
+    const same = c.id === clipId || (!!target.linkId && c.linkId === target.linkId && c.mediaId === target.mediaId);
+    if (!same || c.ramp || c.fill || E.isLocked(tl, c.trackId)) continue;
+    const merged = { ...c, speed: tidy(speed), duration: durationFor(c.sourceOut - c.sourceIn, speed) };
+    next = { ...next, clips: next.clips.map((x) => (x.id === c.id ? merged : x)) };
+    if (merged.duration > c.duration) next = E.clearRange(next, c.trackId, E.clipEnd(c), E.clipEnd(merged), new Set([c.id]));
+  }
+  return next;
+}
+
 /** The angle offsets for a multicam from lags of each angle's media inside the first angle's media (the first has lag 0). */
 export const offsetsFromLags = (lags: number[]): number[] => lags.map((l) => tidy(-l));
 

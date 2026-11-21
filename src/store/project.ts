@@ -130,6 +130,8 @@ export type LyricLine = {
   start: number;
   end: number;
   words?: { text: string; start: number; end: number }[];
+  /** Who is speaking (phase 25). */
+  speaker?: string;
   styleOverride?: StyleOverride;
   /** Which layer this line lives on. Missing = the first layer. */
   layerId?: string;
@@ -163,6 +165,8 @@ export type Layer = {
   visible: boolean;
   locked: boolean;
   style?: StyleOverride;
+  /** Language of the text, such as "en" (phase 25). */
+  lang?: string;
 };
 
 export type Project = {

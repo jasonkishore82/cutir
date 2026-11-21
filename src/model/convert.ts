@@ -84,6 +84,8 @@ export function viewToDoc(view: Project, prev?: ProjectDoc): ProjectDoc {
     const t: Track = { ...track(l.id, "subtitle", l.name, prevTrack(l.id)), kind: "subtitle", name: l.name, hidden: !l.visible, locked: l.locked };
     if (l.style !== undefined) t.style = l.style;
     else delete t.style;
+    if (l.lang !== undefined) t.lang = l.lang;
+    else delete t.lang;
     return t;
   });
   const layerIds = new Set(view.layers.map((l) => l.id));
@@ -113,6 +115,7 @@ export function viewToDoc(view: Project, prev?: ProjectDoc): ProjectDoc {
     const duration = l.end - l.start;
     const text: Clip["text"] = { text: l.text };
     if (l.words !== undefined) text.words = l.words;
+    if (l.speaker !== undefined) text.speaker = l.speaker;
     if (l.styleOverride !== undefined) text.style = l.styleOverride;
     if (l.transition !== undefined) text.transition = l.transition;
     if (l.wordOverrides !== undefined) text.wordOverrides = l.wordOverrides;
@@ -186,6 +189,7 @@ export function docToView(doc: ProjectDoc): Project {
     .map((t) => {
       const l: Layer = { id: t.id, name: t.name, visible: !t.hidden, locked: t.locked };
       if (t.style !== undefined) l.style = t.style;
+      if (t.lang !== undefined) l.lang = t.lang;
       return l;
     });
 
@@ -206,6 +210,7 @@ export function docToView(doc: ProjectDoc): Project {
       const t = c.text!;
       const line: LyricLine = { id: c.id, text: t.text, start: c.start, end: tidy(c.start + c.duration) };
       if (t.words !== undefined) line.words = t.words;
+      if (t.speaker !== undefined) line.speaker = t.speaker;
       if (t.style !== undefined) line.styleOverride = t.style;
       line.layerId = c.trackId;
       if (c.keyframes.transform !== undefined) line.keyframes = c.keyframes.transform;

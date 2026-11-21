@@ -41,6 +41,8 @@ export type MediaItem = {
   audioCodec?: string;
   channels?: number;
   hasAudio?: boolean;
+  /** Start timecode written in the file, seconds since midnight (phase 24). */
+  timecode?: number;
   /** Why it cannot be played here (unsupported codec...). Empty when fine. */
   note?: string;
   /** Source marks for three- and four-point edits, in source seconds. */
@@ -146,6 +148,7 @@ const fromProbe = (info: ProbeInfo, kind: MediaKind): Partial<MediaItem> => ({
   audioCodec: info.audioCodec,
   channels: info.channels,
   hasAudio: info.hasAudio,
+  timecode: info.timecode,
   note: playbackNote(info, kind),
 });
 

@@ -129,3 +129,60 @@ export function formatTimecode(sec: number, fps = 30): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${p(h)}:${p(m)}:${p(s)}:${p(Math.min(f, Math.ceil(fps) - 1))}`;
 }
+
+/* ---------- drift ---------- */
+
+export type Drift = {
+  /** Playback speed that makes `b` keep time with `a` (1 when there is no drift). */
+  speed: number;
+  /** Seconds `b` has wandered from `a` by its end, uncorrected. */
+  total: number;
+  /** Parts per million. */
+  ppm: number;
+  /** The weakest of the matches it is based on (see `Lag.confidence`). */
+  confidence: number;
+  /** False when there are too few good matches to trust the figure. */
+  reliable: boolean;
+};
+
+/**
+ * Two recorders' clocks run at slightly different rates, so a long recording slides out of sync even when its start
+ * lines up. Given the lag at the start (`lag0`, where `b` begins inside `a`), this re-measures the lag in windows along `b`
+ * and fits a straight line through how far they have drifted. `lagFn` is `findLag`, or the worker version.
+ */
+export async function measureDrift(
+  a: Float32Array,
+  b: Float32Array,
+  sr: number,
+  lag0: number,
+  lagFn: (a: Float32Array, b: Float32Array, maxSeconds?: number) => Promise<Lag> = async (x, y, m) => findLag(x, y, sr, m),
+  o: { window?: number; windows?: number; search?: number } = {},
+): Promise<Drift> {
+  const W = Math.round((o.window ?? 6) * sr);
+  const N = Math.max(2, o.windows ?? 5);
+  const pad = Math.round((o.search ?? 2) * sr);
+  const none: Drift = { speed: 1, total: 0, ppm: 0, confidence: 0, reliable: false };
+  if (b.length < W * 2) return none; // too short for the drift to show
+  const pts: { p: number; r: number }[] = [];
+  let weakest = Infinity;
+  for (let i = 0; i < N; i++) {
+    const bs = Math.round(((b.length - W) * i) / (N - 1));
+    const as = Math.round(lag0 * sr) + bs - pad;
+    if (as < 0 || as + W + 2 * pad > a.length) continue;
+    const r = await lagFn(a.subarray(as, as + W + 2 * pad), b.subarray(bs, bs + W), (2 * pad) / sr);
+    if (r.confidence < 4) continue; // a silent or noisy stretch tells nothing
+    weakest = Math.min(weakest, r.confidence);
+    pts.push({ p: bs / sr, r: r.lag - pad / sr });
+  }
+  if (pts.length < 3) return { ...none, confidence: Number.isFinite(weakest) ? weakest : 0 };
+  // least squares: residual = slope * position + intercept
+  const n = pts.length;
+  const mp = pts.reduce((s, x) => s + x.p, 0) / n;
+  const mr = pts.reduce((s, x) => s + x.r, 0) / n;
+  let num = 0, den = 0;
+  for (const x of pts) (num += (x.p - mp) * (x.r - mr)), (den += (x.p - mp) ** 2);
+  const slope = den > 0 ? num / den : 0;
+  const spread = Math.sqrt(pts.reduce((s, x) => s + (x.r - (mr + slope * (x.p - mp))) ** 2, 0) / n);
+  const length = b.length / sr;
+  return { speed: 1 / (1 + slope), total: slope * length, ppm: slope * 1e6, confidence: weakest, reliable: spread < 0.05 && Math.abs(slope) < 0.02 };
+}

@@ -108,6 +108,8 @@ export type Track = {
   hidden: boolean;
   /** Subtitle tracks: style overrides for every clip on the track (the old layer style). */
   style?: StyleOverride;
+  /** Subtitle tracks: the language of the text (a code such as "en"), for soft tracks and translation (phase 25). */
+  lang?: string;
   /** Receives inserts and overwrites from the media pool (one video and one audio track at a time). */
   target?: boolean;
   /** Audio tracks (phase 21): the strip in the mixer. Missing values mean gain 1, pan 0, no send, no processors. */
@@ -226,6 +228,8 @@ export type TitleSpec = {
 export type TextPayload = {
   text: string;
   words?: { text: string; start: number; end: number }[];
+  /** Who is speaking (phase 25). */
+  speaker?: string;
   style?: StyleOverride;
   /** Hand-over into the next clip on the same track. */
   transition?: Transition;
@@ -338,7 +342,7 @@ export type Clip = {
 /** One camera or recorder of a multicam clip. Its source time is the multicam time plus `offset` seconds. */
 export type MulticamAngle = { id: string; name: string; mediaId: string; offset: number };
 export type MulticamCut = { /** Seconds from the start of the multicam clip's own time (sourceIn + rel * speed). */ t: number; video: string; /** Angle whose sound plays; the video angle's own when missing. */ audio?: string };
-export type MulticamSpec = { angles: MulticamAngle[]; cuts: MulticamCut[]; /** Sound from a separate recorder (media id), synced with `audioOffset`; used when set and a cut has no audio angle. */ audioMediaId?: string; audioOffset?: number };
+export type MulticamSpec = { angles: MulticamAngle[]; cuts: MulticamCut[]; /** Sound from a separate recorder (media id), synced with `audioOffset`; used when set and a cut has no audio angle. */ audioMediaId?: string; audioOffset?: number; /** The audio track whose strip the sound goes through; the first audio track when missing. */ audioTrackId?: string; /** Seconds a change of sound source fades over (0 for a hard cut; 0.12 when missing). */ crossfade?: number };
 
 export type BlendMode = "normal" | "multiply" | "screen" | "overlay" | "softlight" | "hardlight" | "darken" | "lighten" | "add" | "difference" | "exclusion" | "dodge" | "burn";
 

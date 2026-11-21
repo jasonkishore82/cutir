@@ -57,10 +57,26 @@ export function segments(spec: MulticamSpec, start: number, length: number): Seg
   return out;
 }
 
-export type SoundSegment = { from: number; to: number; /** An angle's media, or the separate recorder. */ mediaId: string; /** Add to multicam time for the media's source time. */ offset: number };
+/** Distinct colour for an angle (by its place in the clip), shared by the timeline strip and the angle viewer. */
+export const angleColor = (spec: MulticamSpec, id: string | undefined) => `hsl(${(Math.max(0, spec.angles.findIndex((a) => a.id === id)) * 67 + 200) % 360} 65% 55%)`;
+
+/** The stretches of a multicam clip as drawn on the timeline: seconds from the clip's start, the angle, its number and colour. Empty for a retimed (ramped) clip. */
+export function cutStrip(spec: MulticamSpec, clip: { sourceIn: number; duration: number; speed: number; ramp?: unknown }): { from: number; to: number; name: string; number: number; color: string; audioOnly?: string }[] {
+  if (clip.ramp) return [];
+  return segments(spec, clip.sourceIn, clip.duration * clip.speed).map((s) => {
+    const cut = activeCut(spec, s.from);
+    const a = angleOf(spec, s.angle);
+    const sound = cut.audio && cut.audio !== cut.video ? angleOf(spec, cut.audio)?.name : undefined;
+    return { from: (s.from - clip.sourceIn) / clip.speed, to: (s.to - clip.sourceIn) / clip.speed, name: a?.name ?? "", number: spec.angles.findIndex((x) => x.id === s.angle) + 1, color: angleColor(spec, s.angle), ...(sound ? { audioOnly: sound } : {}) };
+  });
+}
+
+export type SoundSegment = { from: number; to: number; /** An angle's media, or the separate recorder. */ mediaId: string; /** Add to multicam time for the media's source time. */ offset: number; /** Seconds of multicam time this stretch fades in over (a crossfade from the stretch before). */ fadeIn?: number; fadeOut?: number };
+
+export const DEFAULT_CROSSFADE = 0.12;
 
 /** Where the sound comes from for each stretch: the cut's audio angle, else the separate recorder (when there is one), else the video angle. */
-export function soundSegments(spec: MulticamSpec, start: number, length: number): SoundSegment[] {
+export function soundSegments(spec: MulticamSpec, start: number, length: number, crossfade = 0): SoundSegment[] {
   const out: SoundSegment[] = [];
   const end = start + length;
   const marks = [start, ...spec.cuts.map((c) => c.t).filter((t) => t > start + 1e-6 && t < end - 1e-6), end].sort((a, b) => a - b);
@@ -86,8 +102,25 @@ export function soundSegments(spec: MulticamSpec, start: number, length: number)
     if (prev && prev.mediaId === mediaId && prev.offset === offset && Math.abs(prev.to - marks[i - 1]) < 1e-6) prev.to = marks[i];
     else out.push({ from: marks[i - 1], to: marks[i], mediaId, offset });
   }
+  // a crossfade straddles each change of source: the one before runs on a little, the next starts a little early
+  if (crossfade > 0) {
+    const len = out.map((s) => s.to - s.from);
+    for (let i = 1; i < out.length; i++) {
+      const a = out[i - 1], b = out[i];
+      if (Math.abs(a.to - b.from) > 1e-6) continue;
+      const h = Math.min(crossfade / 2, len[i - 1] / 2, len[i] / 2);
+      if (h <= 1e-4) continue;
+      a.to += h;
+      a.fadeOut = 2 * h;
+      b.from -= h;
+      b.fadeIn = 2 * h;
+    }
+  }
   return out;
 }
+
+/** The crossfade length a multicam clip uses. */
+export const crossfadeOf = (spec: MulticamSpec) => Math.max(0, Math.min(2, spec.crossfade ?? DEFAULT_CROSSFADE));
 
 /* ---------- beat montage ---------- */
 

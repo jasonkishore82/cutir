@@ -2,7 +2,7 @@
 import { viewToDoc, activeTimeline, docToView } from "../src/model/convert";
 import { defaultProject } from "../src/store/project";
 import * as E from "../src/timeline/engine";
-import { applySync, commitMulticam, coverRatio, duplicateTimeline, flattenNested, makeCompound, makeMulticam, makeSubclip, offsetsFromLags, placeTimeline, placeable, reframeTimeline, reframeX, subclipSource, syncedStart, usesTimeline } from "../src/timeline/compound";
+import { applyDrift, applySync, commitMulticam, coverRatio, duplicateTimeline, flattenNested, makeCompound, makeMulticam, makeSubclip, offsetsFromLags, placeTimeline, placeable, reframeTimeline, reframeX, subclipSource, syncedStart, usesTimeline } from "../src/timeline/compound";
 import { compositeVisuals, needsAt, sourceTime, visualMediaIds, visualPlan } from "../src/render/compositor";
 import { mixInputs } from "../src/render/audio";
 import { addCut } from "../src/lib/multicam";
@@ -168,7 +168,12 @@ const putClips = (doc: ProjectDoc, clips: Clip[]): ProjectDoc => E.onActive(doc,
   check("with a separate recorder the sound is one stretch from it, skipping the second before it started", ins.length === 1 && ins[0].url === "blob:m3" && near(ins[0].start, 6) && near(ins[0].duration, 19) && near(ins[0].sourceIn, 0), ins.map((i) => [i.url, i.start, i.duration, i.sourceIn]));
   const noRec = { ...cutDoc, timelines: cutDoc.timelines.map((t) => ({ ...t, clips: t.clips.map((c) => (c.id === made.clipId ? { ...c, multicam: { ...spec, audioMediaId: undefined } } : c)) })) };
   const ins2 = mixInputs(noRec, undefined, 60, (id) => `blob:${id}`);
-  check("without one the sound follows the angle on", ins2.length === 3 && ins2[1].url === "blob:m2" && near(ins2[1].start, 11) && near(ins2[1].sourceIn, 8.5), ins2.map((i) => [i.url, i.start, i.sourceIn]));
+  check("without one the sound follows the angle on, starting a little early for the crossfade", ins2.length === 3 && ins2[1].url === "blob:m2" && near(ins2[1].start, 11 - 0.06) && near(ins2[1].sourceIn, 8.5 - 0.06) && near(ins2[1].fades![0].to - ins2[1].fades![0].from, 0.12) && ins2[1].fades![0].dir === "in" && ins2[1].fades!.some((f) => f.dir === "out"), ins2.map((i) => [i.url, i.start, i.sourceIn, i.fades]));
+  const hardDoc = { ...noRec, timelines: noRec.timelines.map((t) => ({ ...t, clips: t.clips.map((c) => (c.id === made.clipId ? { ...c, multicam: { ...c.multicam!, audioMediaId: undefined, crossfade: 0 } } : c)) })) };
+  const ins3 = mixInputs(hardDoc, undefined, 60, (id) => `blob:${id}`);
+  check("a crossfade of 0 is a hard cut", ins3.length === 3 && near(ins3[1].start, 11) && !ins3[1].fades, ins3.map((i) => [i.start, i.fades]));
+  const a2 = activeTimeline(hardDoc).tracks.find((t) => t.kind === "audio");
+  check("the multicam sound goes through the first audio track unless one is chosen", !!a2 && ins3.every((i) => i.trackId === a2.id));
 
   const done = commitMulticam(noRec, made.clipId)!;
   const dtl = activeTimeline(done);
@@ -186,6 +191,18 @@ const putClips = (doc: ProjectDoc, clips: Clip[]): ProjectDoc => E.onActive(doc,
   check("sync moves the recorder and links the pair", near(ext.start, 13.25) && !!ext.linkId && ext.linkId === cam.linkId);
   check("a negative lag never goes before zero", applySync(activeTimeline(base), "cam", [{ clipId: "ext", lag: -50 }]).clips.find((c) => c.id === "ext")!.start === 0);
   check("angle offsets are the negated lags", offsetsFromLags([0, 3.25, -1]).join() === "0,-3.25,1");
+}
+
+/* ---------- drift correction ---------- */
+{
+  const { doc, v1, a1 } = setup();
+  const base = putClips(doc, [clip({ id: "cam", trackId: v1, mediaId: "m1", start: 10, duration: 100, sourceOut: 100 }), clip({ id: "ext", trackId: a1, mediaId: "m3", start: 10, duration: 100, sourceOut: 100 })]);
+  const synced = applySync(activeTimeline(base), "cam", [{ clipId: "ext", lag: 0 }]);
+  const fixed = applyDrift(synced, "ext", 1 / 1.001);
+  const ext = fixed.clips.find((c) => c.id === "ext")!;
+  check("drift correction slows the clip and lengthens it to match", near(ext.speed, 1 / 1.001, 1e-6) && near(ext.duration, 100.1, 1e-3) && ext.start === 10, [ext.speed, ext.duration]);
+  check("the anchor is left alone", fixed.clips.find((c) => c.id === "cam")!.speed === 1);
+  check("an absurd speed is refused", applyDrift(synced, "ext", 3) === synced);
 }
 
 /* ---------- nothing drawn needs a canvas to be planned ---------- */
