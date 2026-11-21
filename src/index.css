@@ -177,3 +177,31 @@ input[type="checkbox"] { accent-color: rgb(var(--accent)); }
   background-clip: text;
   color: transparent;
 }
+
+/* ---------- accessibility (phase 27) ---------- */
+/* high contrast: pure black and white surfaces, brighter greys and a bright accent; layered on either theme */
+:root.contrast-high {
+  --canvas: 0 0 0;
+  --bg: 0 0 0;
+  --panel: 0 0 0;
+  --raised: 28 28 28;
+  --edge: 160 160 160;
+  --hairline: 200 200 200;
+  --accent: 255 214 10;
+  --gray-300: 255 255 255;
+  --gray-400: 235 235 235;
+  --gray-500: 210 210 210;
+  --gray-600: 180 180 180;
+}
+:root.contrast-high *:focus-visible { outline: 3px solid rgb(255 214 10) !important; outline-offset: 2px; }
+:root.contrast-high .shadow-panel { box-shadow: none; border-color: rgb(200 200 200); }
+/* the app asks for reduced motion itself, on top of the system setting */
+:root.motion-reduce *, :root.motion-reduce *::before, :root.motion-reduce *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+@media (prefers-reduced-motion: reduce) { :root:not(.motion-full) *, :root:not(.motion-full) *::before, :root:not(.motion-full) *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; } }
+/* every control shows where the keyboard is, not only buttons and tabs */
+a:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible, [tabindex]:focus-visible { outline: 2px solid rgb(var(--accent) / 0.75); outline-offset: 2px; }
+/* pens and fingers: no accidental page scroll or zoom while dragging a panel edge or a clip */
+[role="separator"], [data-drag] { touch-action: none; }
+@media (pointer: coarse) { button, [role="tab"], [role="menuitem"] { min-height: 36px; } }
+.skip-link { position: absolute; left: -9999px; top: 0; z-index: 100; padding: 8px 12px; background: rgb(var(--accent)); color: #000; border-radius: 0 0 8px 0; }
+.skip-link:focus { left: 0; }

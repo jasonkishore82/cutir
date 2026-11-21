@@ -1,5 +1,5 @@
 import { Breadcrumb } from "./components/TimelinesCard";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import LeftPanel from "./components/LeftPanel";
 import Preview from "./components/Preview";
 import Timeline from "./components/Timeline";
@@ -9,6 +9,15 @@ import Home from "./components/Home";
 import MenuBar from "./components/MenuBar";
 import SettingsScreen from "./components/SettingsScreen";
 import SectionTabs, { type SectionId } from "./components/SectionTabs";
+import PageBar from "./components/PageBar";
+import QuickBar from "./components/QuickBar";
+import DeliverPage from "./components/DeliverPage";
+import CommandPalette from "./components/CommandPalette";
+import CheatSheet from "./components/CheatSheet";
+import { installKeymap } from "./lib/commands/dispatch";
+import { applyPrefs } from "./store/prefs";
+import { useWorkspace } from "./store/workspace";
+import { layoutFor, pageById } from "./lib/workspace/pages";
 import { Icon } from "./components/ui";
 import { MediaLibrary } from "./components/MediaPool";
 import { startAutosave, useProject } from "./store/project";
@@ -17,28 +26,12 @@ import { useMedia } from "./store/media";
 import { startMcpBridge } from "./lib/mcpBridge";
 import { ClaudeBadge } from "./components/ClaudeControlCard";
 
-const readW = (k: string, d: number) => {
-  try {
-    const n = Number(localStorage.getItem(k));
-    return n >= 150 ? n : d;
-  } catch {
-    return d;
-  }
-};
-
 /** Drag handle on a panel divider. `dir` = +1 when dragging right grows the panel, -1 when it shrinks it. */
-function ResizeHandle({ width, set, dir, min, max, reset, storeKey }: {
-  width: number; set: (w: number) => void; dir: 1 | -1; min: number; max: number; reset: number; storeKey: string;
+function ResizeHandle({ width, set, dir, min, max, reset }: {
+  width: number; set: (w: number) => void; dir: 1 | -1; min: number; max: number; reset: number;
 }) {
   const [active, setActive] = useState(false);
   const clampW = (w: number) => Math.min(max, Math.max(min, Math.round(w)));
-  const save = (w: number) => {
-    try {
-      localStorage.setItem(storeKey, String(w));
-    } catch {
-      /* storage unavailable */
-    }
-  };
 
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -46,13 +39,11 @@ function ResizeHandle({ width, set, dir, min, max, reset, storeKey }: {
     el.setPointerCapture(e.pointerId);
     const x0 = e.clientX;
     const w0 = width;
-    let last = w0;
     setActive(true);
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     const move = (ev: PointerEvent) => {
-      last = clampW(w0 + dir * (ev.clientX - x0));
-      set(last);
+      set(clampW(w0 + dir * (ev.clientX - x0)));
     };
     const up = () => {
       el.removeEventListener("pointermove", move);
@@ -61,23 +52,31 @@ function ResizeHandle({ width, set, dir, min, max, reset, storeKey }: {
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       setActive(false);
-      save(last);
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
   };
 
+  // the keyboard moves the divider too: arrows nudge it, Home resets it
+  const onKey = (e: React.KeyboardEvent) => {
+    const step = e.key === "ArrowLeft" ? -20 : e.key === "ArrowRight" ? 20 : 0;
+    if (step) (e.preventDefault(), set(clampW(width + dir * step)));
+    else if (e.key === "Home") (e.preventDefault(), set(reset));
+  };
+
   return (
     <div
       role="separator"
       aria-orientation="vertical"
-      title="Drag to resize, double-click to reset"
+      aria-valuenow={width}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      tabIndex={0}
+      title="Drag to resize, double-click to reset. With the keyboard: arrow keys, Home to reset"
       onPointerDown={onDown}
-      onDoubleClick={() => {
-        set(reset);
-        save(reset);
-      }}
+      onKeyDown={onKey}
+      onDoubleClick={() => set(reset)}
       className="group relative w-2 shrink-0 cursor-col-resize touch-none"
     >
       {/* the gutter between floating panels; a small pill appears on hover */}
@@ -87,9 +86,9 @@ function ResizeHandle({ width, set, dir, min, max, reset, storeKey }: {
 }
 
 /** Horizontal drag handle above the timeline: dragging up makes the timeline taller. */
-function TimelineResizeHandle({ height, set }: { height: number; set: (h: number) => void }) {
+function TimelineResizeHandle({ height, set, reset }: { height: number; set: (h: number) => void; reset: number }) {
   const [active, setActive] = useState(false);
-  const min = 170;
+  const min = 120;
   const max = Math.max(260, Math.round(window.innerHeight * 0.7));
   const clampH = (h: number) => Math.min(max, Math.max(min, Math.round(h)));
 
@@ -99,13 +98,11 @@ function TimelineResizeHandle({ height, set }: { height: number; set: (h: number
     el.setPointerCapture(e.pointerId);
     const y0 = e.clientY;
     const h0 = height;
-    let last = h0;
     setActive(true);
     document.body.style.cursor = "row-resize";
     document.body.style.userSelect = "none";
     const move = (ev: PointerEvent) => {
-      last = clampH(h0 - (ev.clientY - y0));
-      set(last);
+      set(clampH(h0 - (ev.clientY - y0)));
     };
     const up = () => {
       el.removeEventListener("pointermove", move);
@@ -114,11 +111,6 @@ function TimelineResizeHandle({ height, set }: { height: number; set: (h: number
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
       setActive(false);
-      try {
-        localStorage.setItem("cutir:tlH", String(last));
-      } catch {
-        /* storage unavailable */
-      }
     };
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerup", up);
@@ -131,14 +123,16 @@ function TimelineResizeHandle({ height, set }: { height: number; set: (h: number
       aria-orientation="horizontal"
       title="Drag to resize the timeline, double-click to reset"
       onPointerDown={onDown}
-      onDoubleClick={() => {
-        set(240);
-        try {
-          localStorage.setItem("cutir:tlH", "240");
-        } catch {
-          /* ignore */
-        }
+      onDoubleClick={() => set(reset)}
+      onKeyDown={(e) => {
+        const step = e.key === "ArrowUp" ? 20 : e.key === "ArrowDown" ? -20 : 0;
+        if (step) (e.preventDefault(), set(clampH(height + step)));
+        else if (e.key === "Home") (e.preventDefault(), set(reset));
       }}
+      aria-valuenow={height}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      tabIndex={0}
       className="group relative h-2 shrink-0 cursor-row-resize touch-none"
     >
       <span className={`absolute inset-x-[42%] top-1/2 h-[3px] -translate-y-1/2 rounded-full transition-colors ${active ? "bg-accent" : "bg-transparent group-hover:bg-white/30"}`} />
@@ -181,25 +175,24 @@ export default function App() {
   const canUndo = useProject((s) => s.past.length > 0);
   const canRedo = useProject((s) => s.future.length > 0);
   const [exporting, setExporting] = useState(false);
-  const [leftW, setLeftW] = useState(() => readW("cutir:leftW", 300));
-  const [chatW, setChatW] = useState(() => readW("cutir:chatW", 360));
-  const [tlH, setTlH] = useState(() => readW("cutir:tlH", 240));
-  const [section, setSectionState] = useState<SectionId>(() => {
-    try {
-      const v = localStorage.getItem("cutir:section");
-      return v === "media" || v === "lyrics" || v === "style" || v === "motion" || v === "effects" || v === "titles" || v === "audio" || v === "captions" ? v : "import";
-    } catch {
-      return "import";
-    }
-  });
-  const setSection = (s: SectionId) => {
-    setSectionState(s);
-    try {
-      localStorage.setItem("cutir:section", s);
-    } catch {
-      /* storage unavailable */
-    }
-  };
+  const page = useWorkspace((s) => s.page);
+  const layouts = useWorkspace((s) => s.layouts);
+  const section = useWorkspace((s) => s.sections[s.page] ?? pageById(s.page).section) as SectionId;
+  const layout = useMemo(() => layoutFor(page, layouts), [page, layouts]);
+  const pageDef = pageById(page);
+  const setLayout = useWorkspace.getState().setLayout;
+  const setSection = useWorkspace.getState().setSection;
+
+  useEffect(() => {
+    applyPrefs();
+    const off = installKeymap();
+    const open = () => setExporting(true);
+    window.addEventListener("cutir:open-export", open);
+    return () => {
+      off();
+      window.removeEventListener("cutir:open-export", open);
+    };
+  }, []);
 
   useEffect(() => {
     useLibrary.getState().init(); // loads the project list (and migrates the old single autosave)
@@ -224,25 +217,6 @@ export default function App() {
       u2();
     };
   }, []);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (useLibrary.getState().screen !== "editor") return;
-      const t = e.target as HTMLElement;
-      const typing = t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        if (typing) return; // let text fields use native undo
-        e.preventDefault();
-        e.shiftKey ? redo() : undo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
-        if (typing) return;
-        e.preventDefault();
-        redo();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo]);
 
   /* import from anywhere: paste files, or drop them on any part of the editor that does not take them itself */
   useEffect(() => {
@@ -274,39 +248,21 @@ export default function App() {
     };
   }, []);
 
-  const resetLayoutRef = useRef<() => void>(() => {});
   const iconBtn = "grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-white/[0.07] hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400";
   const panel = "overflow-hidden rounded-2xl border border-white/[0.07] bg-panel/80 shadow-panel backdrop-blur-xl";
-
-  useEffect(() => {
-    const on = () => resetLayoutRef.current();
-    window.addEventListener("cutir:reset-layout", on);
-    return () => window.removeEventListener("cutir:reset-layout", on);
-  }, []);
-
-  const resetLayout = () => {
-    setLeftW(300);
-    setChatW(360);
-    setTlH(240);
-    for (const k of ["cutir:leftW", "cutir:chatW", "cutir:tlH"]) {
-      try {
-        localStorage.removeItem(k);
-      } catch {
-        /* storage unavailable */
-      }
-    }
-  };
-  resetLayoutRef.current = resetLayout;
 
   if (screen === "home") return (
     <>
       <Home />
       <SettingsScreen />
+      <CommandPalette />
+      <CheatSheet />
     </>
   );
 
   return (
     <div className="flex h-full flex-col p-2">
+      <a href="#main-content" className="skip-link">Skip to the viewer</a>
       <header className="mb-2 grid h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-1">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -316,7 +272,7 @@ export default function App() {
           >
             <Icon name="back" className="h-4 w-4" /> <span className="hidden lg:inline">Projects</span>
           </button>
-          <MenuBar onExport={() => setExporting(true)} onResetLayout={resetLayout} />
+          <MenuBar onExport={() => setExporting(true)} onResetLayout={() => useWorkspace.getState().resetPage()} />
           <ProjectName />
           {saveFailed && <span className="shrink-0 text-[11px] text-red-400" title="Browser storage is full or blocked">Not saved</span>}
         </div>
@@ -346,17 +302,21 @@ export default function App() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <aside style={{ width: leftW }} className={`${panel} shrink-0 overflow-y-auto`}>
-          <LeftPanel tab={section} onGoto={setSection} />
-        </aside>
-        <ResizeHandle width={leftW} set={setLeftW} dir={1} min={240} max={480} reset={300} storeKey="cutir:leftW" />
-        <main className={`${panel} min-w-0 flex-1 bg-bg`}>
-          {section === "import" ? <MediaLibrary /> : <Preview />}
+        {layout.left && (
+          <>
+            <aside id="inspector" style={{ width: layout.leftW }} className={`${panel} shrink-0 overflow-y-auto`}>
+              <LeftPanel tab={section} onGoto={setSection} />
+            </aside>
+            <ResizeHandle width={layout.leftW} set={(w) => setLayout({ leftW: w })} dir={1} min={240} max={480} reset={pageDef.layout.leftW} />
+          </>
+        )}
+        <main id="main-content" tabIndex={-1} className={`${panel} min-w-0 flex-1 bg-bg outline-none`}>
+          {pageDef.main === "deliver" ? <DeliverPage /> : pageDef.main === "library" || section === "import" ? <MediaLibrary /> : <Preview />}
         </main>
         {chatOpen && (
           <>
-            <ResizeHandle width={chatW} set={setChatW} dir={-1} min={280} max={720} reset={360} storeKey="cutir:chatW" />
-            <aside style={{ width: chatW }} className={`${panel} min-w-0 shrink-0`}>
+            <ResizeHandle width={layout.chatW} set={(w) => setLayout({ chatW: w })} dir={-1} min={280} max={720} reset={pageDef.layout.chatW} />
+            <aside style={{ width: layout.chatW }} className={`${panel} min-w-0 shrink-0`}>
               <ChatPanel />
             </aside>
           </>
@@ -365,16 +325,24 @@ export default function App() {
 
       {exporting && <ExportDialog onClose={() => setExporting(false)} />}
       <SettingsScreen />
+      <CommandPalette />
+      <CheatSheet />
 
-      <TimelineResizeHandle height={tlH} set={setTlH} />
-      <footer style={{ height: tlH }} className={`${panel} shrink-0`}>
-        <div className="flex h-full flex-col">
-          <Breadcrumb />
-          <div className="min-h-0 flex-1 [&>*]:h-full">
-            <Timeline />
-          </div>
-        </div>
-      </footer>
+      {layout.timeline && (
+        <>
+          <TimelineResizeHandle height={layout.timelineH} set={(h) => setLayout({ timelineH: h })} reset={pageDef.layout.timelineH} />
+          {pageDef.quickBar && <QuickBar />}
+          <footer style={{ height: layout.timelineH }} className={`${panel} shrink-0`}>
+            <div className="flex h-full flex-col">
+              <Breadcrumb />
+              <div className="min-h-0 flex-1 [&>*]:h-full">
+                <Timeline />
+              </div>
+            </div>
+          </footer>
+        </>
+      )}
+      <PageBar />
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "../store/project";
 import { ensureFont } from "../lib/fonts";
 import { ASPECT_RATIO, type MediaSource } from "../lib/renderer";
-import { songElement, getTime, pause, seek, setFallbackDuration, setLoop, setSongMuted, setSource, shuttle, tick, toggle, usePlayback } from "../lib/transport";
+import { songElement, getTime, pause, seek, setFallbackDuration, setLoop, setSongMuted, setSource, tick, toggle, usePlayback } from "../lib/transport";
 import { activeVisuals, needsAt, renderFrame, visualMediaIds, type PreviewEffect } from "../render/compositor";
 import { defaultParams, getEffect } from "../lib/effects";
 import { useTimelineUi } from "../timeline/ui";
@@ -162,17 +162,10 @@ export default function Preview() {
       window.clearTimeout(idleTimer.current);
     };
   }, []);
-  /* F toggles full screen (not while typing) */
+  /* the "Toggle full screen" command (key F by default, see lib/commands/builtin.ts) */
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== "KeyF" || e.ctrlKey || e.metaKey || e.altKey || useProject.getState().syncMode) return;
-      const t = e.target as HTMLElement;
-      if (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.isContentEditable) return;
-      e.preventDefault();
-      toggleFull();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("cutir:toggle-fullscreen", toggleFull);
+    return () => window.removeEventListener("cutir:toggle-fullscreen", toggleFull);
   }, []);
   const [diag, setDiag] = useState({ fps: 0, dropped: 0, decoded: 0, cacheMB: 0, missing: 0 });
   const duration = usePlayback((s) => s.duration);
@@ -400,36 +393,6 @@ export default function Preview() {
     return () => cancelAnimationFrame(raf);
   }, [box.w, box.h, dpr]);
 
-  /* J K L shuttle (Shift: half speed). K with a lyric line selected adds a keyframe instead (handled first). */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || useProject.getState().syncMode) return;
-      const t = e.target as HTMLElement;
-      if (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.isContentEditable) return;
-      const key = e.code === "KeyJ" ? "J" : e.code === "KeyK" ? "K" : e.code === "KeyL" ? "L" : null;
-      if (!key) return;
-      e.preventDefault();
-      shuttle(key, e.shiftKey);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  /* Space = play/pause (not while typing) */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== "Space" || useProject.getState().syncMode) return; // sync mode uses Space to tap
-      const t = e.target as HTMLElement;
-      if (["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(t.tagName) || t.isContentEditable) {
-        if (t.tagName !== "BUTTON" && !(t.tagName === "INPUT" && (t as HTMLInputElement).type === "range")) return;
-        t.blur();
-      }
-      e.preventDefault();
-      toggle();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   useEffect(() => () => pause(), []);
 

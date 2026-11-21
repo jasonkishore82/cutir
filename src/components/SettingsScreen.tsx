@@ -9,6 +9,11 @@ import { useLibrary } from "../store/library";
 import { useChat } from "../store/chat";
 import { Card, Icon, Segmented, type IconName } from "./ui";
 import { setTheme, useTheme, type ThemeChoice } from "../lib/theme";
+import ShortcutsEditor from "./ShortcutsEditor";
+import { TEXT_SCALES, usePrefs, type Contrast, type Motion } from "../store/prefs";
+import { LAYOUT_PRESETS, PAGES } from "../lib/workspace/pages";
+import { useWorkspace } from "../store/workspace";
+import { downloadBlob } from "../lib/exporter";
 
 const TABS: { id: SettingsTab; label: string; icon: IconName }[] = [
   { id: "ai", label: "AI models", icon: "ai" },
@@ -207,8 +212,10 @@ function AiTab() {
 function EditorTab() {
   const showAiOnOpen = useSettings((s) => s.showAiOnOpen);
   const { setShowAiOnOpen } = useSettings.getState();
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState("");
   const theme = useTheme();
+  const prefs = usePrefs();
+  const lbtn = "rounded-lg border border-edge px-3 py-1.5 text-[13px] text-gray-300 hover:bg-raised hover:text-white";
   return (
     <div className="space-y-4">
       <Card title="Appearance" hint="System follows your computer's light or dark setting.">
@@ -229,18 +236,53 @@ function EditorTab() {
           Open the AI panel when a project opens
         </label>
       </Card>
-      <Card title="Layout">
-        <div className="flex items-center gap-3">
+      <Card title="Layout" hint="Each page (Media, Cut, Edit, Motion, Color, Audio, Lyrics, Deliver) keeps its own panel sizes. They are saved for you.">
+        <div className="flex flex-wrap items-center gap-2">
+          <button className={lbtn} onClick={() => { useWorkspace.getState().resetPage(); setDone("This page is back to its default layout."); }}>Reset this page</button>
+          <button className={lbtn} onClick={() => { useWorkspace.getState().resetAll(); setDone("Every page is back to its default layout."); }}>Reset all pages</button>
+          <label className="flex items-center gap-1 text-[13px] text-gray-300">
+            Apply to this page
+            <select className="field !w-auto" defaultValue="" aria-label="Layout preset" onChange={(e) => { if (e.target.value) { useWorkspace.getState().applyPreset(e.target.value); setDone(`Applied: ${LAYOUT_PRESETS.find((p) => p.id === e.target.value)?.name}.`); e.target.value = ""; } }}>
+              <option value="">Choose a layout...</option>
+              {LAYOUT_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <button className={lbtn} onClick={() => downloadBlob(new Blob([useWorkspace.getState().exportLayouts()], { type: "application/json" }), "cutir-layouts.json")}>Export layouts</button>
           <button
-            className="rounded-lg border border-edge px-3 py-1.5 text-[13px] text-gray-300 hover:bg-raised hover:text-white"
+            className={lbtn}
             onClick={() => {
-              window.dispatchEvent(new Event("cutir:reset-layout"));
-              setDone(true);
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = ".json,application/json";
+              input.onchange = async () => input.files?.[0] && setDone(useWorkspace.getState().importLayouts(await input.files[0].text()) ? "Layouts imported." : "That is not a layouts file.");
+              input.click();
             }}
           >
-            Reset panel sizes
+            Import layouts
           </button>
-          {done && <span className="text-xs text-green-400" role="status">Done</span>}
+        </div>
+        <p className="mt-2 text-xs text-gray-500">{PAGES.length} pages. Open the page you want to change, then use the menu or Ctrl+K.</p>
+        {done && <p className="mt-1 text-xs text-green-400" role="status">{done}</p>}
+      </Card>
+      <Card title="Accessibility" hint="Applies at once and is kept for you.">
+        <div className="space-y-3">
+          <Segmented<Motion>
+            label="Motion"
+            value={prefs.motion}
+            onChange={prefs.setMotion}
+            options={[{ value: "system", label: "System" }, { value: "reduce", label: "Reduce" }, { value: "full", label: "Full" }]}
+          />
+          <Segmented<Contrast>
+            label="Contrast"
+            value={prefs.contrast}
+            onChange={prefs.setContrast}
+            options={[{ value: "normal", label: "Normal" }, { value: "high", label: "High" }]}
+          />
+          <label className="flex items-center gap-3 text-[13px] text-gray-300">
+            Interface text size
+            <input type="range" min={0} max={TEXT_SCALES.length - 1} step={1} value={Math.max(0, TEXT_SCALES.findIndex((v) => v >= prefs.textScale))} onChange={(e) => prefs.setTextScale(TEXT_SCALES[Number(e.target.value)])} aria-valuetext={`${Math.round(prefs.textScale * 100)} percent`} />
+            <span className="text-xs text-gray-500">{Math.round(prefs.textScale * 100)}%</span>
+          </label>
         </div>
       </Card>
     </div>
@@ -314,53 +356,7 @@ function StorageTab() {
 
 /* ---------------- Shortcuts ---------------- */
 
-const SHORTCUTS: { group: string; items: [string[], string][] }[] = [
-  { group: "Playback", items: [[["Space"], "Play or pause"]] },
-  {
-    group: "Editing",
-    items: [
-      [["Ctrl", "Z"], "Undo"],
-      [["Ctrl", "Shift", "Z"], "Redo"],
-      [["Ctrl", "Y"], "Redo"],
-      [["Ctrl", "C"], "Copy the selected lyric block"],
-      [["Ctrl", "V"], "Paste at the playhead"],
-      [["Ctrl", "D"], "Duplicate the selected block"],
-      [["Delete"], "Delete the selected block (or its selected keyframe)"],
-      [["K"], "Add a keyframe to the selected line at the playhead"],
-    ],
-  },
-  {
-    group: "Tap sync",
-    items: [
-      [["Space"], "Set the start of the next line"],
-      [["Enter"], "Set the end of the current line"],
-      [["Esc"], "Leave sync mode"],
-    ],
-  },
-];
-
-function ShortcutsTab() {
-  return (
-    <div className="space-y-4">
-      {SHORTCUTS.map((g) => (
-        <Card key={g.group} title={g.group}>
-          <ul className="space-y-2">
-            {g.items.map(([keys, text], i) => (
-              <li key={i} className="flex items-center justify-between gap-3 text-[13px] text-gray-300">
-                <span>{text}</span>
-                <span className="flex shrink-0 gap-1">
-                  {keys.map((k) => (
-                    <kbd key={k} className="rounded-md border border-edge bg-black/30 px-1.5 py-0.5 text-[11px] text-gray-300">{k}</kbd>
-                  ))}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ))}
-    </div>
-  );
-}
+const ShortcutsTab = ShortcutsEditor;
 
 /* ---------------- screen ---------------- */
 

@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { ACCEPT, useMedia } from "../store/media";
+import { importMediaFiles, importProjectFile } from "../lib/fileActions";
 import { Icon } from "./ui";
 import { downloadProject, useProject } from "../store/project";
 import { useLibrary } from "../store/library";
 import { useChat } from "../store/chat";
+import { useWorkspace } from "../store/workspace";
+import { usePrefs } from "../store/prefs";
+import { PAGES } from "../lib/workspace/pages";
+import { formatCombo } from "../lib/commands/keymap";
+import { runCommand } from "../lib/commands/registry";
+import "../lib/commands/builtin";
 import { useActiveConfig, useSettings } from "../store/settings";
 
 type Item =
@@ -11,32 +17,6 @@ type Item =
   | { label: string; shortcut?: string; checked?: boolean; disabled?: boolean; info?: boolean; onSelect?: () => void };
 
 type Menu = { id: string; label: string; items: Item[] };
-
-/** Pick files for the media pool (any kind it accepts). */
-function importMediaFiles() {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.multiple = true;
-  input.accept = ACCEPT;
-  input.onchange = () => input.files?.length && void useMedia.getState().addFiles(Array.from(input.files));
-  input.click();
-}
-
-function importProjectFile() {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = ".json,application/json";
-  input.onchange = async () => {
-    const f = input.files?.[0];
-    if (!f) return;
-    try {
-      await useLibrary.getState().importProject(f.name.replace(/\.json$/i, ""), JSON.parse(await f.text()));
-    } catch {
-      window.alert("Could not read that project file.");
-    }
-  };
-  input.click();
-}
 
 /**
  * Menu bar for the editor: File, Edit, View, Settings.
@@ -51,6 +31,12 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
   const canUndo = useProject((s) => s.past.length > 0);
   const canRedo = useProject((s) => s.future.length > 0);
   const { provider, model } = useActiveConfig();
+  const page = useWorkspace((s) => s.page);
+  usePrefs((s) => s.keymap); // labels follow rebinding
+  const keyOf = (id: string) => {
+    const k = usePrefs.getState().bindings()[id]?.[0];
+    return k ? formatCombo(k) : undefined;
+  };
 
   const menus: Menu[] = [
     {
@@ -69,8 +55,8 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
       id: "edit",
       label: "Edit",
       items: [
-        { label: "Undo", shortcut: "Ctrl+Z", disabled: !canUndo, onSelect: () => useProject.getState().undo() },
-        { label: "Redo", shortcut: "Ctrl+Shift+Z", disabled: !canRedo, onSelect: () => useProject.getState().redo() },
+        { label: "Undo", shortcut: keyOf("edit.undo"), disabled: !canUndo, onSelect: () => useProject.getState().undo() },
+        { label: "Redo", shortcut: keyOf("edit.redo"), disabled: !canRedo, onSelect: () => useProject.getState().redo() },
         "sep",
         { label: "New AI chat", onSelect: () => { useProject.setState({ chatOpen: true }); useChat.getState().newChat(); } },
       ],
@@ -79,8 +65,15 @@ export default function MenuBar({ onExport, onResetLayout }: { onExport: () => v
       id: "view",
       label: "View",
       items: [
+        { label: "Command palette", shortcut: keyOf("view.palette"), onSelect: () => void runCommand("view.palette") },
+        { label: "Keyboard shortcuts", shortcut: keyOf("view.cheat"), onSelect: () => void runCommand("view.cheat") },
+        "sep",
+        ...PAGES.map((p) => ({ label: `${p.label} page`, shortcut: keyOf(`page.${p.id}`), checked: page === p.id, onSelect: () => useWorkspace.getState().setPage(p.id) })),
+        "sep",
         { label: "AI panel", checked: chatOpen, onSelect: () => useProject.getState().toggleChat() },
-        { label: "Reset panel sizes", onSelect: onResetLayout },
+        { label: "Show or hide the inspector", shortcut: keyOf("view.inspector"), onSelect: () => void runCommand("view.inspector") },
+        { label: "Show or hide the timeline", shortcut: keyOf("view.timeline"), onSelect: () => void runCommand("view.timeline") },
+        { label: "Reset this page's layout", onSelect: onResetLayout },
       ],
     },
     {

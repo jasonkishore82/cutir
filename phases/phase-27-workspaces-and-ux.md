@@ -26,3 +26,9 @@ Reference: Resolve's page bar switches the whole workspace while the project sta
 - Switching pages keeps the playhead, selection and undo history
 - Every action is reachable from the command palette
 - The app is fully operable with the keyboard
+
+## Status
+
+Built: eight pages (Media, Cut, Edit, Motion, Color, Audio, Lyrics, Deliver) on a page bar under the timeline, each with its own saved panel layout (inspector, timeline, AI panel width; show, hide, resize by mouse or keyboard), layout presets, reset, import and export; the Cut page's quick action bar; the Deliver page. One command registry (`src/lib/commands/`) feeds the Ctrl+K palette (commands, pages, settings, one AI action per tool, recent projects), the menus, the cheat sheet (Ctrl+/ or F1) and Settings, Keyboard shortcuts, where keys can be added, removed, reset, filled from a Resolve-like or Premiere-like profile, imported and exported. Defaults: V select, B blade, S snapping, I and O marks, JKL shuttle, Alt+1 to 8 for pages. Accessibility: reduced motion, high contrast, interface text size, visible focus, skip link, keyboard-resizable dividers. Tests in `tests/workspace.test.ts` (including that switching pages leaves the document, undo history and selection untouched).
+
+Not done: free docking, tabbing and floating of panels (panels resize and hide only); the Cut page's two-row timeline and source viewer (it uses the normal timeline at a short height); keys that depend on selection (Delete, nudge, lyric copy and paste, keyframe K) are fixed, not rebindable; most menu items are still declared in the menu bar rather than generated from the registry; touch and pen support is limited to pointer events and larger targets. Not yet checked in a real browser (the browser tool was not connected): type-check, build and unit tests pass.

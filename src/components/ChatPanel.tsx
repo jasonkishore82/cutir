@@ -6,6 +6,7 @@ import { Icon } from "./ui";
 import Thinking from "./Thinking";
 import SyncProgress from "./SyncProgress";
 import Composer from "./Composer";
+import { useOverlay } from "../store/overlay";
 
 const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
@@ -267,6 +268,13 @@ export default function ChatPanel() {
   const { provider, baseUrl, apiKey } = useActiveConfig();
   const noProvider = provider.id === "none";
   const [draft, setDraft] = useState("");
+  // a request started from the command palette arrives as text in the box, ready to finish
+  const handed = useOverlay((o) => o.chatDraft);
+  useEffect(() => {
+    if (!handed) return;
+    setDraft(handed);
+    useOverlay.getState().setChatDraft("");
+  }, [handed]);
   const [atts, setAtts] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
