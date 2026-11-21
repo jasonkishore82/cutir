@@ -8,6 +8,7 @@ import {
   Mp4OutputFormat,
   Output,
   QUALITY_HIGH,
+  TextSubtitleSource,
   canEncodeAudio,
   canEncodeVideo,
 } from "mediabunny";
@@ -20,6 +21,7 @@ import { needsAt, renderFrame } from "../render/compositor";
 import { exactFrames } from "../render/sources";
 import { mixInputs, mixPlan, mixdown } from "../render/audio";
 import { useMedia } from "../store/media";
+import { iso3 } from "./captions/cues";
 
 /**
  * MP4 export. Every frame is drawn with the SAME renderFrame() the preview uses (lyric background, timeline video and
@@ -35,12 +37,22 @@ import { useMedia } from "../store/media";
 export type ExportProgress = { stage: string; fraction: number; engine?: "gpu" | "cpu" };
 /** Output size as a multiple of the 1080p-based canvas: 1 = 1080p, 2 = 4K (3840x2160). */
 export type ExportScale = 1 | 2;
-type Opts = { duration: number; onProgress: (p: ExportProgress) => void; signal: AbortSignal; scale?: ExportScale };
+/** A subtitle track stored in the MP4 as WebVTT, which players let the viewer switch on and off (phase 25). */
+export type SoftTrack = { name: string; lang: string; vtt: string };
+type Opts = {
+  duration: number;
+  onProgress: (p: ExportProgress) => void;
+  signal: AbortSignal;
+  scale?: ExportScale;
+  softSubtitles?: SoftTrack[];
+  /** Set to whether the soft tracks made it into the file (the compatibility encoder cannot write them). */
+  softResult?: { written: boolean };
+};
 
-const abortError = () => new DOMException("Export cancelled", "AbortError");
-const nextTask = () => new Promise<void>((r) => setTimeout(r, 0)); // let the UI repaint the progress bar
+export const abortError = () => new DOMException("Export cancelled", "AbortError");
+export const nextTask = () => new Promise<void>((r) => setTimeout(r, 0)); // let the UI repaint the progress bar
 
-class Unsupported extends Error {}
+export class Unsupported extends Error {}
 
 /* ---------- shared setup ---------- */
 
@@ -79,7 +91,8 @@ async function seekVideo(v: HTMLVideoElement, t: number) {
 }
 
 /** The document behind a lyric view: the live one when exporting the open project. */
-function docFor(project: Project): ProjectDoc {
+function docFor(project: Project, given?: ProjectDoc): ProjectDoc {
+  if (given) return given;
   const st = useProject.getState();
   return project === st.project ? st.doc : viewToDoc(project);
 }
@@ -90,13 +103,13 @@ const urlOfMedia = (doc: ProjectDoc) => (mediaId: string) => {
 };
 
 /** The exported sound: the song and every audible timeline audio clip, mixed to one stereo track. */
-async function exportAudio(project: Project, duration: number, signal: AbortSignal): Promise<AudioBuffer | null> {
-  const doc = docFor(project);
+export async function exportAudio(project: Project, duration: number, signal: AbortSignal, given?: ProjectDoc): Promise<AudioBuffer | null> {
+  const doc = docFor(project, given);
   return mixdown(mixInputs(doc, project.audio?.url, duration, urlOfMedia(doc)), duration, 48000, signal, mixPlan(doc, duration));
 }
 
 /** 16-bit PCM WAV of a buffer, for the ffmpeg paths. */
-function wavOf(buf: AudioBuffer): Blob {
+export function wavOf(buf: AudioBuffer): Blob {
   const ch = buf.numberOfChannels;
   const n = buf.length;
   const data = new DataView(new ArrayBuffer(44 + n * ch * 2));
@@ -120,12 +133,16 @@ function wavOf(buf: AudioBuffer): Blob {
   return new Blob([data.buffer], { type: "audio/wav" });
 }
 
-async function setup(project: Project, duration: number, scale: ExportScale = 1) {
+/** What a delivery job changes about a render: another timeline's document, its own size and rate, a start offset, the sources. */
+export type SetupExtra = { doc?: ProjectDoc; size?: { w: number; h: number }; fps?: number; start?: number; source?: "original" | "proxy" };
+
+export async function setup(project: Project, duration: number, scale: ExportScale = 1, extra: SetupExtra = {}) {
   if (!(duration > 0)) throw new Error("Nothing to export yet. Add audio or lyrics first.");
   const base = ASPECT_SIZES[project.aspect];
-  const w = base.w * scale;
-  const h = base.h * scale;
-  const fps = project.fps;
+  const w = extra.size?.w ?? base.w * scale;
+  const h = extra.size?.h ?? base.h * scale;
+  const fps = extra.fps ?? project.fps;
+  const start = extra.start ?? 0;
   const total = Math.max(1, Math.ceil(duration * fps));
 
   const canvas = document.createElement("canvas");
@@ -149,23 +166,24 @@ async function setup(project: Project, duration: number, scale: ExportScale = 1)
     else bg = await loadImage(asset.url);
   }
 
-  const doc = docFor(project);
-  const frames = exactFrames();
+  const doc = docFor(project, extra.doc);
+  const frames = exactFrames(extra.source === "proxy" ? "playback" : "export");
 
   /** Draw frame `i` onto the canvas: wait for the exact pictures of every clip at t, then composite. */
   const render = async (i: number) => {
-    const t = i / fps;
+    const t = start + i / fps;
     if (bgVideo) await seekVideo(bgVideo, t);
     await frames.prepare(needsAt(doc, t));
     renderFrame(ctx, doc, project, t, w, h, { bg }, frames);
   };
 
-  return { w, h, fps, total, canvas, render };
+  return { w, h, fps, total, canvas, render, doc };
 }
 
 /* ---------- fast path: WebCodecs + Mediabunny ---------- */
 
-async function exportViaWebCodecs(project: Project, { duration, onProgress, signal, scale }: Opts): Promise<Blob> {
+async function exportViaWebCodecs(project: Project, opts0: Opts): Promise<Blob> {
+  const { duration, onProgress, signal, scale } = opts0;
   if (typeof VideoEncoder === "undefined" || typeof VideoFrame === "undefined") throw new Unsupported("WebCodecs is not available");
 
   const { w, h, fps, total, canvas, render } = await setup(project, duration, scale);
@@ -199,8 +217,19 @@ async function exportViaWebCodecs(project: Project, { duration, onProgress, sign
     }
   }
 
+  const soft = (opts0.softSubtitles ?? []).filter((s) => s.vtt.trim()).map((s) => {
+    const source = new TextSubtitleSource("webvtt");
+    output.addSubtitleTrack(source, { languageCode: iso3(s.lang), name: s.name });
+    return { source, vtt: s.vtt };
+  });
+
   try {
     await output.start();
+    for (const s of soft) {
+      await s.source.add(s.vtt);
+      s.source.close();
+    }
+    if (opts0.softResult && soft.length) opts0.softResult.written = true;
 
     // Audio and video are added concurrently: the muxer holds back whichever track runs ahead.
     const audioDone = audio && audioBuffer ? audio.add(audioBuffer).then(() => audio!.close()) : Promise.resolve();

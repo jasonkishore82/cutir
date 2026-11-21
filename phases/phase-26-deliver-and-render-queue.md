@@ -28,3 +28,9 @@ Reference: Resolve's Deliver page uses presets and a render queue. Cutir exports
 - Three presets render as a queue in the background
 - A failed job can be retried without losing the others
 - Output files play correctly in common players and upload sites
+
+## Status
+
+Built: presets (11 built in, save, import, export, filename tokens), capability check with plain messages, H.264/HEVC/VP9/AV1 in MP4 or WebM, AAC/Opus/WAV/FLAC (FLAC needs an encoder the browser may lack), constant quality or target bitrate, keyframe interval, audio only, GIF (ffmpeg) and PNG sequence (zip), range (whole, in and out, selected clips), several timelines, original or proxy media, a queue with reorder, hold, cancel, retry, finished list with save and re-render, notifications, and a post-render check (duration, frame count, audio sync, first and last frame decode). Code in `src/lib/deliver/`, `src/store/deliver.ts`, `src/components/DeliverPanel.tsx`; tests in `tests/deliver.test.ts`.
+
+Not done: jobs run on the main thread, not a worker (rendering needs the canvas and decoders); two-pass encoding (WebCodecs has none); audio stems per track, individual clip export, burn-in of a watermark and upload metadata; "reveal in folder" (browsers cannot). A reload marks a running job interrupted and drops finished files from memory. The render and verification path has been type-checked and unit-tested for its pure parts, but not yet run end to end in a browser.
