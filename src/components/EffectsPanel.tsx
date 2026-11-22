@@ -19,6 +19,7 @@ import SpeedCard from "./SpeedCard";
 import TimelinesCard from "./TimelinesCard";
 import MulticamCard from "./MulticamCard";
 import { packLut, parseCube } from "../lib/grade/math";
+import { useWorkspace } from "../store/workspace";
 
 export const EFFECT_MIME = "application/x-cutir-effect";
 export const TRANSITION_MIME = "application/x-cutir-transition";
@@ -49,6 +50,8 @@ export default function EffectsPanel() {
   const tl = activeTimeline(doc);
   const targets = FX.effectTargets(tl, doc, selected);
   const clip = targets.length === 1 ? tl.clips.find((c) => c.id === targets[0]) : undefined;
+  // on a page with the colour dock open, scopes and stills live in the dock instead
+  const docked = useWorkspace((s) => s.layout().dock);
   const transition = selTr ? tl.cutTransitions?.find((x) => x.id === selTr) : undefined;
 
   // stop previewing when the panel goes away
@@ -57,8 +60,8 @@ export default function EffectsPanel() {
   return (
     <>
       <Browser targets={targets} />
-      <ScopesCard />
-      <StillsCard />
+      {!docked && <ScopesCard />}
+      {!docked && <StillsCard />}
       <TrackingCard />
       <SpeedCard />
       <TimelinesCard />
@@ -219,7 +222,7 @@ function StackEditor({ clipId, stack, start }: { clipId: string; stack: ClipEffe
   );
 }
 
-function EffectCard({ clipId, fx, first, last, clipStart }: { clipId: string; fx: ClipEffect; first: boolean; last: boolean; clipStart: number }) {
+export function EffectCard({ clipId, fx, first, last, clipStart }: { clipId: string; fx: ClipEffect; first: boolean; last: boolean; clipStart: number }) {
   const def = getEffect(fx.type);
   const [open, setOpen] = useState(true);
   const small = "rounded px-1 text-[11px] text-gray-500 hover:bg-white/10 hover:text-gray-200 disabled:opacity-30";

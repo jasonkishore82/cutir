@@ -40,11 +40,18 @@ export type EffectEnv = {
 
 export type EffectCategory = "Transform" | "Blur and sharpen" | "Colour" | "Stylize" | "Keying" | "Distort" | "Animation";
 
+export type GpuTable = { key: string; w: number; h: number; build: () => Float32Array };
+
 export type GpuPass = {
   /** GLSL ES 3.00 fragment body: reads `uTex` at `vUv`, writes `outColor`. Uniforms are declared by the runner. */
   fragment: string;
   /** Uniform values from the params: numbers, [r,g,b] / [x,y] arrays. */
-  uniforms: (p: Params, env: EffectEnv) => Record<string, number | number[]>;
+  uniforms: (p: Params, env: EffectEnv) => Record<string, number | number[]> | null;
+  /**
+   * Look-up tables as float textures (RGBA32F), read with texelFetch as uTbl_<name>. The key says when a table changed,
+   * so it is built and uploaded only then. build returns w * h * 4 floats, row by row.
+   */
+  tables?: (p: Params, env: EffectEnv) => Record<string, GpuTable>;
 };
 
 export type EffectDef = {

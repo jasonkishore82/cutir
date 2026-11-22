@@ -14,6 +14,9 @@ export type Layout = {
   chatW: number;
   timeline: boolean;
   timelineH: number;
+  /** The colour dock (scopes, grade controls and stills) to the right of the viewer (phase 20). */
+  dock: boolean;
+  dockW: number;
 };
 
 export type Page = {
@@ -29,16 +32,16 @@ export type Page = {
   layout: Layout;
 };
 
-export const LIMITS = { leftW: [240, 480], chatW: [280, 720], timelineH: [120, 700] } as const;
+export const LIMITS = { leftW: [240, 480], chatW: [280, 720], timelineH: [120, 700], dockW: [260, 560] } as const;
 
-const L = (p: Partial<Layout> = {}): Layout => ({ left: true, leftW: 300, chatW: 360, timeline: true, timelineH: 240, ...p });
+const L = (p: Partial<Layout> = {}): Layout => ({ left: true, leftW: 300, chatW: 360, timeline: true, timelineH: 240, dock: false, dockW: 340, ...p });
 
 export const PAGES: Page[] = [
   { id: "media", label: "Media", title: "Media: import, organise and preview", section: "import", main: "library", layout: L({ timeline: false }) },
   { id: "cut", label: "Cut", title: "Cut: fast assembly with a source viewer and a short timeline", section: "media", main: "viewer", quickBar: true, layout: L({ left: false, timelineH: 190 }) },
   { id: "edit", label: "Edit", title: "Edit: the full timeline", section: "media", main: "viewer", layout: L({ timelineH: 300 }) },
   { id: "motion", label: "Motion", title: "Motion: titles, animation and keyframes", section: "motion", main: "viewer", layout: L({ leftW: 340 }) },
-  { id: "color", label: "Color", title: "Color: grade, scopes and effects", section: "effects", main: "viewer", layout: L({ leftW: 380, timelineH: 170 }) },
+  { id: "color", label: "Color", title: "Color: grade, scopes and effects", section: "effects", main: "viewer", layout: L({ leftW: 300, timelineH: 170, dock: true, dockW: 380 }) },
   { id: "audio", label: "Audio", title: "Audio: mixer, loudness and voice-over", section: "audio", main: "viewer", layout: L({ leftW: 360 }) },
   { id: "lyrics", label: "Lyrics", title: "Lyrics: write, sync and style", section: "lyrics", main: "viewer", layout: L() },
   { id: "deliver", label: "Deliver", title: "Deliver: presets and the render queue", section: "media", main: "deliver", layout: L({ left: false, timeline: false }) },
@@ -61,6 +64,8 @@ export function sanitizeLayout(raw: unknown, base: Layout): Layout {
     chatW: clamp(num(r.chatW, base.chatW), LIMITS.chatW),
     timeline: bool(r.timeline, base.timeline),
     timelineH: clamp(num(r.timelineH, base.timelineH), LIMITS.timelineH),
+    dock: bool(r.dock, base.dock),
+    dockW: clamp(num(r.dockW, base.dockW), LIMITS.dockW),
   };
 }
 
@@ -74,8 +79,9 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
   { id: "default", name: "Page default", apply: (b) => b },
   { id: "wide-timeline", name: "Wide timeline", apply: (b) => ({ ...b, timeline: true, timelineH: 420 }) },
   { id: "focus-viewer", name: "Focus on the viewer", apply: (b) => ({ ...b, left: false, timeline: true, timelineH: 160 }) },
+  { id: "colour-dock", name: "Colour dock on", apply: (b) => ({ ...b, dock: true }) },
   { id: "inspector", name: "Large inspector", apply: (b) => ({ ...b, left: true, leftW: 480 }) },
-  { id: "minimal", name: "Viewer only", apply: (b) => ({ ...b, left: false, timeline: false }) },
+  { id: "minimal", name: "Viewer only", apply: (b) => ({ ...b, left: false, timeline: false, dock: false }) },
 ];
 
 /** Where each page's layout is kept, and what a fresh start is. */

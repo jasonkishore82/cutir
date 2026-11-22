@@ -6,6 +6,7 @@ import type { ProjectDoc, Timeline, TitleSpec } from "../../model/types";
 import * as E from "../../timeline/engine";
 import { TITLE_TEMPLATES, addGeneratorClips, buildTemplate, updateGenerator } from "../titleTemplates";
 import { ANIMATOR_PRESETS, titleOf } from "../titles";
+import { LYRIC_PACKS, lyricsToTitles, packById } from "../lyricPack";
 
 /** Title tools (phase 19): add titles and template titles, and edit the text and look of a title clip. */
 
@@ -121,4 +122,26 @@ export const updateTitle = defineTool({
   },
 });
 
-export const titleTools = [addTitle, addTitleTemplate, updateTitle];
+export const lyricsToTitlesTool = defineTool({
+  name: "lyrics_to_titles",
+  group: "timeline",
+  description: `Show the lyrics (the lines of a subtitle track) as animated titles using a lyric pack (${LYRIC_PACKS.map((p) => p.id).join(", ")}). The subtitle lines stay as the timing source. Run it again after retiming to refresh the titles.`,
+  hint: "pack; track = subtitle track name or id (default: the first subtitle track with lines)",
+  params: z.object({ pack: z.string().min(1), track: z.string().optional() }),
+  applyDoc: (doc, a) => {
+    const pack = packById(a.pack.toLowerCase().replace(/\s+/g, "-"));
+    if (!pack) throw new Error(`no lyric pack "${a.pack}". Packs: ${LYRIC_PACKS.map((p) => p.id).join(", ")}`);
+    let created = 0;
+    const next = on(doc, (tl) => {
+      const subs = tl.tracks.filter((t) => t.kind === "subtitle");
+      const src = a.track ? subs.find((t) => t.id === a.track || t.name.toLowerCase() === a.track!.toLowerCase()) : subs.find((t) => tl.clips.some((c) => c.trackId === t.id && c.text?.text?.trim()));
+      if (!src) throw new Error(a.track ? `no subtitle track "${a.track}"` : "there is no subtitle track with lyrics");
+      const r = lyricsToTitles(tl, src.id, pack);
+      created = r.created;
+      return r.tl;
+    });
+    return { doc: next, summary: `${created} lyric lines shown with the ${pack.name} pack` };
+  },
+});
+
+export const titleTools = [addTitle, addTitleTemplate, updateTitle, lyricsToTitlesTool];

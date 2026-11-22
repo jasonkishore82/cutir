@@ -2,6 +2,7 @@ import type { EffectDef, Layer, ParamSpec } from "../types";
 import { FLAT_CURVE, LINEAR_CURVE, curvePixels, gradePixels, lutPixels, readCurves, spacePixels, unpackLut } from "../../grade/pixels";
 import { SPACES, type SpaceId } from "../../grade/math";
 import { num, str } from "../util";
+import { colourSpaceGpu, curvesGpu, gradeGpu, lutGpu } from "../../grade/gpu";
 
 /** Run a pixel function over a layer: read the frame, change its bytes, write it to the destination. */
 function viaPixels(src: Layer, dst: Layer, fn: (data: Uint8ClampedArray) => void) {
@@ -46,6 +47,7 @@ export const grade: EffectDef = {
     slider("qBlur", "Matte blur", 0, 0, 100),
   ],
   render: (src, dst, p) => viaPixels(src, dst, (d) => gradePixels(d, p, src.w)),
+  gpu: gradeGpu,
 };
 
 export const curves: EffectDef = {
@@ -66,6 +68,7 @@ export const curves: EffectDef = {
     slider("mix", "Amount", 100, 0, 100),
   ],
   render: (src, dst, p) => viaPixels(src, dst, (d) => curvePixels(d, readCurves(p), num(p, "mix", 100))),
+  gpu: curvesGpu,
 };
 
 const lutCache = new WeakMap<object, ReturnType<typeof unpackLut>>();
@@ -76,6 +79,7 @@ export const lut: EffectDef = {
   category: "Colour",
   description: "A .cube look-up table with an intensity",
   params: [{ key: "lut", label: "LUT file (.cube)", type: "lut", default: null }, slider("intensity", "Intensity", 100, 0, 100)],
+  gpu: lutGpu,
   render(src, dst, p) {
     const v = p.lut as object | null;
     let table = v ? lutCache.get(v) : undefined;
@@ -95,4 +99,5 @@ export const colourSpace: EffectDef = {
     { key: "to", label: "Convert to", type: "choice", options: SPACES.map((s) => ({ value: s.id, label: s.name })), default: "rec709" },
   ],
   render: (src, dst, p) => viaPixels(src, dst, (d) => spacePixels(d, str(p, "from", "slog3") as SpaceId, str(p, "to", "rec709") as SpaceId)),
+  gpu: colourSpaceGpu,
 };

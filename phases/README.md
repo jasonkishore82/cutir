@@ -23,8 +23,8 @@ Phases 1 to 5 built the lyric video editor. Phases 6 to 10 add movable text, ove
 | 16.5 | [Kinetic Foundations (Words, Beats, Emphasis and Energy)](phase-16.5-kinetic-foundations.md) | ✅ |
 | 17 | [Effects, Transitions and Plugin Interface](phase-17-effects-and-transitions.md) | ✅ |
 | 18 | [Keyframe Engine and Curve Editor](phase-18-keyframes-and-curve-editor.md) | ✅ |
-| 19 | [Titles, Text and Shapes](phase-19-titles-and-text-engine.md) | 🟡 |
-| 20 | [Colour Correction and Grading](phase-20-colour-correction.md) | 🟡 |
+| 19 | [Titles, Text and Shapes](phase-19-titles-and-text-engine.md) | ✅ |
+| 20 | [Colour Correction and Grading](phase-20-colour-correction.md) | ✅ |
 | 21 | [Audio Editing and Mixing](phase-21-audio-mixing.md) | 🟡 |
 | 22 | [Compositing, Masks and Node Graph](phase-22-compositing-and-masks.md) | 🟡 |
 | 23 | [Speed, Retiming, Freeze Frames and Nested Timelines](phase-23-speed-and-nested-clips.md) | 🟡 |

@@ -9,6 +9,8 @@ import { ensureFont } from "../lib/fonts";
 import { GENERATOR_KINDS, SHAPE_KINDS, newGenerator, shapeOf } from "../lib/generators";
 import { TITLE_TEMPLATES, addGeneratorClips, buildTemplate, updateGenerator, type TitleTemplate } from "../lib/titleTemplates";
 import { ANIMATOR_PRESETS, DEFAULT_FROM, titleOf } from "../lib/titles";
+import { LYRIC_PACKS, lyricClips, lyricsToTitles, removeLyricTitles } from "../lib/lyricPack";
+import { buildUserTemplate, captureTemplate, deleteTemplate, loadTemplates, saveTemplate, templateFields, type UserTemplate } from "../lib/userTemplates";
 import { deletePreset, loadPresets, savePreset, titleFromPreset, type TitlePreset } from "../lib/titlePresets";
 
 const btn = "rounded-lg border border-edge bg-black/20 px-2.5 py-1.5 text-[12px] text-gray-300 hover:bg-raised hover:text-white";
@@ -33,6 +35,8 @@ export default function TitlesPanel() {
   return (
     <>
       <Templates onAdd={add} />
+      <MyTemplates onAdd={add} />
+      <LyricPackCard />
       <Presets onAdd={add} current={clip?.generator?.type === "title" ? clip.generator.title : undefined} />
       <Card title="Generators and shapes" hint="Added at the playhead on a free video track. Move, fade, key and add effects to them like any clip.">
         <div className="flex flex-wrap gap-1.5">
@@ -88,6 +92,107 @@ function Templates({ onAdd }: { onAdd: (plans: Parameters<typeof addGeneratorCli
       <button className="w-full rounded-lg bg-accent/90 px-3 py-2 text-[13px] font-medium text-black hover:bg-accent" onClick={() => onAdd(buildTemplate(id, Object.fromEntries(t.fields.map((f) => [f.key, val(f.key, f.default)]))))}>
         Add {t.name.toLowerCase()} at the playhead
       </button>
+    </Card>
+  );
+}
+
+/* ---------- saved multi-clip templates ---------- */
+
+function MyTemplates({ onAdd }: { onAdd: (plans: Parameters<typeof addGeneratorClips>[1]) => void }) {
+  const doc = useProject((s) => s.doc);
+  const selected = useTimelineUi((s) => s.selected);
+  const tl = activeTimeline(doc);
+  const gens = tl.clips.filter((c) => selected.includes(c.id) && c.generator).length;
+  const [list, setList] = useState<UserTemplate[]>(() => loadTemplates());
+  const [name, setName] = useState("");
+  const [open, setOpen] = useState<string>("");
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [error, setError] = useState("");
+  const save = () => {
+    try {
+      setList(saveTemplate(captureTemplate(tl, selected, name)));
+      setName("");
+      setError("");
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const t = list.find((x) => x.id === open);
+  return (
+    <Card title="My templates" hint="Select several titles or shapes on the timeline (a bar and its text), save them as one template, and add the whole group again with new words.">
+      <div className="flex gap-1.5">
+        <input className="field" placeholder="Template name" value={name} onChange={(e) => setName(e.target.value)} />
+        <button className={btn} disabled={!gens || !name.trim()} onClick={save} title={gens ? `Save ${gens} selected clip${gens === 1 ? "" : "s"}` : "Select titles or shapes first"}>Save {gens > 1 ? `${gens} clips` : ""}</button>
+      </div>
+      {error && <p className="text-[11px] text-red-400">{error}</p>}
+      {list.map((x) => (
+        <div key={x.id} className="space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <button className={`${btn} flex-1 text-left`} onClick={() => (setOpen(open === x.id ? "" : x.id), setVals({}))}>{x.name} <span className="text-gray-500">({x.clips.length} clip{x.clips.length === 1 ? "" : "s"})</span></button>
+            <button className="text-[11px] text-gray-500 hover:text-red-400" onClick={() => setList(deleteTemplate(x.id))} aria-label={`Delete template ${x.name}`}>delete</button>
+          </div>
+          {t && t.id === x.id && (
+            <div className="space-y-1.5 pl-2">
+              {templateFields(t).map((f) => (
+                <label key={f.key} className="block"><span className="label">{f.label}</span><textarea className="field" rows={2} value={vals[f.key] ?? f.default} onChange={(e) => setVals({ ...vals, [f.key]: e.target.value })} /></label>
+              ))}
+              <button className="w-full rounded-lg bg-accent/90 px-3 py-2 text-[13px] font-medium text-black hover:bg-accent" onClick={() => onAdd(buildUserTemplate(t, vals))}>Add at the playhead</button>
+            </div>
+          )}
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+/* ---------- lyric pack ---------- */
+
+function LyricPackCard() {
+  const doc = useProject((s) => s.doc);
+  const tl = activeTimeline(doc);
+  const subs = tl.tracks.filter((t) => t.kind === "subtitle" && lyricClips(tl, t.id).length);
+  const [pack, setPack] = useState(LYRIC_PACKS[0].id);
+  const [track, setTrack] = useState("");
+  const [msg, setMsg] = useState("");
+  const src = subs.find((t) => t.id === track) ?? subs[0];
+  const bound = src ? tl.tracks.some((t) => t.lyricsOf === src.id) : false;
+  const p = LYRIC_PACKS.find((x) => x.id === pack)!;
+  const apply = () => {
+    if (!src) return;
+    try {
+      let n = 0;
+      editTimeline((t) => {
+        const r = lyricsToTitles(t, src.id, p);
+        n = r.created;
+        return r.tl;
+      });
+      setMsg(`${n} lines shown with ${p.name}.`);
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+  };
+  return (
+    <Card title="Lyric pack" hint="Show the lines of a subtitle track (synced lyrics, LRC or SRT) as animated titles. The subtitle lines stay as the timing: run it again after retiming.">
+      {!src ? (
+        <p className="text-[12px] text-gray-500">No subtitle track with lines yet. Sync or import lyrics first.</p>
+      ) : (
+        <>
+          {subs.length > 1 && (
+            <label className="block"><span className="label">Lines from</span>
+              <select className="field" value={src.id} onChange={(e) => setTrack(e.target.value)}>{subs.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+            </label>
+          )}
+          <label className="block"><span className="label">Pack</span>
+            <select className="field" value={pack} onChange={(e) => setPack(e.target.value)}>{LYRIC_PACKS.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+          </label>
+          <p className="text-[11px] text-gray-500">{p.description}</p>
+          <div className="flex gap-1.5">
+            <button className="flex-1 rounded-lg bg-accent/90 px-3 py-2 text-[13px] font-medium text-black hover:bg-accent" onClick={apply}>{bound ? "Refresh titles" : "Show as titles"}</button>
+            {bound && <button className={btn} onClick={() => (editTimeline((t) => removeLyricTitles(t, src.id)), setMsg("Back to the plain subtitle lines."))}>Back to subtitles</button>}
+          </div>
+        </>
+      )}
+      {msg && <p className="text-[11px] text-gray-400" role="status">{msg}</p>}
     </Card>
   );
 }

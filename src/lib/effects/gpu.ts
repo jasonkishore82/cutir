@@ -1,4 +1,4 @@
-import type { EffectEnv, GpuPass, Layer, Params } from "./types";
+import type { EffectEnv, GpuPass, GpuTable, Layer, Params } from "./types";
 
 /**
  * A tiny WebGL2 runner for effects that are much faster (or only possible) per pixel: one full-screen quad, the
@@ -44,11 +44,11 @@ function context(): WebGL2RenderingContext | null {
   return gl;
 }
 
-function compile(id: string, pass: GpuPass, uniformNames: string[]) {
+function compile(id: string, pass: GpuPass, uniformNames: string[], tableNames: string[]) {
   const c = programs.get(id);
   if (c) return c;
   const g = gl!;
-  const decl = uniformNames.map((n) => `uniform ${guessType(n)} ${n};`).join("\n");
+  const decl = [...uniformNames.map((n) => `uniform ${guessType(n)} ${n};`), ...tableNames.map((n) => `uniform sampler2D uTbl_${n};`)].join("\n");
   const frag = `#version 300 es
 precision highp float;
 in vec2 vUv;
@@ -72,14 +72,38 @@ ${pass.fragment}`;
   g.linkProgram(prog);
   if (!g.getProgramParameter(prog, g.LINK_STATUS)) throw new Error(`shader ${id}: ${g.getProgramInfoLog(prog)}`);
   const uniforms = new Map<string, WebGLUniformLocation | null>();
-  for (const n of ["uTex", "uSize", "uTime", ...uniformNames]) uniforms.set(n, g.getUniformLocation(prog, n));
+  for (const n of ["uTex", "uSize", "uTime", ...uniformNames, ...tableNames.map((t) => `uTbl_${t}`)]) uniforms.set(n, g.getUniformLocation(prog, n));
   const entry = { prog, uniforms };
   programs.set(id, entry);
   return entry;
 }
 
+/** Effects whose shader failed to compile: not tried again every frame. */
+const broken = new Set<string>();
+
+/** Float table textures, kept while their key is unchanged. */
+const tables = new Map<string, { key: string; tex: WebGLTexture }>();
+
+function uploadTable(g: WebGL2RenderingContext, id: string, name: string, t: GpuTable): WebGLTexture {
+  const slot = `${id}:${name}`;
+  const have = tables.get(slot);
+  if (have && have.key === t.key) return have.tex;
+  const tex2 = have?.tex ?? g.createTexture()!;
+  g.bindTexture(g.TEXTURE_2D, tex2);
+  g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, false); // rows are read by index, so they must not be flipped
+  g.texImage2D(g.TEXTURE_2D, 0, g.RGBA32F, t.w, t.h, 0, g.RGBA, g.FLOAT, t.build());
+  g.pixelStorei(g.UNPACK_FLIP_Y_WEBGL, true);
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MIN_FILTER, g.NEAREST);
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_MAG_FILTER, g.NEAREST);
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_S, g.CLAMP_TO_EDGE);
+  g.texParameteri(g.TEXTURE_2D, g.TEXTURE_WRAP_T, g.CLAMP_TO_EDGE);
+  tables.set(slot, { key: t.key, tex: tex2 });
+  return tex2;
+}
+
 /** Drop compiled programs of an effect (a plugin was removed or replaced). */
 export function forgetProgram(id: string) {
+  broken.delete(id);
   for (const k of [...programs.keys()]) if (k.startsWith(`${id}:`)) programs.delete(k);
 }
 
@@ -90,13 +114,16 @@ function guessType(name: string) {
 
 /** Run a GPU pass from `src` into `dst`. False when WebGL2 is unavailable or the shader failed. */
 export function runGpu(id: string, pass: GpuPass, src: Layer, dst: Layer, p: Params, env: EffectEnv): boolean {
-  if (!enabled) return false;
+  if (!enabled || broken.has(id)) return false;
   const g = context();
   if (!g || !glCanvas) return false;
   try {
     const values = pass.uniforms(p, env);
+    if (!values) return false;
     const names = Object.keys(values).sort();
-    const { prog, uniforms } = compile(`${id}:${names.join(",")}`, pass, names);
+    const tbls = pass.tables?.(p, env) ?? {};
+    const tnames = Object.keys(tbls).sort();
+    const { prog, uniforms } = compile(`${id}:${names.join(",")}|${tnames.join(",")}`, pass, names, tnames);
     if (glCanvas.width !== src.w || glCanvas.height !== src.h) {
       glCanvas.width = src.w;
       glCanvas.height = src.h;
@@ -114,6 +141,13 @@ export function runGpu(id: string, pass: GpuPass, src: Layer, dst: Layer, p: Par
       if (Array.isArray(v)) v.length === 3 ? g.uniform3f(loc, v[0], v[1], v[2]) : g.uniform2f(loc, v[0], v[1]);
       else g.uniform1f(loc, v);
     }
+    tnames.forEach((n, i) => {
+      g.activeTexture(g.TEXTURE1 + i);
+      g.bindTexture(g.TEXTURE_2D, uploadTable(g, id, n, tbls[n]));
+      g.uniform1i(uniforms.get(`uTbl_${n}`)!, 1 + i);
+    });
+    g.activeTexture(g.TEXTURE0);
+    g.bindTexture(g.TEXTURE_2D, tex);
     g.enableVertexAttribArray(0);
     g.vertexAttribPointer(0, 2, g.FLOAT, false, 0, 0);
     g.clearColor(0, 0, 0, 0);
@@ -122,7 +156,8 @@ export function runGpu(id: string, pass: GpuPass, src: Layer, dst: Layer, p: Par
     dst.ctx.drawImage(glCanvas, 0, 0);
     return true;
   } catch (e) {
-    console.warn("GPU effect failed, using the canvas version:", e);
+    broken.add(id);
+    console.warn("GPU effect failed, using the canvas version from now on:", e);
     return false;
   }
 }

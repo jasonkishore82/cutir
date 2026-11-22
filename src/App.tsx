@@ -12,6 +12,7 @@ import SectionTabs, { type SectionId } from "./components/SectionTabs";
 import PageBar from "./components/PageBar";
 import MacroPill from "./components/MacroPill";
 import LibraryNotice from "./components/LibraryNotice";
+import ColourDock from "./components/ColourDock";
 import SystemNotice from "./components/SystemNotice";
 import { installErrorCapture, useSystem } from "./store/system";
 import { usePlugins } from "./store/plugins";
@@ -30,6 +31,7 @@ import { startAutosave, useProject } from "./store/project";
 import { installUnloadSave, useLibrary } from "./store/library";
 import { useMedia } from "./store/media";
 import { startVersioning } from "./store/versions";
+import { startStillsPersistence } from "./store/stillsSync";
 import { startMcpBridge } from "./lib/mcpBridge";
 import { ClaudeBadge } from "./components/ClaudeControlCard";
 
@@ -207,10 +209,11 @@ export default function App() {
     installUnloadSave();
     const stopSave = startAutosave((doc, view) => useLibrary.getState().saveContent(doc, view));
     const stopVersions = startVersioning();
+    const stopStills = startStillsPersistence();
     const stopErrors = installErrorCapture();
     usePlugins.getState().start(); // effects, presets and script commands of installed plugins
     registerServiceWorker((update) => useSystem.setState({ update }));
-    return () => (stopSave(), stopVersions(), stopErrors());
+    return () => (stopSave(), stopVersions(), stopErrors(), stopStills());
   }, []);
 
   // A song picked from the media library keeps its pool id when a project is saved, but its object URL only lives for a
@@ -325,6 +328,14 @@ export default function App() {
         <main id="main-content" tabIndex={-1} className={`${panel} min-w-0 flex-1 bg-bg outline-none`}>
           {pageDef.main === "deliver" ? <DeliverPage /> : pageDef.main === "library" || section === "import" ? <MediaLibrary /> : <Preview />}
         </main>
+        {layout.dock && pageDef.main === "viewer" && (
+          <>
+            <ResizeHandle width={layout.dockW} set={(w) => setLayout({ dockW: w })} dir={-1} min={260} max={560} reset={pageDef.layout.dockW} />
+            <aside style={{ width: layout.dockW }} className={`${panel} min-w-0 shrink-0`}>
+              <ColourDock />
+            </aside>
+          </>
+        )}
         {chatOpen && (
           <>
             <ResizeHandle width={layout.chatW} set={(w) => setLayout({ chatW: w })} dir={-1} min={280} max={720} reset={pageDef.layout.chatW} />

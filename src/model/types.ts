@@ -110,6 +110,8 @@ export type Track = {
   style?: StyleOverride;
   /** Subtitle tracks: the language of the text (a code such as "en"), for soft tracks and translation (phase 25). */
   lang?: string;
+  /** Video tracks made by the lyric pack (phase 19): the subtitle track whose lines they show. */
+  lyricsOf?: string;
   /** Receives inserts and overwrites from the media pool (one video and one audio track at a time). */
   target?: boolean;
   /** Audio tracks (phase 21): the strip in the mixer. Missing values mean gain 1, pan 0, no send, no processors. */

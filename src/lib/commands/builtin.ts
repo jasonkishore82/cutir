@@ -195,6 +195,7 @@ const settings: Command[] = [
   { id: "settings.editor", title: "Editor preferences", category: "Settings", run: () => useSettings.getState().openDialog("editor") },
   { id: "settings.storage", title: "Storage", category: "Settings", run: () => useSettings.getState().openDialog("storage") },
   { id: "settings.project", title: "Project data: versions, packages, sync", category: "Settings", run: () => useSettings.getState().openDialog("project") },
+  { id: "view.colourDock", title: "Show or hide the colour dock", category: "View", keywords: "scopes wheels grade stills colour color panel dock", run: () => useWorkspace.getState().setLayout({ dock: !useWorkspace.getState().layout().dock }) },
   { id: "settings.system", title: "Plugins, scripting and system", category: "Settings", keywords: "plugin script console diagnostics performance browser", run: () => useSettings.getState().openDialog("system") },
   { id: "settings.shortcuts", title: "Keyboard shortcuts: rebind, import, export", category: "Settings", run: () => useSettings.getState().openDialog("shortcuts") },
 ];
