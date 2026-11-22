@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import ClipSoundHandles from "./ClipSoundHandles";
 import { createPortal } from "react-dom";
 import { useProject } from "../store/project";
 import { useMedia, type MediaItem } from "../store/media";
@@ -477,6 +478,7 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
                 {t.kind === "audio" && media?.analysis?.energy && (
                   <EnergyArea curve={media.analysis.energy} clip={c} t0={view.t0} t1={view.t1} pps={pps} height={t.height - 10} />
                 )}
+                {t.kind === "audio" && on && !c.multicam && !c.timelineId && <ClipSoundHandles clip={c} pps={pps} height={t.height - 10} />}
                 <div className="relative flex items-center gap-1 truncate bg-black/25 px-1.5 leading-4 text-white">
                   {c.linkId && <span title="Linked">⛓</span>}
                   {(() => {

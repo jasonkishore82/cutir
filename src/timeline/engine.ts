@@ -40,9 +40,35 @@ export const clipsOn = (tl: Timeline, trackId: string) => tl.clips.filter((c) =>
 const byId = (tl: Timeline) => new Map(tl.clips.map((c) => [c.id, c]));
 const sourceLimit = (c: Clip, ctx: EditCtx) => (c.mediaId ? ctx.mediaDuration?.(c.mediaId) : undefined);
 
-/** The ids plus every clip linked to them. */
+let linkedOn = true;
+/** Linked selection (phase 21): with it off, picture and sound are edited separately and links are ignored (they are kept). */
+export const setLinkedEditing = (on: boolean) => void (linkedOn = on);
+export const linkedEditing = () => linkedOn;
+
+/** Link the given clips into one group (video and its sound), replacing any group they were in. Needs two or more clips. */
+export function linkClips(tl: Timeline, ids: Iterable<string>): Timeline {
+  const set = new Set(ids);
+  const picked = tl.clips.filter((c) => set.has(c.id) && editable(c));
+  if (picked.length < 2) return tl;
+  const old = new Set(picked.map((c) => c.linkId).filter(Boolean));
+  const linkId = newId("l");
+  // clips that stay behind in a group the picked ones left are unlinked if only one is left
+  const next = tl.clips.map((c) => (set.has(c.id) && editable(c) ? { ...c, linkId } : c));
+  return { ...tl, clips: next.map((c) => (c.linkId && old.has(c.linkId) && next.filter((x) => x.linkId === c.linkId).length < 2 ? { ...c, linkId: undefined } : c)) };
+}
+
+/** Take the given clips (and the clips linked to them) out of their link groups. */
+export function unlinkClips(tl: Timeline, ids: Iterable<string>): Timeline {
+  const set = new Set(ids);
+  const groups = new Set(tl.clips.filter((c) => set.has(c.id) && c.linkId).map((c) => c.linkId!));
+  if (!groups.size) return tl;
+  return { ...tl, clips: tl.clips.map((c) => (c.linkId && groups.has(c.linkId) ? { ...c, linkId: undefined } : c)) };
+}
+
+/** The ids plus every clip linked to them (just the ids while linked selection is off). */
 export function withLinked(tl: Timeline, ids: Iterable<string>): string[] {
   const set = new Set(ids);
+  if (!linkedOn) return [...set];
   const links = new Set(tl.clips.filter((c) => set.has(c.id) && c.linkId).map((c) => c.linkId!));
   for (const c of tl.clips) if (c.linkId && links.has(c.linkId)) set.add(c.id);
   return [...set];

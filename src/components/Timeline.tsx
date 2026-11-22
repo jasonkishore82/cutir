@@ -393,6 +393,7 @@ export default function Timeline() {
   const tool = useTimelineUi((s) => s.tool);
   const cacheRanges = useCacheInfo((s) => s.ranges);
   const snapping = useTimelineUi((s) => s.snapping);
+  const linked = useTimelineUi((s) => s.linked);
   const beatSnap = useTimelineUi((s) => s.beatSnap);
   const beats = useProject((s) => beatsOf(activeTimeline(s.doc)));
   const energy = useProject((s) => s.project.energy);
@@ -975,6 +976,14 @@ export default function Timeline() {
             className={`rounded px-1.5 py-0.5 text-[11px] ${beatSnap && snapping ? "bg-accent/25 text-accent" : beatSnap ? "text-accent/70 hover:bg-white/10" : "text-gray-400 hover:bg-white/10"}`}
           >
             Beats
+          </button>
+          <button
+            aria-pressed={linked}
+            title="Linked selection (Shift+L): picture and sound move, trim and delete together. Turn it off to edit them separately; the links stay."
+            onClick={() => useTimelineUi.setState({ linked: !linked })}
+            className={`rounded px-1.5 py-0.5 text-[11px] ${linked ? "bg-accent/25 text-accent" : "text-gray-400 hover:bg-white/10"}`}
+          >
+            Linked
           </button>
         </div>
         <div className="flex items-center gap-0.5" role="group" aria-label="Edit from the media library">

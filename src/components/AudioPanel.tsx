@@ -12,6 +12,7 @@ import { PROCESSORS, detectSilence, dbToGain, gainToDb, keepRanges, normalizeGai
 import { LOUDNESS_TARGETS, matchGain, measureLoudness, type Loudness } from "../lib/audio/loudness";
 import { mixInputs, mixPlan, mixdownChannels } from "../render/audio";
 import { mixer } from "./Preview";
+import { bestTake, newTakeGroup, nextTakeNumber, swapTake, tagClip, takesInGroup } from "../lib/takes";
 
 const btn = "rounded-md border border-edge px-2 py-0.5 text-[11px] text-gray-300 hover:bg-white/10 disabled:opacity-40";
 const fmtDb = (v: number) => (isFinite(v) ? `${v.toFixed(1)}` : "-inf");
@@ -103,7 +104,7 @@ function Mixer() {
     editTimeline((x) => ({ ...x, tracks: x.tracks.map((y) => (y.id === t.id ? { ...y, anim: { ...(y.anim ?? {}), [lane]: setKey(y.anim?.[lane] as Key[] | undefined, getTime(), v) } } : y)) }));
 
   return (
-    <Card title="Mixer" hint="Gain, pan and meters per audio track, then the master. Equalizer, filters, compressor and limiter are heard live; the other processors are applied in the export and the loudness measure.">
+    <Card title="Mixer" hint="Gain, pan and meters per audio track, then the master. Every processor is heard live and applied the same way in the export and the loudness measure.">
       {audio.length === 0 && <p className="text-[12px] text-gray-500">No audio tracks.</p>}
       {audio.map((t) => (
         <div key={t.id} className="space-y-1 rounded-lg border border-edge p-2">
@@ -364,10 +365,19 @@ function VoiceOver() {
   const [msg, setMsg] = useState("");
   const [countIn, setCountIn] = useState(true);
   const rec = useRef<{ mr: MediaRecorder; stream: MediaStream; chunks: Blob[]; at: number; t0: number } | null>(null);
-  const takes = useRef(0);
+  const doc = useProject((s) => s.doc);
+  const selected = useTimelineUi((s) => s.selected);
+  const items = useMedia((s) => s.items);
+  const tlNow0 = activeTimeline(doc);
+  // the selected audio clip: a new recording becomes another take of it (and replaces it on the timeline)
+  const target = selected.length === 1 ? tlNow0.clips.find((c) => c.id === selected[0] && c.mediaId && !c.fill && tlNow0.tracks.find((t) => t.id === c.trackId)?.kind === "audio") : undefined;
+  const [retake, setRetake] = useState(true);
+  const [heard, setHeard] = useState<string | null>(null);
+  const player = useRef<HTMLAudioElement | null>(null);
 
   const begin = async () => {
     setMsg("");
+    const targetId = retake ? target?.id : undefined;
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } });
@@ -387,7 +397,7 @@ function VoiceOver() {
     const chunks: Blob[] = [];
     mr.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     const t0 = performance.now();
-    mr.onstop = () => void finish(chunks, stream, at, mr.mimeType, (performance.now() - t0) / 1000);
+    mr.onstop = () => void finish(chunks, stream, at, mr.mimeType, (performance.now() - t0) / 1000, targetId);
     rec.current = { mr, stream, chunks, at, t0 };
     mr.start();
     setSecs(0);
@@ -399,37 +409,55 @@ function VoiceOver() {
     return () => clearInterval(t);
   }, [state]);
 
-  const finish = async (chunks: Blob[], stream: MediaStream, at: number, type: string, seconds: number) => {
+  const finish = async (chunks: Blob[], stream: MediaStream, at: number, type: string, seconds: number, targetId?: string) => {
     stream.getTracks().forEach((t) => t.stop());
     setState("idle");
     const blob = new Blob(chunks, { type });
-    takes.current += 1;
     const ext = type.includes("ogg") ? "ogg" : type.includes("mp4") ? "m4a" : "webm";
-    const file = new File([blob], `Voice-over take ${takes.current}.${ext}`, { type });
-    const items = await useMedia.getState().addFiles([file]);
-    const item = items[0];
+    // the take belongs to the group of the clip being re-taken, else a new group of its own
+    const cur = targetId ? activeTimeline(useProject.getState().doc).clips.find((c) => c.id === targetId) : undefined;
+    const group = cur?.takeGroup ?? newTakeGroup();
+    if (cur && !cur.takeGroup && cur.mediaId) {
+      // the clip's current sound becomes take 1 of the new group
+      const first = useMedia.getState().items.find((i) => poolMediaId(i.id) === cur.mediaId);
+      if (first && !first.take) useMedia.getState().updateItem(first.id, { take: { group, n: 1 } });
+    }
+    const n = nextTakeNumber(useMedia.getState().items, group);
+    const file = new File([blob], `Voice-over take ${n}.${ext}`, { type });
+    const added = await useMedia.getState().addFiles([file]);
+    const item = added[0];
     if (!item) return setMsg("The take could not be added to the media pool.");
-    // place the take on the audio target (or the first audio track) at the position where recording began
-    useProject.getState().editDoc((doc) => {
-      const withMedia = withPoolMedia(doc, item);
+    useMedia.getState().updateItem(item.id, { take: { group, n } });
+    const dur = item.duration && isFinite(item.duration) ? item.duration : seconds; // a recorded webm often has no duration in its header
+    useProject.getState().editDoc((d) => {
+      const withMedia = withPoolMedia(d, item);
+      if (cur) return E.onActive(withMedia, (t) => swapTake(t, cur.id, { mediaId: poolMediaId(item.id), duration: dur, group }));
       const tlx = activeTimeline(withMedia);
       const track = E.targetTrack(tlx, "audio") ?? tlx.tracks.find((t) => t.kind === "audio");
       if (!track) return withMedia;
-      const dur = item.duration && isFinite(item.duration) ? item.duration : seconds; // a recorded webm often has no duration in its header
       const src: E.Source = { mediaId: poolMediaId(item.id), name: item.name, kind: "audio", in: 0, out: dur };
-      return E.onActive(withMedia, (t) => E.overwriteEdit(t, src, at, { audio: track.id }).tl);
+      return E.onActive(withMedia, (t) => {
+        const placed = E.overwriteEdit(t, src, at, { audio: track.id }).tl;
+        const clip = placed.clips.find((c) => c.mediaId === poolMediaId(item.id) && c.trackId === track.id && Math.abs(c.start - at) < 0.01);
+        return clip ? tagClip(placed, clip.id, group) : placed;
+      });
     });
-    setMsg(`Recorded "${file.name}" and placed it at ${at.toFixed(1)} s.`);
+    setMsg(cur ? `Take ${n} replaced the clip. The earlier takes are listed below.` : `Recorded "${file.name}" and placed it at ${at.toFixed(1)} s.`);
   };
   const stop = () => rec.current?.mr.stop();
 
   return (
-    <Card title="Voice-over" hint="Records the microphone onto the audio track at the playhead. Every take is kept in the media pool.">
+    <Card title="Voice-over" hint="Records the microphone onto the audio track at the playhead. Every take is kept in the media pool. With an audio clip selected, a new recording becomes another take of it and replaces it on the timeline.">
       <label className="flex items-center gap-2 text-[12px] text-gray-300">
         <input type="checkbox" checked={countIn} onChange={(e) => setCountIn(e.target.checked)} disabled={state !== "idle"} /> Count in (3, 2, 1)
       </label>
+      {target && (
+        <label className="flex items-center gap-2 text-[12px] text-gray-300">
+          <input type="checkbox" checked={retake} onChange={(e) => setRetake(e.target.checked)} disabled={state !== "idle"} /> Record over the selected clip as another take
+        </label>
+      )}
       <div className="flex items-center gap-2">
-        {state === "idle" && <button className={btn} onClick={begin}>Record</button>}
+        {state === "idle" && <button className={btn} onClick={begin}>{target && retake ? "Record a new take" : "Record"}</button>}
         {state === "count" && <span className="text-[13px] text-yellow-300" role="status">{count}</span>}
         {state === "rec" && (
           <>
@@ -439,7 +467,57 @@ function VoiceOver() {
         )}
       </div>
       {msg && <p className="text-[11px] text-gray-400" role="status">{msg}</p>}
+      {target?.takeGroup && (
+        <Takes
+          group={target.takeGroup}
+          clipId={target.id}
+          current={target.mediaId}
+          heard={heard}
+          onHear={(id, url) => {
+            player.current?.pause();
+            if (!url || heard === id) return setHeard(null);
+            const a = new Audio(url);
+            a.onended = () => setHeard(null);
+            player.current = a;
+            setHeard(id);
+            void a.play().catch(() => setHeard(null));
+          }}
+          items={items}
+        />
+      )}
     </Card>
+  );
+}
+
+/** The takes of the selected clip's group: listen, rate, bring one back onto the timeline, or delete it. */
+function Takes({ group, clipId, current, heard, onHear, items }: { group: string; clipId: string; current?: string; heard: string | null; onHear: (id: string, url?: string) => void; items: ReturnType<typeof useMedia.getState>["items"] }) {
+  const urls = useMedia((s) => s.urls);
+  const list = takesInGroup(items, group);
+  const best = bestTake(items, group);
+  if (!list.length) return null;
+  const use = (id: string, duration?: number) => editTimeline((t) => swapTake(t, clipId, { mediaId: poolMediaId(id), duration: duration && isFinite(duration) ? duration : 1, group }));
+  return (
+    <div className="space-y-1.5" role="group" aria-label="Takes of the selected clip">
+      <p className="text-[11px] font-medium text-gray-400">Takes ({list.length})</p>
+      {list.map((i) => {
+        const on = current === poolMediaId(i.id);
+        return (
+          <div key={i.id} className={`flex flex-wrap items-center gap-1.5 rounded-lg border px-2 py-1 ${on ? "border-accent" : "border-edge"}`}>
+            <span className="min-w-0 flex-1 truncate text-[12px] text-gray-200">
+              Take {i.take!.n}
+              <span className="text-gray-500"> {i.duration ? `${i.duration.toFixed(1)} s` : ""}</span>
+              {best?.id === i.id && !on && <span className="ml-1 text-[10px] text-accent">best</span>}
+              {on && <span className="ml-1 text-[10px] text-accent">on the timeline</span>}
+            </span>
+            <button className={btn} onClick={() => onHear(i.id, urls[i.id])} disabled={!urls[i.id]} aria-pressed={heard === i.id}>{heard === i.id ? "Stop" : "Listen"}</button>
+            <button className={btn} onClick={() => useMedia.getState().updateItem(i.id, { take: { ...i.take!, rating: i.take!.rating === "good" ? undefined : "good" } })} aria-pressed={i.take!.rating === "good"} title="Mark as good">{i.take!.rating === "good" ? "★" : "☆"}</button>
+            <button className={btn} onClick={() => useMedia.getState().updateItem(i.id, { take: { ...i.take!, rating: i.take!.rating === "bad" ? undefined : "bad" } })} aria-pressed={i.take!.rating === "bad"} title="Mark as bad">{i.take!.rating === "bad" ? "✕" : "·"}</button>
+            <button className={btn} disabled={on} onClick={() => use(i.id, i.duration)}>Use</button>
+            <button className="text-[11px] text-gray-500 hover:text-red-400 disabled:opacity-30" disabled={on} onClick={() => useMedia.getState().remove(i.id)} aria-label={`Delete take ${i.take!.n}`}>delete</button>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

@@ -289,6 +289,8 @@ export type Clip = {
   name?: string;
   /** Clips with the same linkId (a video and its sound) are selected, moved and trimmed together. */
   linkId?: string;
+  /** Voice-over takes (phase 21): the group of recordings this clip plays one of. */
+  takeGroup?: string;
   /** Media from the pool, for video, audio and image clips. */
   mediaId?: string;
   generator?: Generator;

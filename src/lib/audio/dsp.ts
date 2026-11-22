@@ -83,16 +83,16 @@ export const PROCESSORS: Record<ProcessorType, { name: string; description: stri
     spec("attack", "Attack", 1, 200, 10, "ms"), spec("release", "Release", 20, 1000, 150, "ms"),
     spec("knee", "Knee", 0, 30, 6, "dB"), spec("makeup", "Make-up gain", 0, 24, 0, "dB") ] },
   limiter: { name: "Limiter", description: "Stop peaks above a ceiling", live: true, params: [spec("ceiling", "Ceiling", -12, 0, -1, "dB"), spec("release", "Release", 10, 500, 80, "ms")] },
-  gate: { name: "Noise gate", description: "Silence the track below a level", live: false, params: [
+  gate: { name: "Noise gate", description: "Silence the track below a level", live: true, params: [
     spec("threshold", "Threshold", -80, -10, -50, "dB"), spec("range", "Reduction", 0, 80, 60, "dB"),
     spec("attack", "Attack", 1, 100, 5, "ms"), spec("release", "Release", 10, 1000, 120, "ms") ] },
-  deesser: { name: "De-esser", description: "Tame harsh s sounds", live: false, params: [
+  deesser: { name: "De-esser", description: "Tame harsh s sounds", live: true, params: [
     spec("freq", "Frequency", 3000, 10000, 6500, "Hz"), spec("threshold", "Threshold", -50, 0, -28, "dB"), spec("ratio", "Ratio", 1, 10, 4) ] },
-  denoise: { name: "Noise reduction", description: "Lower steady background noise between words", live: false, params: [
+  denoise: { name: "Noise reduction", description: "Lower steady background noise between words", live: true, params: [
     spec("amount", "Amount", 0, 30, 12, "dB"), spec("sensitivity", "Noise floor margin", 0, 20, 6, "dB") ] },
-  reverb: { name: "Reverb", description: "Room ambience", live: false, params: [
+  reverb: { name: "Reverb", description: "Room ambience", live: true, params: [
     spec("size", "Room size", 0, 100, 50, "%"), spec("damping", "Damping", 0, 100, 50, "%"), spec("mix", "Mix", 0, 100, 25, "%") ] },
-  delay: { name: "Delay", description: "Repeating echo", live: false, params: [
+  delay: { name: "Delay", description: "Repeating echo", live: true, params: [
     spec("time", "Time", 20, 1500, 350, "ms"), spec("feedback", "Feedback", 0, 90, 35, "%"), spec("mix", "Mix", 0, 100, 25, "%") ] },
 };
 

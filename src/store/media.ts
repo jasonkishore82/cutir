@@ -45,6 +45,8 @@ export type MediaItem = {
   timecode?: number;
   /** Why it cannot be played here (unsupported codec...). Empty when fine. */
   note?: string;
+  /** A voice-over take (phase 21): which group it belongs to, its number and a rating. */
+  take?: { group: string; n: number; rating?: "good" | "bad" };
   /** Source marks for three- and four-point edits, in source seconds. */
   markIn?: number;
   markOut?: number;

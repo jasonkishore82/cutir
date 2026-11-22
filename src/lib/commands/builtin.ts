@@ -126,6 +126,9 @@ const TOOLS: [string, string, string[], "select" | "trim" | "blade" | "hand" | "
 const timeline: Command[] = [
   ...TOOLS.map(([id, title, keys, tool]): Command => ({ id, title, category: "Tools", keys, run: () => useTimelineUi.setState({ tool }) })),
   { id: "snap.toggle", title: "Toggle snapping", category: "Tools", keys: ["S", "N"], run: () => useTimelineUi.setState((s) => ({ snapping: !s.snapping })) },
+  { id: "timeline.linked", title: "Toggle linked selection (picture and sound together)", category: "Tools", keys: ["Shift+L"], run: () => useTimelineUi.setState((s) => ({ linked: !s.linked })) },
+  { id: "timeline.link", title: "Link the selected clips (picture and sound)", category: "Timeline", run: () => editTimeline((t) => E.linkClips(t, useTimelineUi.getState().selected)) },
+  { id: "timeline.unlink", title: "Unlink the selected clips", category: "Timeline", run: () => editTimeline((t) => E.unlinkClips(t, useTimelineUi.getState().selected)) },
   { id: "snap.beat", title: "Toggle snapping to beats", category: "Tools", keys: ["Shift+N"], run: () => useTimelineUi.setState((s) => ({ beatSnap: !s.beatSnap })) },
   { id: "marker.add", title: "Add a marker at the playhead", category: "Timeline", keys: ["M"], run: () => editTimeline((x) => E.addMarker(x, getTime(), { name: `Marker ${E.userMarkers(x).length + 1}` }).tl) },
   { id: "marker.next", title: "Go to the next marker", category: "Timeline", keys: ["Shift+Down"], run: () => { const m = E.nearMarker(tlNow(), getTime(), 1); if (m) seek(m.time); } },

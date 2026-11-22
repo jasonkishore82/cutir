@@ -6,6 +6,8 @@ import { mixTracks, type MasterMix, type TrackMix } from "../lib/audio/mix";
 import { PROCESSORS, dbToGain, filterBands, type AudioProcessor, type Channels } from "../lib/audio/dsp";
 import { sourceAtRel, speedOf, timeStretch } from "../lib/retime";
 import { crossfadeOf, soundSegments } from "../lib/multicam";
+import { LIVE_WORKLET_TYPES, WORKLET_NAME, workletUrl } from "../lib/audio/worklet";
+import { bufferable, fitsInMemory, needsRestart, upcoming, voicePlan, type Voice } from "../lib/audio/schedule";
 
 /**
  * Sound of the timeline's audio tracks in the viewer.
@@ -120,11 +122,16 @@ export function songAudible(doc: ProjectDoc): boolean {
 const DRIFT = 0.08; // seconds before a clip is put back in step with the clock
 
 /** One mixer strip in the live graph: clips and the song feed `input`; then the processors, gain, pan and a meter. */
-type LiveStrip = { input: GainNode; chain: AudioNode[]; gain: GainNode; pan: StereoPannerNode; meter: AnalyserNode; key: string };
+type LiveStrip = { input: GainNode; chain: AudioNode[]; gain: GainNode; pan: StereoPannerNode; /** Level sent to the shared reverb. */ send: GainNode; meter: AnalyserNode; key: string };
 export type Meter = { peak: number };
 
+/** A worklet node running one of the processors Web Audio has no node for. */
+function fxNode(ctx: BaseAudioContext, type: string, params: Record<string, number>): AudioWorkletNode {
+  return new AudioWorkletNode(ctx, WORKLET_NAME, { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], processorOptions: { type, params } });
+}
+
 /** The live version of a processor chain: only the processors that map onto Web Audio nodes (see PROCESSORS[...].live). */
-function liveNodes(ctx: BaseAudioContext, list: AudioProcessor[] | undefined): AudioNode[] {
+function liveNodes(ctx: BaseAudioContext, list: AudioProcessor[] | undefined, fxReady: boolean): AudioNode[] {
   const out: AudioNode[] = [];
   for (const p of list ?? []) {
     if (!p.enabled) continue;
@@ -137,6 +144,9 @@ function liveNodes(ctx: BaseAudioContext, list: AudioProcessor[] | undefined): A
         f.gain.value = b.gain;
         out.push(f);
       }
+    } else if ((LIVE_WORKLET_TYPES as readonly string[]).includes(p.type)) {
+      // gate, de-esser, noise reduction, reverb, delay: the worklet; until it has loaded the processor is skipped
+      if (fxReady) out.push(fxNode(ctx, p.type, p.params));
     } else if (p.type === "compressor" || p.type === "limiter") {
       const v = (k: string) => p.params[k] ?? PROCESSORS[p.type].params.find((s) => s.key === k)?.default ?? 0;
       const c = ctx.createDynamicsCompressor();
@@ -173,6 +183,14 @@ export class AudioMixer {
   private strips = new Map<string, LiveStrip>();
   private songNode: { node: MediaElementAudioSourceNode; to?: LiveStrip } | null = null;
   private buf = new Float32Array(1024);
+  /** Whether the worklet with gate, de-esser, noise reduction, reverb and delay has loaded. */
+  private fxReady = false;
+  /** Every strip's reverb send lands here, runs through one shared reverb and joins the master. */
+  private sendIn: GainNode | null = null;
+  /** Decoded sound of clips played sample-accurately (and of reversed clips); null when too big or unreadable. */
+  private bufs = new Map<string, AudioBuffer | null | "pending">();
+  private revs = new Map<string, AudioBuffer>();
+  private voices = new Map<string, { src: AudioBufferSourceNode; gain: GainNode; v: Voice; url: string; to: LiveStrip }>();
 
   /** `song` is the transport's audio element: it goes through the mixer too, so its track strip, meter and master apply. */
   constructor(urlOf: (mediaId: string) => string | undefined, song: HTMLAudioElement | null = null) {
@@ -192,6 +210,24 @@ export class AudioMixer {
     meter.fftSize = 1024;
     input.connect(meter).connect(this.ctx.destination);
     this.master = { input, chain: [], meter, key: "" };
+    this.sendIn = this.ctx.createGain();
+    const ctx = this.ctx;
+    if (ctx.audioWorklet) {
+      const url = workletUrl();
+      ctx.audioWorklet
+        .addModule(url)
+        .then(() => {
+          URL.revokeObjectURL(url);
+          if (this.ctx !== ctx) return;
+          this.fxReady = true;
+          const bus = fxNode(ctx, "reverb", { size: 60, damping: 50, mix: 100 });
+          this.sendIn!.connect(bus).connect(this.master!.input);
+          for (const s of this.strips.values()) s.key = "\0"; // rebuild the chains: the new processors can be used now
+        })
+        .catch(() => {
+          /* no worklet here: those processors stay export only */
+        });
+    }
     return this.ctx;
   }
 
@@ -202,7 +238,9 @@ export class AudioMixer {
     if (!s) {
       const meter = ctx.createAnalyser();
       meter.fftSize = 1024;
-      s = { input: ctx.createGain(), chain: [], gain: ctx.createGain(), pan: ctx.createStereoPanner(), meter, key: "\0" };
+      const send = ctx.createGain();
+      send.gain.value = 0;
+      s = { input: ctx.createGain(), chain: [], gain: ctx.createGain(), pan: ctx.createStereoPanner(), send, meter, key: "\0" };
       this.strips.set(id, s);
     }
     return s;
@@ -210,20 +248,23 @@ export class AudioMixer {
 
   /** Reconnect a strip when its processors changed. */
   private wire(s: LiveStrip, list: AudioProcessor[] | undefined) {
-    const key = JSON.stringify(list ?? []);
+    const key = JSON.stringify(list ?? []) + (this.fxReady ? "+fx" : "");
     if (key === s.key) return;
     s.key = key;
     s.input.disconnect();
     for (const n of s.chain) n.disconnect();
     s.gain.disconnect();
     s.pan.disconnect();
+    s.send.disconnect();
     s.meter.disconnect();
-    s.chain = liveNodes(this.ctx!, list);
+    s.chain = liveNodes(this.ctx!, list, this.fxReady);
     let prev: AudioNode = s.input;
     for (const n of s.chain) (prev.connect(n), (prev = n));
     prev.connect(s.gain);
     s.gain.connect(s.pan);
     s.pan.connect(s.meter);
+    s.pan.connect(s.send); // after gain and pan, like the export
+    s.send.connect(this.sendIn!);
     s.meter.connect(this.master!.input);
   }
 
@@ -268,6 +309,9 @@ export class AudioMixer {
     const tl = activeTimeline(doc);
     const live = playing && rate > 0 ? activeAudio(tl, t) : [];
     const keep = new Set(live.map((c) => c.id));
+    const ahead = playing && rate > 0 && this.ctx ? upcoming(tl.clips.filter((c) => !c.fill && c.mediaId && bufferable(c) && audible(tl, c)), t, rate, this.ctx.currentTime) : [];
+    const voiceKeep = new Set([...keep, ...ahead.map((a) => a.clip.id)]);
+    for (const id of [...this.voices.keys()]) if (!voiceKeep.has(id)) this.stopVoice(id);
     for (const [id, el] of this.els) {
       if (keep.has(id)) continue;
       el.pause();
@@ -291,6 +335,7 @@ export class AudioMixer {
         this.wire(s, track.processors);
         const g = (track.gain ?? 1) * (track.anim?.gain?.length ? evalNumber(track.anim.gain as Key[], t, 1) : 1);
         s.gain.gain.value = g;
+        s.send.gain.value = Math.max(0, Math.min(1, track.send ?? 0));
         s.pan.pan.value = Math.max(-1, Math.min(1, track.anim?.pan?.length ? evalNumber(track.anim.pan as Key[], t, track.pan ?? 0) : track.pan ?? 0));
       }
       // the song feeds the strip of its track
@@ -311,9 +356,29 @@ export class AudioMixer {
         }
       }
     }
+    // clips that start in the next moments are started on the audio clock, at the exact sample
+    if (ctx) {
+      for (const { clip, when } of ahead) {
+        if (this.voices.has(clip.id)) continue;
+        const url = this.urlOf(clip.mediaId!);
+        const strip = this.strip(clip.trackId);
+        const buf = url && strip ? this.bufferOf(ctx, doc, clip.mediaId!, url) : undefined;
+        if (buf && strip && url) this.voiceFor(ctx, strip, clip, this.playable(clip, url, buf), url, clip.start, rate, tl, when);
+      }
+    }
     for (const c of live) {
       const url = this.urlOf(c.mediaId!);
       if (!url) continue;
+      {
+        // sound that is decoded plays from a buffer: sample-accurate, and a reversed clip is heard
+        const bstrip = ctx ? this.strip(c.trackId) : null;
+        const buf = ctx && bstrip && bufferable(c) ? this.bufferOf(ctx, doc, c.mediaId!, url) : undefined;
+        if (ctx && bstrip && buf) {
+          this.els.get(c.id)?.pause();
+          this.voiceFor(ctx, bstrip, c, this.playable(c, url, buf), url, t, rate, tl);
+          continue;
+        }
+      }
       let el = this.els.get(c.id);
       if (!el) {
         el = new Audio();
@@ -343,7 +408,7 @@ export class AudioMixer {
       const want = speedOf(c, rel) * rate;
       // a media element plays between 1/16 and 16 times speed; faster is silent
       const r = Math.max(0.0625, Math.min(16, want));
-      el.muted = want > 16 || !!c.reverse; // reversed sound is only heard in the export
+      el.muted = want > 16 || !!c.reverse; // a reversed clip that is not decoded yet (or too long to decode) stays silent here
       el.preservesPitch = c.pitch !== false;
       if (Math.abs(el.playbackRate - r) > 1e-3) el.playbackRate = r;
       if (el.paused || Math.abs(el.currentTime - target) > DRIFT) {
@@ -357,11 +422,88 @@ export class AudioMixer {
     }
   }
 
+  /** The decoded sound for a clip's file, or undefined while it is being decoded, too long, or unreadable. Starts the decode. */
+  private bufferOf(ctx: AudioContext, doc: ProjectDoc, mediaId: string, url: string): AudioBuffer | undefined {
+    const have = this.bufs.get(url);
+    if (have === undefined) {
+      const seconds = doc.media.find((m) => m.id === mediaId)?.duration ?? 0;
+      if (!fitsInMemory(seconds, ctx.sampleRate)) {
+        this.bufs.set(url, null);
+        return undefined;
+      }
+      this.bufs.set(url, "pending");
+      void fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((a) => ctx.decodeAudioData(a))
+        .then((b) => void this.bufs.set(url, b))
+        .catch(() => void this.bufs.set(url, null));
+      return undefined;
+    }
+    return have && have !== "pending" ? have : undefined;
+  }
+
+  /** The buffer to play for a clip: the reversed copy for a reversed clip. */
+  private playable(c: Clip, url: string, buf: AudioBuffer): AudioBuffer {
+    if (!c.reverse) return buf;
+    let r = this.revs.get(url);
+    if (!r) {
+      r = new AudioBuffer({ numberOfChannels: buf.numberOfChannels, length: buf.length, sampleRate: buf.sampleRate });
+      for (let ch = 0; ch < buf.numberOfChannels; ch++) r.copyToChannel(Float32Array.from(buf.getChannelData(ch)).reverse(), ch);
+      this.revs.set(url, r);
+    }
+    return r;
+  }
+
+  private stopVoice(id: string) {
+    const vo = this.voices.get(id);
+    if (!vo) return;
+    this.voices.delete(id);
+    vo.src.onended = null;
+    try {
+      vo.src.stop();
+    } catch {
+      /* already stopped */
+    }
+    vo.src.disconnect();
+    vo.gain.disconnect();
+  }
+
+  /** Play (or keep playing) a clip from its buffer so that it is right at timeline time t. `startAt` schedules a start on the audio clock. */
+  private voiceFor(ctx: AudioContext, strip: LiveStrip, c: Clip, buf: AudioBuffer, url: string, t: number, rate: number, tl: Timeline, startAt?: number) {
+    const plan = voicePlan(c, t, rate, buf.duration);
+    let vo = this.voices.get(c.id);
+    if (!plan) return void (vo && startAt === undefined && this.stopVoice(c.id));
+    if (vo && (vo.url !== url || vo.to !== strip || (startAt === undefined && needsRestart(vo.v, ctx.currentTime, plan)))) {
+      this.stopVoice(c.id);
+      vo = undefined;
+    }
+    const gain = Math.max(0, clipGain(tl, c, t));
+    if (!vo) {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.playbackRate.value = plan.rate;
+      const g = ctx.createGain();
+      g.gain.value = gain;
+      src.connect(g);
+      g.connect(strip.input);
+      const when = startAt ?? ctx.currentTime;
+      src.start(when, plan.offset, plan.remaining);
+      src.onended = () => {
+        if (this.voices.get(c.id)?.src === src) this.voices.delete(c.id);
+      };
+      vo = { src, gain: g, v: { startedAt: when, offset: plan.offset, rate: plan.rate }, url, to: strip };
+      this.voices.set(c.id, vo);
+    }
+    vo.gain.gain.value = gain;
+  }
+
   stop() {
     for (const el of this.els.values()) el.pause();
+    for (const id of [...this.voices.keys()]) this.stopVoice(id);
   }
 
   dispose() {
+    for (const id of [...this.voices.keys()]) this.stopVoice(id);
     for (const el of this.els.values()) {
       el.pause();
       el.removeAttribute("src");

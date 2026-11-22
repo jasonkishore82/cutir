@@ -3,12 +3,14 @@ import { useProject } from "../store/project";
 import { activeTimeline } from "../model/convert";
 import type { MediaItem } from "../store/media";
 import type { MediaRef, ProjectDoc, Timeline } from "../model/types";
-import { onActive, type EditCtx, type PointerMode, type Source, type Tool } from "./engine";
+import { onActive, setLinkedEditing, type EditCtx, type PointerMode, type Source, type Tool } from "./engine";
 
 /** Timeline UI state that is not part of the project (not saved, not undoable). */
 type TimelineUi = {
   tool: Tool;
   snapping: boolean;
+  /** Linked selection (phase 21): picture and sound move, trim and delete together. */
+  linked: boolean;
   /** Snap to beat markers too (phase 16.5); only while snapping is on. */
   beatSnap: boolean;
   /** Selected clips on video and audio tracks (lyric lines keep their own selection). */
@@ -26,7 +28,9 @@ type TimelineUi = {
   view: { t0: number; t1: number } | null;
 };
 
-export const useTimelineUi = create<TimelineUi>(() => ({ tool: "select", snapping: true, beatSnap: true, selected: [], sourceId: null, guide: null, mode: null, previewEffect: null, selectedTransition: null, view: null }));
+export const useTimelineUi = create<TimelineUi>(() => ({ tool: "select", snapping: true, linked: true, beatSnap: true, selected: [], sourceId: null, guide: null, mode: null, previewEffect: null, selectedTransition: null, view: null }));
+// the engine reads linked selection from a flag, so every edit follows the toggle
+useTimelineUi.subscribe((s) => setLinkedEditing(s.linked));
 
 export const TOOL_KEYS: Record<string, Tool> = { KeyA: "select", KeyT: "trim", KeyB: "blade", KeyH: "hand", KeyZ: "zoom" };
 
