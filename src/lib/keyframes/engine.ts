@@ -15,7 +15,9 @@ import type { Easing } from "../../store/project";
  * `t` is seconds from the clip's start, so moving the clip moves its keys. Lanes are kept sorted by time.
  */
 
-export type KeyValue = number | string | { x: number; y: number };
+/** A mask or shape outline: points as 0..1 of the frame. Keys of a path blend point by point (phase 22). */
+export type PathValue = [number, number][];
+export type KeyValue = number | string | { x: number; y: number } | PathValue;
 export type KeyMode = "hold" | "linear" | "ease" | "bezier";
 export type EaseName = Easing | "bounce";
 export type Key = {
@@ -27,7 +29,7 @@ export type Key = {
   out?: [number, number];
   in?: [number, number];
 };
-export type ValueKind = "number" | "angle" | "color" | "point";
+export type ValueKind = "number" | "angle" | "color" | "point" | "path";
 
 export const EASE_NAMES: EaseName[] = ["linear", "ease-in", "ease-out", "ease-in-out", "back", "elastic", "bounce"];
 
@@ -83,7 +85,7 @@ export function shape(a: Key, b: Key | undefined, f: number): number {
 
 /* ---------- values ---------- */
 
-export const kindOfValue = (v: KeyValue | undefined, hint?: ValueKind): ValueKind => hint ?? (typeof v === "string" ? "color" : typeof v === "object" && v ? "point" : "number");
+export const kindOfValue = (v: KeyValue | undefined, hint?: ValueKind): ValueKind => hint ?? (typeof v === "string" ? "color" : Array.isArray(v) ? "path" : typeof v === "object" && v ? "point" : "number");
 
 const hex = (s: string) => {
   const h = s.replace("#", "");
@@ -102,7 +104,13 @@ export function mix(a: KeyValue, b: KeyValue, p: number, kind: ValueKind): KeyVa
     const cb = hex(b).map(toLin);
     return toHex(ca.map((x, i) => fromLin(x + (cb[i] - x) * p)));
   }
-  if (kind === "point" && typeof a === "object" && typeof b === "object" && a && b) return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p };
+  if (kind === "path") {
+    // point by point; two outlines with a different number of points cannot blend, so the first one holds until the next key
+    if (!Array.isArray(a) || !Array.isArray(b)) return Array.isArray(a) ? a : Array.isArray(b) ? b : [];
+    if (a.length !== b.length) return a;
+    return a.map((q, i) => [q[0] + (b[i][0] - q[0]) * p, q[1] + (b[i][1] - q[1]) * p] as [number, number]);
+  }
+  if (kind === "point" && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b) && a && b) return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p };
   const na = typeof a === "number" ? a : 0;
   const nb = typeof b === "number" ? b : 0;
   if (kind === "angle") {

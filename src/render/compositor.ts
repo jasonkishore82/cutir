@@ -4,10 +4,11 @@ import { IDENTITY_TRANSFORM, type BlendMode, type Clip, type ClipEffect, type Cl
 import { applyStack, getTransition, poolFor, transitionAt, type Layer, type LayerPool } from "../lib/effects";
 import { evalNumber, type Key } from "../lib/keyframes/engine";
 import { drawGenerator } from "../lib/generators";
-import { evaluateGraph, type GraphNode } from "../lib/graph/graph";
+import { DEFAULT_TEXT, DEFAULT_TRANSFORM, evaluateGraph, type GraphNode } from "../lib/graph/graph";
+import { titleOf } from "../lib/titles";
 import { blendFrames, sourceAtRel, speedOf } from "../lib/retime";
 import { videoAt } from "../lib/multicam";
-import { stabiliseOffset, stabiliseZoom, trackerOffset } from "../lib/track/tracker";
+import { hasMotion, rotationZoom, stabiliseOffset, stabiliseRotation, stabiliseZoom, trackerAt, trackerMotion, trackerOffset } from "../lib/track/tracker";
 import type { Project } from "../store/project";
 import type { FrameProvider, Picture } from "./sources";
 
@@ -38,7 +39,7 @@ export const BLEND_OP: Record<BlendMode, GlobalCompositeOperation> = {
 };
 
 /** A clip's placement; with a time, its animated placement at t (timeline seconds) from its keyframe lanes. */
-export function transformOf(c: Clip, t?: number, tl?: Timeline): ClipTransform {
+export function transformOf(c: Clip, t?: number, tl?: Timeline, aspect = 16 / 9): ClipTransform {
   const tf: ClipTransform = { ...IDENTITY_TRANSFORM, ...(c.transform ?? {}) };
   if (t === undefined) return tf;
   const rel = t - c.start;
@@ -55,9 +56,25 @@ export function transformOf(c: Clip, t?: number, tl?: Timeline): ClipTransform {
       const other = tl.clips.find((x) => x.id === c.follow!.clipId);
       const tr = other?.trackers?.find((x) => x.id === c.follow!.trackerId);
       if (other && tr) {
-        const o = trackerOffset(tr, t - other.start);
-        tf.x += o.x;
-        tf.y += o.y;
+        const rel0 = t - other.start;
+        const o = trackerOffset(tr, rel0);
+        const m = hasMotion(tr) && (c.follow.rotate || c.follow.scale) ? trackerMotion(tr, rel0) : null;
+        if (m) {
+          // turning and growing with the surface: the clip's offset from the tracked point turns and grows too (in pixels, then back to frame fractions)
+          const p0 = trackerAt(tr, tr.t0);
+          const rot = c.follow.rotate ? (m.rot * Math.PI) / 180 : 0;
+          const s = c.follow.scale ? m.scale : 1;
+          const vx = (tf.x - p0.x) * aspect, vy = tf.y - p0.y;
+          const cs = Math.cos(rot) * s, sn = Math.sin(rot) * s;
+          const p = trackerAt(tr, rel0);
+          tf.x = p.x + (cs * vx - sn * vy) / aspect;
+          tf.y = p.y + (sn * vx + cs * vy);
+          if (c.follow.rotate) tf.rotation += m.rot;
+          tf.scale *= s;
+        } else {
+          tf.x += o.x;
+          tf.y += o.y;
+        }
       }
     }
     // steadied from its own tracker: shift against the shake and zoom to hide the borders
@@ -68,6 +85,11 @@ export function transformOf(c: Clip, t?: number, tl?: Timeline): ClipTransform {
         tf.x += o.x;
         tf.y += o.y;
         tf.scale *= stabiliseZoom(tr, c.stabilize.smoothing, c.stabilize.zoom);
+        if (c.stabilize.rotation && hasMotion(tr)) {
+          // also steady the turning: counter-turn the picture and zoom enough to hide the corners that uncovers
+          tf.rotation += stabiliseRotation(tr, rel, c.stabilize.smoothing);
+          tf.scale *= rotationZoom(tr, c.stabilize.smoothing, aspect);
+        }
       }
     }
   }
@@ -206,6 +228,38 @@ function runGraph(src: Layer, c: Clip, rel: number, w: number, h: number, pool: 
       drawGenerator(l.ctx, n.generator, rel, c.duration, w, h);
       return l;
     },
+    // transform node: move, scale, turn and fade the picture about the centre of the frame
+    transform: (n: GraphNode, s: Layer) => {
+      const t = { ...DEFAULT_TRANSFORM, ...(n.transform ?? {}) };
+      const l = pool.take();
+      l.ctx.save();
+      l.ctx.globalAlpha = Math.max(0, Math.min(1, t.opacity));
+      l.ctx.translate(w / 2 + t.x * w, h / 2 + t.y * h);
+      l.ctx.rotate((t.rotation * Math.PI) / 180);
+      l.ctx.scale(t.scale, t.scale);
+      l.ctx.translate(-w / 2, -h / 2);
+      l.ctx.drawImage(s.canvas, 0, 0);
+      l.ctx.restore();
+      return l;
+    },
+    // mask node: a connected matte cuts the picture by its alpha, else the node's own mask shape does
+    mask: (n: GraphNode, s: Layer, matte: Layer | null) => {
+      if (matte) {
+        const l = pool.take();
+        l.ctx.drawImage(s.canvas, 0, 0);
+        l.ctx.globalCompositeOperation = "destination-in";
+        l.ctx.drawImage(matte.canvas, 0, 0);
+        l.ctx.globalCompositeOperation = "source-over";
+        return l;
+      }
+      return applyStack(s, [{ id: n.id, type: "mask", enabled: true, params: n.mask?.params ?? {}, ...(n.mask?.keys ? { keys: n.mask.keys } : {}) }], rel, c.duration, pool, track);
+    },
+    text: (n: GraphNode) => {
+      const t = { ...DEFAULT_TEXT, ...(n.text ?? {}) };
+      const l = pool.take();
+      drawGenerator(l.ctx, { type: "title", title: titleOf({ text: t.text, color: t.color, size: t.size, x: t.x, y: t.y, ...(t.font ? { font: t.font } : {}) }) }, rel, c.duration, w, h);
+      return l;
+    },
   });
   return out ?? pool.take(); // a disconnected output shows nothing
 }
@@ -213,7 +267,7 @@ function runGraph(src: Layer, c: Clip, rel: number, w: number, h: number, pool: 
 /** A clip drawn into a frame-sized layer (with its placement and opacity) and run through its node graph or effect stack. */
 function clipLayer(v: Visual, pic: Picture, t: number, w: number, h: number, pool: LayerPool, tl: Timeline, preview?: PreviewEffect) {
   const layer = pool.take();
-  drawPicture(layer.ctx as CanvasRenderingContext2D, pic, { ...transformOf(v.clip, t, tl), blend: "normal" }, w, h);
+  drawPicture(layer.ctx as CanvasRenderingContext2D, pic, { ...transformOf(v.clip, t, tl, w / h), blend: "normal" }, w, h);
   const rel = t - v.clip.start;
   const track = trackerShift(v.clip, rel);
   if (v.clip.graph) return runGraph(layer, v.clip, rel, w, h, pool, track);

@@ -101,7 +101,7 @@ export function keyedValue(keys: ParamKey[] | undefined, t: number, fallback: nu
 }
 
 /** The kind of a param's value, for interpolation. */
-export const paramKind = (spec: ParamSpec | undefined): ValueKind => (spec?.type === "color" ? "color" : spec?.type === "point" ? "point" : spec?.type === "angle" ? "angle" : "number");
+export const paramKind = (spec: ParamSpec | undefined): ValueKind => (spec?.type === "path" ? "path" : spec?.type === "color" ? "color" : spec?.type === "point" ? "point" : spec?.type === "angle" ? "angle" : "number");
 
 /** All params of an effect at time t (keyframed ones evaluated, whatever their kind). */
 export function paramsAt(fx: ClipEffect, t: number): Params {

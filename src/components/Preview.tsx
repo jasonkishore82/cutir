@@ -4,6 +4,7 @@ import { scopeSource } from "../lib/scopes";
 import { Icon } from "./ui";
 import TextOverlay from "./TextOverlay";
 import ClipGizmo from "./ClipGizmo";
+import MaskOverlay from "./MaskOverlay";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "../store/project";
 import { ensureFont } from "../lib/fonts";
@@ -431,6 +432,7 @@ export default function Preview() {
           />
           <StillCompare />
           <TrackPointOverlay />
+          <MaskOverlay />
           {box.w > 0 && <TextOverlay w={box.w} h={box.h} />}
           {box.w > 0 && <ClipGizmo w={box.w} h={box.h} />}
           {showStats && (
@@ -535,7 +537,7 @@ function StillCompare() {
 
 /** The tracking point being placed: click the viewer to move it. */
 function TrackPointOverlay() {
-  const { clipId, x, y, set } = useTrackUi();
+  const { clipId, x, y, w, h, mode, set } = useTrackUi();
   if (!clipId) return null;
   return (
     <div
@@ -545,11 +547,17 @@ function TrackPointOverlay() {
         set({ x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) });
         e.stopPropagation();
       }}
-      aria-label="Click to place the tracking point"
+      aria-label={mode === "planar" ? "Click to place the centre of the tracked surface" : "Click to place the tracking point"}
     >
-      <div className="pointer-events-none absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-yellow-300" style={{ left: `${x * 100}%`, top: `${y * 100}%` }}>
-        <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-yellow-300" />
-      </div>
+      {mode === "planar" ? (
+        <div className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 border-2 border-dashed border-yellow-300" style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: `${w * 100}%`, height: `${h * 100}%` }}>
+          <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-yellow-300" />
+        </div>
+      ) : (
+        <div className="pointer-events-none absolute h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-yellow-300" style={{ left: `${x * 100}%`, top: `${y * 100}%` }}>
+          <div className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-yellow-300" />
+        </div>
+      )}
     </div>
   );
 }

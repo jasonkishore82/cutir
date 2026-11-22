@@ -3,6 +3,7 @@ import { Card, Slider } from "./ui";
 import { useProject } from "../store/project";
 import { activeTimeline } from "../model/convert";
 import type { ClipEffect, ClipTransition, ParamKey } from "../model/types";
+import { evalLane, setKey, removeKeyAt, type Key, type PathValue } from "../lib/keyframes/engine";
 import { getEffect, getTransition, keyedValue, listEffects, listTransitions, type EffectCategory, type ParamSpec, type Params } from "../lib/effects";
 import * as FX from "../timeline/effects";
 import { editTimeline, tlNow, useTimelineUi } from "../timeline/ui";
@@ -11,6 +12,7 @@ import { getTime } from "../lib/transport";
 import CurveParam from "./CurveParam";
 import GradeWheels from "./GradeWheels";
 import PathParam from "./PathParam";
+import { useMaskUi } from "./MaskOverlay";
 import ScopesCard from "./ScopesCard";
 import StillsCard from "./StillsCard";
 import TrackingCard from "./TrackingCard";
@@ -235,6 +237,7 @@ export function EffectCard({ clipId, fx, first, last, clipStart }: { clipId: str
         <button className="flex-1 text-left text-[12px] font-medium text-gray-100" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
           {def.name}
         </button>
+        {fx.type === "mask" && <MaskOnViewer clipId={clipId} fxId={fx.id} />}
         <button className={small} disabled={first} title="Earlier in the stack" onClick={() => editTimeline((t) => FX.moveEffect(t, clipId, fx.id, -1))}>▲</button>
         <button className={small} disabled={last} title="Later in the stack" onClick={() => editTimeline((t) => FX.moveEffect(t, clipId, fx.id, 1))}>▼</button>
         <button className={small} title="Reset to defaults" onClick={() => editTimeline((t) => FX.resetEffect(t, clipId, fx.id))}>↺</button>
@@ -255,6 +258,17 @@ export function EffectCard({ clipId, fx, first, last, clipStart }: { clipId: str
           />
         ))}
     </div>
+  );
+}
+
+/** Switch for editing a mask on the viewer instead of the small preview. */
+function MaskOnViewer({ clipId, fxId }: { clipId: string; fxId: string }) {
+  const { clipId: c, fxId: f, set } = useMaskUi();
+  const on = c === clipId && f === fxId;
+  return (
+    <button className={`rounded px-1.5 text-[11px] ${on ? "bg-accent/25 text-accent" : "text-gray-400 hover:bg-white/10 hover:text-gray-100"}`} aria-pressed={on} title="Draw and edit this mask on the viewer" onClick={() => (on ? set(null, null) : set(clipId, fxId))}>
+      On viewer
+    </button>
   );
 }
 
@@ -351,7 +365,27 @@ export function ParamField({ spec, value, keys, now, onChange, onKeys, all }: { 
     case "path": {
       const shape = String(all?.shape ?? "");
       if (all && shape !== "polygon" && shape !== "bezier") return null; // rectangle and ellipse use the centre and size instead
-      return <PathParam label={spec.label} value={(Array.isArray(value) ? value : spec.default) as [number, number][]} smooth={shape === "bezier"} onChange={onChange} />;
+      const base = (Array.isArray(value) ? value : spec.default) as PathValue;
+      const shownPath = keys?.length ? (evalLane(keys as Key[], now, base, "path") as PathValue) : base;
+      const t = Math.max(0, Math.round(now * 100) / 100);
+      const edit = (v: PathValue) => (keys?.length ? onKeys(setKey(keys as Key[], t, v, { mode: "ease", easing: "ease-in-out" }) as ParamKey[]) : onChange(v));
+      return (
+        <div className="space-y-1">
+          <PathParam label={spec.label} value={shownPath} smooth={shape === "bezier"} onChange={(v) => edit(v)} />
+          <div className="flex flex-wrap items-center gap-1 text-[11px]">
+            <button className="rounded border border-edge px-1.5 py-0.5 text-gray-300 hover:bg-white/10" title="Add a key of the whole shape at the playhead: the points move between keys" onClick={() => onKeys(setKey(keys as Key[] | undefined, t, shownPath, { mode: "ease", easing: "ease-in-out" }) as ParamKey[])}>
+              ◆ Key the shape here
+            </button>
+            {!!keys?.length && (
+              <>
+                <span className="text-gray-500">{keys.length} key{keys.length === 1 ? "" : "s"}; editing now writes a key at the playhead.</span>
+                <button className="rounded border border-edge px-1.5 py-0.5 text-gray-300 hover:bg-white/10" onClick={() => onKeys(removeKeyAt(keys as Key[], t) as ParamKey[])}>Remove key here</button>
+                <button className="text-gray-500 hover:text-red-400" onClick={() => onKeys([])}>clear</button>
+              </>
+            )}
+          </div>
+        </div>
+      );
     }
     case "lut":
       return <LutParam label={spec.label} value={value as { name?: string } | null} onChange={onChange} />;

@@ -4,7 +4,7 @@ import { useProject } from "../store/project";
 import { activeTimeline } from "../model/convert";
 import { editTimeline, useTimelineUi } from "../timeline/ui";
 import { getEffect, listEffects } from "../lib/effects";
-import { INPUT_COUNT, addNode, connect, disconnect, graphToStack, isLinear, removeNode, stackToGraph, validateGraph, type Graph, type GraphNode } from "../lib/graph/graph";
+import { DEFAULT_TEXT, DEFAULT_TRANSFORM, INPUT_COUNT, addNode, connect, disconnect, graphToStack, groupNodes, isLinear, removeNode, stackToGraph, ungroup, validateGraph, type Graph, type GraphNode } from "../lib/graph/graph";
 import type { BlendMode, Clip } from "../model/types";
 import { ParamField } from "./EffectsPanel";
 
@@ -12,7 +12,7 @@ const btn = "rounded-md border border-edge px-2 py-0.5 text-[11px] text-gray-300
 const NW = 112;
 const NH = 40;
 const MODES: BlendMode[] = ["normal", "add", "multiply", "screen", "overlay", "softlight", "hardlight", "darken", "lighten", "dodge", "burn", "difference", "exclusion"];
-const COLORS: Record<GraphNode["type"], string> = { input: "#22c55e", effect: "#60a5fa", merge: "#f59e0b", generator: "#c084fc", output: "#f43f5e" };
+const COLORS: Record<GraphNode["type"], string> = { input: "#22c55e", effect: "#60a5fa", merge: "#f59e0b", generator: "#c084fc", output: "#f43f5e", transform: "#2dd4bf", mask: "#fb923c", text: "#e879f9", group: "#a3a3a3" };
 
 /** The selected clip's node graph (phase 22): the effect stack as a graph, with merges and generators that a stack cannot hold. */
 export default function GraphCard() {
@@ -28,6 +28,9 @@ export default function GraphCard() {
 function Editor({ clip }: { clip: Clip }) {
   const g = clip.graph;
   const [sel, setSel] = useState<string | null>(null);
+  /** Other nodes picked with Shift, to be grouped with the selected one. */
+  const [more, setMore] = useState<string[]>([]);
+  const [note, setNote] = useState("");
   const [wire, setWire] = useState<string | null>(null);
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const drag = useRef<{ kind: "node"; id: string; dx: number; dy: number } | { kind: "pan"; x: number; y: number } | null>(null);
@@ -71,6 +74,9 @@ function Editor({ clip }: { clip: Clip }) {
         </select>
         <button className={btn} onClick={() => setGraph(addNode(g, { type: "merge", name: "Merge", merge: { mode: "normal", opacity: 1 } }))}>+ Merge</button>
         <button className={btn} onClick={() => setGraph(addNode(g, { type: "generator", name: "Solid", generator: { type: "solid", color: "#ff3366" } }))}>+ Solid</button>
+        <button className={btn} onClick={() => setGraph(addNode(g, { type: "transform", name: "Transform", transform: { ...DEFAULT_TRANSFORM } }))}>+ Transform</button>
+        <button className={btn} onClick={() => setGraph(addNode(g, { type: "mask", name: "Mask", mask: { params: { shape: "ellipse" } } }))}>+ Mask</button>
+        <button className={btn} onClick={() => setGraph(addNode(g, { type: "text", name: "Text", text: { ...DEFAULT_TEXT } }))}>+ Text</button>
         <button className={btn} onClick={() => setView({ x: 0, y: 0, k: 1 })}>Reset view</button>
         <button className={btn} disabled={!linear} title={linear ? "Back to the plain effect stack" : "Only a single chain from input to output fits a stack"} onClick={back}>Back to stack</button>
       </div>
@@ -117,11 +123,12 @@ function Editor({ clip }: { clip: Clip }) {
                 height={NH}
                 rx={6}
                 fill="#14141c"
-                stroke={sel === n.id ? "#facc15" : g.preview === n.id ? "#38bdf8" : COLORS[n.type]}
+                stroke={sel === n.id || more.includes(n.id) ? "#facc15" : g.preview === n.id ? "#38bdf8" : COLORS[n.type]}
                 strokeWidth={sel === n.id || g.preview === n.id ? 2.2 : 1.4}
                 onPointerDown={(e) => {
                   e.stopPropagation();
-                  setSel(n.id);
+                  if (e.shiftKey && sel && sel !== n.id) setMore((m) => (m.includes(n.id) ? m.filter((x) => x !== n.id) : [...m, n.id]));
+                  else (setSel(n.id), setMore([]));
                   const p = at(e);
                   drag.current = { kind: "node", id: n.id, dx: p.x - n.x, dy: p.y - n.y };
                   (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -150,6 +157,7 @@ function Editor({ clip }: { clip: Clip }) {
           <rect x={0} y={0} width={maxX} height={maxY} fill="none" pointerEvents="none" />
         </g>
       </svg>
+      {note && <p className="text-[11px] text-yellow-300" role="status">{note}</p>}
       {wire && <p className="text-[11px] text-yellow-300" role="status">Click an input dot to connect {byId.get(wire)?.name ?? wire}.</p>}
       {errs.map((e) => <p key={e} className="text-[11px] text-red-300" role="alert">{e}</p>)}
       {node && (
@@ -159,6 +167,17 @@ function Editor({ clip }: { clip: Clip }) {
             {node.type !== "input" && node.type !== "output" && <button className={btn} aria-pressed={!!node.bypass} onClick={() => patchNode(node.id, { bypass: !node.bypass || undefined })}>{node.bypass ? "Enable" : "Bypass"}</button>}
             <button className={btn} aria-pressed={g.preview === node.id} onClick={() => setGraph({ ...g, preview: g.preview === node.id ? null : node.id })}>{g.preview === node.id ? "Stop preview" : "Preview here"}</button>
             {node.type !== "input" && node.type !== "output" && <button className={btn} onClick={() => (setSel(null), setGraph(removeNode(g, node.id)))}>Delete</button>}
+            {node.type !== "input" && node.type !== "output" && node.type !== "group" && (
+              <button className={btn} title="Shift-click other nodes first to group several" onClick={() => {
+                const r = groupNodes(g, [node.id, ...more]);
+                if ("error" in r) return setNote(r.error);
+                setNote("");
+                setMore([]);
+                setSel(null);
+                setGraph(r.graph);
+              }}>Group{more.length ? ` ${more.length + 1} nodes` : ""}</button>
+            )}
+            {node.type === "group" && <button className={btn} onClick={() => (setSel(null), setGraph(ungroup(g, node.id)))}>Ungroup</button>}
           </div>
           {node.type === "merge" && node.merge && (
             <div className="grid grid-cols-2 gap-2">
@@ -178,6 +197,44 @@ function Editor({ clip }: { clip: Clip }) {
               <input type="color" value={node.generator.color} onChange={(e) => patchNode(node.id, { generator: { type: "solid", color: e.target.value } }, `gc:${node.id}`)} />
             </label>
           )}
+          {node.type === "transform" && node.transform && (
+            <div className="grid grid-cols-2 gap-2">
+              {([["x", "Move across", -100, 100, 100], ["y", "Move down", -100, 100, 100], ["scale", "Scale", 5, 400, 100], ["rotation", "Turn", -360, 360, 1], ["opacity", "Opacity", 0, 100, 100]] as const).map(([k, label, lo, hi, f]) => (
+                <label key={k} className="block text-[11px] text-gray-400">{label} {Math.round(node.transform![k] * f)}{k === "rotation" ? "°" : "%"}
+                  <input type="range" min={lo} max={hi} value={Math.round(node.transform![k] * f)} onChange={(e) => patchNode(node.id, { transform: { ...node.transform!, [k]: Number(e.target.value) / f } }, `gt:${node.id}:${k}`)} className="w-full" />
+                </label>
+              ))}
+            </div>
+          )}
+          {node.type === "text" && node.text && (
+            <div className="space-y-1">
+              <textarea className="field" rows={2} value={node.text.text} aria-label="Text" onChange={(e) => patchNode(node.id, { text: { ...node.text!, text: e.target.value } }, `gtx:${node.id}`)} />
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center justify-between text-[12px] text-gray-300">Colour <input type="color" value={node.text.color} onChange={(e) => patchNode(node.id, { text: { ...node.text!, color: e.target.value } }, `gtc:${node.id}`)} /></label>
+                <label className="block text-[11px] text-gray-400">Size {Math.round(node.text.size * 100)}%<input type="range" min={2} max={40} value={Math.round(node.text.size * 100)} onChange={(e) => patchNode(node.id, { text: { ...node.text!, size: Number(e.target.value) / 100 } }, `gts:${node.id}`)} className="w-full" /></label>
+                <label className="block text-[11px] text-gray-400">Across {Math.round(node.text.x * 100)}%<input type="range" min={0} max={100} value={Math.round(node.text.x * 100)} onChange={(e) => patchNode(node.id, { text: { ...node.text!, x: Number(e.target.value) / 100 } }, `gtxx:${node.id}`)} className="w-full" /></label>
+                <label className="block text-[11px] text-gray-400">Down {Math.round(node.text.y * 100)}%<input type="range" min={0} max={100} value={Math.round(node.text.y * 100)} onChange={(e) => patchNode(node.id, { text: { ...node.text!, y: Number(e.target.value) / 100 } }, `gtxy:${node.id}`)} className="w-full" /></label>
+              </div>
+            </div>
+          )}
+          {node.type === "mask" && node.mask && (
+            <>
+              <p className="text-[10px] text-gray-500">Connect a picture to the second input to use its alpha as the matte; otherwise the shape below cuts the picture.</p>
+              {getEffect("mask")?.params.map((spec) => (
+                <ParamField
+                  key={spec.key}
+                  spec={spec}
+                  all={node.mask!.params}
+                  value={node.mask!.params[spec.key]}
+                  keys={node.mask!.keys?.[spec.key]}
+                  now={0}
+                  onChange={(v) => patchNode(node.id, { mask: { ...node.mask!, params: { ...node.mask!.params, [spec.key]: v } } }, `gm:${node.id}:${spec.key}`)}
+                  onKeys={(keys) => patchNode(node.id, { mask: { ...node.mask!, keys: { ...(node.mask!.keys ?? {}), [spec.key]: keys } } })}
+                />
+              ))}
+            </>
+          )}
+          {node.type === "group" && node.group && <p className="text-[11px] text-gray-400">{node.group.nodes.length - 2} nodes inside. Ungroup to edit them.</p>}
           {node.type === "effect" && node.effect && getEffect(node.effect.type)?.params.map((spec) => (
             <ParamField
               key={spec.key}

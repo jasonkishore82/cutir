@@ -246,7 +246,7 @@ export type TextPayload = {
  */
 export type ParamKey = {
   t: number;
-  v: number | string | { x: number; y: number };
+  v: number | string | { x: number; y: number } | [number, number][];
   mode?: "hold" | "linear" | "ease" | "bezier";
   easing?: Easing | "bounce";
   out?: [number, number];
@@ -319,9 +319,9 @@ export type Clip = {
   /** Points followed through this clip's picture, by the tracker. */
   trackers?: Tracker[];
   /** Pin this clip's position to a tracker of another clip (a title on a moving object). */
-  follow?: { clipId: string; trackerId: string };
+  follow?: { clipId: string; trackerId: string; /** Turn with the tracked surface (planar trackers). */ rotate?: boolean; /** Grow and shrink with it. */ scale?: boolean };
   /** Steady this clip's picture from one of its own trackers. */
-  stabilize?: { trackerId: string; smoothing: number; zoom: number };
+  stabilize?: { trackerId: string; smoothing: number; zoom: number; /** Also remove the turning of the camera (planar trackers). */ rotation?: boolean };
   /** Retiming (phase 23). `speed` is the constant speed; a ramp replaces it with a curve. `reverse` plays video backwards too. */
   ramp?: Ramp;
   /** Keep the pitch when the speed changes (default on). */

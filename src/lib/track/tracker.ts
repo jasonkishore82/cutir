@@ -5,8 +5,8 @@
  */
 
 export type Gray = { w: number; h: number; data: Uint8Array };
-export type TrackSample = { /** Seconds from the start of the clip. */ t: number; /** Position as 0..1 of the frame. */ x: number; y: number; /** Match quality 0..1 (1 = identical patch). */ c: number };
-export type Tracker = { id: string; name: string; /** Where the point started, 0..1 of the frame, and when (clip seconds). */ x: number; y: number; t0: number; samples: TrackSample[]; radius?: number };
+export type TrackSample = { /** Seconds from the start of the clip. */ t: number; /** Position as 0..1 of the frame. */ x: number; y: number; /** Match quality 0..1 (1 = identical patch). */ c: number; /** Planar trackers: degrees clockwise since the start, and size relative to the start. */ rot?: number; scale?: number };
+export type Tracker = { id: string; name: string; /** Where the point started, 0..1 of the frame, and when (clip seconds). */ x: number; y: number; t0: number; samples: TrackSample[]; radius?: number; /** A planar tracker follows a region (0..1 of the frame) and also gives rotation and scale. Missing = a point tracker. */ kind?: "point" | "planar"; region?: { x: number; y: number; w: number; h: number } };
 
 /** RGBA bytes to gray (Rec. 709 luma). */
 export function toGray(rgba: Uint8ClampedArray | Uint8Array, w: number, h: number): Gray {
@@ -59,7 +59,7 @@ export function matchPatch(tpl: Uint8Array, r: number, frame: Gray, cx: number, 
   return { x: cx + bx + fx, y: cy + by + fy, c: Math.max(0, 1 - best / (n * n * 128)) };
 }
 
-export type TrackOptions = { /** Patch half-size in pixels. */ radius?: number; /** Search half-size in pixels. */ search?: number; /** Stop when the match falls under this quality. */ minConfidence?: number; /** How much of the first patch is kept in the template (0..1) to stop drift. */ anchor?: number };
+export type TrackOptions = { /** Judge a match against the patch's own contrast, so a flat frame is a lost point rather than a poor match (planar tracking uses it). */ normalised?: boolean; /** Patch half-size in pixels. */ radius?: number; /** Search half-size in pixels. */ search?: number; /** Stop when the match falls under this quality. */ minConfidence?: number; /** How much of the first patch is kept in the template (0..1) to stop drift. */ anchor?: number };
 
 /**
  * A tracker that is fed frames in order. Call `start` with the first frame, then `next` with each following frame;
@@ -72,19 +72,24 @@ export class PointTracker {
   private search: number;
   private anchor: number;
   private minC: number;
+  private spread: number | null;
   pos: { x: number; y: number };
   constructor(first: Gray, x: number, y: number, o: TrackOptions = {}) {
     this.r = o.radius ?? 10;
     this.search = o.search ?? Math.max(8, Math.round(first.w * 0.04));
     this.anchor = o.anchor ?? 0.5;
-    this.minC = o.minConfidence ?? 0.45;
+    this.minC = o.minConfidence ?? (o.normalised ? 0.35 : 0.45);
     this.pos = { x, y };
     this.first = patchAt(first, Math.round(x), Math.round(y), this.r);
     this.tpl = this.first;
+    // mean distance of the patch from its own average: how much there is to match against
+    const mean = this.first.reduce((s, v) => s + v, 0) / this.first.length;
+    this.spread = o.normalised ? Math.max(6, this.first.reduce((s, v) => s + Math.abs(v - mean), 0) / this.first.length) : null;
   }
   /** Follow the point into the next frame. */
   next(frame: Gray): { x: number; y: number; c: number } | null {
     const m = matchPatch(this.tpl, this.r, frame, Math.round(this.pos.x), Math.round(this.pos.y), this.search);
+    if (this.spread !== null) m.c = Math.max(0, 1 - ((1 - m.c) * 128) / this.spread);
     if (m.c < this.minC) return null;
     this.pos = { x: m.x, y: m.y };
     // the template follows the picture (so lighting and rotation changes are tolerated) but is pulled back toward the first patch
@@ -171,4 +176,77 @@ export function stabiliseZoom(tr: Tracker, smoothing: number, extraPercent = 0):
     worst = Math.max(worst, Math.abs(o.x), Math.abs(o.y));
   }
   return 1 + worst * 2 + extraPercent / 100;
+}
+
+/* ---------- rotation and scale (planar trackers) ---------- */
+
+/** Linear read of a numeric field of the samples at t (held outside); 0 when no sample has it. */
+function fieldAt(s: TrackSample[], t: number, pick: (x: TrackSample) => number | undefined, fallback: number): number {
+  const has = s.filter((x) => pick(x) !== undefined);
+  if (!has.length) return fallback;
+  if (t <= has[0].t) return pick(has[0])!;
+  if (t >= has[has.length - 1].t) return pick(has[has.length - 1])!;
+  let lo = 0;
+  let hi = has.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (has[mid].t <= t) lo = mid;
+    else hi = mid;
+  }
+  const k = (t - has[lo].t) / (has[hi].t - has[lo].t || 1);
+  return pick(has[lo])! + (pick(has[hi])! - pick(has[lo])!) * k;
+}
+
+/** Whether a tracker knows how the surface turned and grew (a planar tracker), not just where it went. */
+export const hasMotion = (tr: Tracker) => tr.samples.some((s) => s.rot !== undefined);
+
+/** Rotation (degrees clockwise) and scale of the tracked surface at clip time t, relative to the tracker's start time. */
+export function trackerMotion(tr: Tracker, t: number): { rot: number; scale: number } {
+  const rot = (x: number) => fieldAt(tr.samples, x, (s) => s.rot, 0);
+  const sc = (x: number) => fieldAt(tr.samples, x, (s) => s.scale, 1);
+  return { rot: rot(t) - rot(tr.t0), scale: sc(t) / (sc(tr.t0) || 1) };
+}
+
+/** A smoothed copy of one field of the samples (centred moving average, like smoothPath). */
+function smoothField(samples: TrackSample[], seconds: number, pick: (s: TrackSample) => number): { t: number; v: number }[] {
+  const out: { t: number; v: number }[] = [];
+  let lo = 0;
+  let hi = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const t = samples[i].t;
+    if (seconds > 0) {
+      while (samples[lo].t < t - seconds / 2) lo++;
+      while (hi < samples.length - 1 && samples[hi + 1].t <= t + seconds / 2) hi++;
+    } else lo = hi = i;
+    let sum = 0;
+    for (let k = lo; k <= hi; k++) sum += pick(samples[k]);
+    out.push({ t, v: sum / (hi - lo + 1) });
+  }
+  return out;
+}
+
+/** The turn that steadies a clip at t: the smoothed rotation minus the real one, in degrees. 0 for a point tracker. */
+export function stabiliseRotation(tr: Tracker, t: number, smoothing: number): number {
+  if (!hasMotion(tr) || tr.samples.length < 2) return 0;
+  const sm = smoothField(tr.samples, smoothing, (s) => s.rot ?? 0);
+  const k = fieldAt(tr.samples, t, (s) => s.rot, 0);
+  let lo = 0;
+  let hi = sm.length - 1;
+  if (t <= sm[0].t) return sm[0].v - k;
+  if (t >= sm[hi].t) return sm[hi].v - k;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (sm[mid].t <= t) lo = mid;
+    else hi = mid;
+  }
+  const f = (t - sm[lo].t) / (sm[hi].t - sm[lo].t || 1);
+  return sm[lo].v + (sm[hi].v - sm[lo].v) * f - k;
+}
+
+/** Extra zoom that hides the corners a turned frame uncovers: the worst correction over the clip, for a frame of this aspect (width / height). */
+export function rotationZoom(tr: Tracker, smoothing: number, aspect = 16 / 9): number {
+  let worst = 0;
+  for (const s of tr.samples) worst = Math.max(worst, Math.abs(stabiliseRotation(tr, s.t, smoothing)));
+  const a = (Math.min(worst, 45) * Math.PI) / 180;
+  return Math.cos(a) + Math.sin(a) * Math.max(aspect, 1 / aspect);
 }
