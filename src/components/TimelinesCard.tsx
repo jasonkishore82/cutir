@@ -127,7 +127,7 @@ export default function TimelinesCard() {
         {(doc.subclips ?? []).map((s) => (
           <div key={s.id} className="flex items-center gap-1 text-[11px] text-gray-300">
             <span className="flex-1 truncate" title={`${s.in.toFixed(2)} to ${s.out.toFixed(2)} s`}>{s.name}</span>
-            <button className={btn} onClick={() => { const src = E.subclipSource(doc, s); const t = tlNow(); const tr = { video: targetOf("video", t), audio: targetOf("audio", t) }; if (src) editTimeline((x) => overwriteEdit(x, src, getTime(), tr).tl); }}>Place</button>
+            <button className={btn} onClick={() => placeSubclip(doc, s)}>Place</button>
             <button className={btn} aria-label={`Delete ${s.name}`} onClick={() => editDoc((d) => E.removeSubclip(d, s.id))}>×</button>
           </div>
         ))}
@@ -135,6 +135,15 @@ export default function TimelinesCard() {
       {msg && <p className="text-[11px] text-gray-400" role="status">{msg}</p>}
     </Card>
   );
+}
+
+/** Place a subclip at the playhead with the normal overwrite edit (the Timelines card and the media pool both use it). */
+export function placeSubclip(doc: ReturnType<typeof useProject.getState>["doc"], s: Parameters<typeof E.subclipSource>[1]) {
+  const src = E.subclipSource(doc, s);
+  if (!src) return;
+  const t = tlNow();
+  const tr = { video: targetOf("video", t), audio: targetOf("audio", t) };
+  editTimeline((x) => overwriteEdit(x, src, getTime(), tr).tl);
 }
 
 const targetOf = (kind: "video" | "audio", t: ReturnType<typeof tlNow>) => (targetTrack(t, kind) ?? t.tracks.find((x) => x.kind === kind))?.id;

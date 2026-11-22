@@ -7,6 +7,7 @@ import { drawGenerator } from "../lib/generators";
 import { DEFAULT_TEXT, DEFAULT_TRANSFORM, evaluateGraph, type GraphNode } from "../lib/graph/graph";
 import { titleOf } from "../lib/titles";
 import { blendFrames, sourceAtRel, speedOf } from "../lib/retime";
+import { estimateFlow, flowActivity, flowDraws, type FlowField } from "../lib/flow";
 import { videoAt } from "../lib/multicam";
 import { hasMotion, rotationZoom, stabiliseOffset, stabiliseRotation, stabiliseZoom, trackerAt, trackerMotion, trackerOffset } from "../lib/track/tracker";
 import type { Project } from "../store/project";
@@ -131,7 +132,7 @@ function visualOf(c: Clip | undefined, doc: ProjectDoc, t: number): Visual | und
   const st = inside(sourceAtRel(c, rel), m.duration);
   const out: Visual = { clip: c, kind: m.kind, st };
   // slow motion between frames: mix the two source frames around the time
-  if (c.interp === "blend" && m.kind === "video" && m.fps && speedOf(c, rel) < 0.999) {
+  if ((c.interp === "blend" || c.interp === "flow") && m.kind === "video" && m.fps && speedOf(c, rel) < 0.999) {
     const b = blendFrames(st, m.fps);
     if (b.w > 0) (out.st = b.a), (out.st2 = inside(b.b, m.duration)), (out.w2 = b.w);
   }
@@ -314,6 +315,44 @@ export function compositeVisuals(ctx: CanvasRenderingContext2D, doc: ProjectDoc,
 const blendCanvases = new Map<string, HTMLCanvasElement | OffscreenCanvas>();
 const NEST_LIMIT = 4;
 
+/** Width the motion is analysed at: small, because the vectors are scaled back up to the picture. */
+const FLOW_W = 256;
+const flowCache = new Map<string, FlowField | null>();
+let grayCanvas: HTMLCanvasElement | OffscreenCanvas | null = null;
+
+/** A picture as a small grey array for motion analysis. */
+function grayOf(pic: Picture, w: number, h: number): Uint8ClampedArray | null {
+  try {
+    grayCanvas ??= typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : document.createElement("canvas");
+    if (grayCanvas.width !== w || grayCanvas.height !== h) (grayCanvas.width = w), (grayCanvas.height = h);
+    const g = grayCanvas.getContext("2d", { willReadFrequently: true }) as CanvasRenderingContext2D;
+    g.drawImage(pic, 0, 0, w, h);
+    const px = g.getImageData(0, 0, w, h).data;
+    const out = new Uint8ClampedArray(w * h);
+    for (let i = 0; i < out.length; i++) out[i] = (px[i * 4] * 77 + px[i * 4 + 1] * 150 + px[i * 4 + 2] * 29) >> 8;
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/** The motion between two source frames, worked out once and kept; null when nothing moves enough to be worth warping. */
+function flowBetween(key: string, a: Picture, b: Picture): FlowField | null {
+  if (flowCache.has(key)) return flowCache.get(key)!;
+  const w = Math.min(FLOW_W, a.width);
+  const h = Math.max(8, Math.round((w * a.height) / a.width));
+  const ga = grayOf(a, w, h);
+  const gb = grayOf(b, w, h);
+  let f: FlowField | null = null;
+  if (ga && gb) {
+    const est = estimateFlow(ga, gb, w, h);
+    f = flowActivity(est) > 0.03 ? est : null;
+  }
+  if (flowCache.size > 24) flowCache.clear();
+  flowCache.set(key, f);
+  return f;
+}
+
 /** Draw any timeline's tracks at t; nested clips draw their own timeline through the same path (up to NEST_LIMIT deep). */
 function compositeTimeline(ctx: CanvasRenderingContext2D, doc: ProjectDoc, tl: Timeline, t: number, w: number, h: number, frames: FrameProvider, preview: PreviewEffect | undefined, depth: number): number {
   let missing = 0;
@@ -348,6 +387,18 @@ function compositeTimeline(ctx: CanvasRenderingContext2D, doc: ProjectDoc, tl: T
         const bctx = cv.getContext("2d") as CanvasRenderingContext2D;
         bctx.globalAlpha = 1;
         bctx.clearRect(0, 0, pic.width, pic.height);
+        if (v.clip.interp === "flow") {
+          const field = flowBetween(`${id}:${v.st}:${v.st2}`, pic, pic2);
+          if (field) {
+            // each block comes from both frames moved along its motion, then the two are mixed
+            const draws = flowDraws(field, v.w2, pic.width, pic.height);
+            for (const d of draws) bctx.drawImage(pic, d.ax, d.ay, d.w, d.h, d.x, d.y, d.w, d.h);
+            bctx.globalAlpha = v.w2;
+            for (const d of draws) bctx.drawImage(pic2, d.bx, d.by, d.w, d.h, d.x, d.y, d.w, d.h);
+            bctx.globalAlpha = 1;
+            return cv as Picture;
+          }
+        }
         bctx.drawImage(pic, 0, 0, pic.width, pic.height);
         bctx.globalAlpha = v.w2;
         bctx.drawImage(pic2, 0, 0, pic.width, pic.height);

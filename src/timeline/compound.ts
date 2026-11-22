@@ -1,6 +1,6 @@
 import { activeTimeline } from "../model/convert";
 import type { Aspect } from "../store/project";
-import type { Clip, ProjectDoc, Subclip, Timeline, Track } from "../model/types";
+import type { Clip, ClipTransform, ProjectDoc, Subclip, Timeline, Track } from "../model/types";
 import { sourceAtRel } from "../lib/retime";
 import { segments, soundSegments } from "../lib/multicam";
 import { trackerAt } from "../lib/track/tracker";
@@ -167,6 +167,20 @@ export function reframeX(px: number, ratio: number): number {
   return 0.5 + Math.max(-reach, Math.min(reach, (0.5 - px) * ratio));
 }
 
+/**
+ * Where a point that a tracker saw at `fx` (a fraction of the original frame) is on the picture itself (a fraction of
+ * the picture's width), allowing for how the clip sat in that frame: its fit, scale and position. Without this the
+ * reframe would assume the picture filled the frame.
+ */
+export function pictureFraction(fx: number, tf: Partial<ClipTransform> | undefined, picAspect: number, frameAspect: number): number {
+  const fit = tf?.fit ?? "contain";
+  const scale = tf?.scale ?? 1;
+  const x = tf?.x ?? 0.5;
+  // width of the drawn picture as a fraction of the frame width
+  const drawn = (fit === "fill" ? 1 : fit === "cover" ? Math.max(1, picAspect / frameAspect) : Math.min(1, picAspect / frameAspect)) * scale;
+  return drawn > 1e-6 ? 0.5 + (fx - x) / drawn : fx;
+}
+
 /** The scale-to-cover ratio of a picture of `pw/ph` in a frame of `fw/fh`: how many frame widths wide the picture is. */
 export const coverRatio = (picAspect: number, frameAspect: number) => Math.max(1, picAspect / frameAspect);
 
@@ -178,17 +192,20 @@ export function reframeTimeline(doc: ProjectDoc, timelineId: string, to: Aspect)
   const tl = doc.timelines.find((t) => t.id === timelineId);
   if (!tl) return null;
   const fa = aspectRatio(to);
+  const from = aspectRatio(tl.aspect ?? doc.settings.aspect);
   const clips = tl.clips.map((c) => {
     const m = doc.media.find((x) => x.id === c.mediaId);
     if (c.fill || !m || (m.kind !== "video" && m.kind !== "image")) return c;
     const pa = m.width && m.height ? m.width / m.height : aspectRatio(doc.settings.aspect);
     const ratio = coverRatio(pa, fa);
     const tr = c.trackers?.[0];
-    const next: Clip = { ...c, transform: { ...(c.transform ?? {}), fit: "cover", scale: 1, x: reframeX(tr ? tr.x : 0.5, ratio) } };
+    // the tracker's point is a place in the original frame; the crop needs it as a place on the picture
+    const onPicture = (fx: number) => pictureFraction(fx, c.transform, pa, from);
+    const next: Clip = { ...c, transform: { ...(c.transform ?? {}), fit: "cover", scale: 1, x: reframeX(tr ? onPicture(tr.x) : 0.5, ratio) } };
     if (tr && tr.samples.length > 1 && ratio > 1) {
       // follow the tracked point, one key every quarter second
       const keys = [];
-      for (let t = 0; t <= c.duration + 1e-6; t += 0.25) keys.push({ t: tidy(Math.min(t, c.duration)), v: tidy(reframeX(trackerAt(tr, t).x, ratio)) });
+      for (let t = 0; t <= c.duration + 1e-6; t += 0.25) keys.push({ t: tidy(Math.min(t, c.duration)), v: tidy(reframeX(onPicture(trackerAt(tr, t).x), ratio)) });
       next.anim = { ...(c.anim ?? {}), x: keys };
     }
     return next;
@@ -325,4 +342,15 @@ export function retimeClips(tl: Timeline, ids: string[], patch: (c: Clip) => Par
     if (merged.duration > c.duration) next = E.clearRange(next, c.trackId, E.clipEnd(c), E.clipEnd(merged), new Set([id]));
   }
   return next;
+}
+
+/** Markers of a nested timeline that fall inside a nested clip's window, as seconds from the clip's start (for drawing on it). */
+export function nestedMarkers(doc: ProjectDoc, c: Clip): { time: number; name: string; color: string }[] {
+  const nested = c.timelineId ? doc.timelines.find((t) => t.id === c.timelineId) : undefined;
+  if (!nested || c.ramp?.keys.length) return [];
+  const win0 = c.sourceIn;
+  const win1 = c.sourceIn + c.duration * c.speed;
+  return nested.markers
+    .filter((m) => !m.clipId && m.time >= win0 - 1e-9 && m.time <= win1 + 1e-9)
+    .map((m) => ({ time: tidy(c.reverse ? (win1 - m.time) / c.speed : (m.time - win0) / c.speed), name: m.name, color: m.color }));
 }

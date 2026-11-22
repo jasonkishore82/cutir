@@ -1,4 +1,5 @@
 import { activeTimeline } from "../model/convert";
+import { withNestedSound } from "../lib/audio/nested";
 import { transitionWindow } from "../lib/effects";
 import { evalNumber, type Key } from "../lib/keyframes/engine";
 import type { Clip, MasterStrip, ProjectDoc, Timeline, Track } from "../model/types";
@@ -306,7 +307,8 @@ export class AudioMixer {
 
   /** Call once per frame with the clock time, whether the transport is playing and its rate. */
   update(doc: ProjectDoc, t: number, playing: boolean, rate: number) {
-    const tl = activeTimeline(doc);
+    // the sound of nested clips plays as stand-in clips on the host timeline
+    const tl = withNestedSound(doc, activeTimeline(doc), audible, soundTrackOf);
     const live = playing && rate > 0 ? activeAudio(tl, t) : [];
     const keep = new Set(live.map((c) => c.id));
     const ahead = playing && rate > 0 && this.ctx ? upcoming(tl.clips.filter((c) => !c.fill && c.mediaId && bufferable(c) && audible(tl, c)), t, rate, this.ctx.currentTime) : [];

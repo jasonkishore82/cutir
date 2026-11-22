@@ -326,8 +326,8 @@ export type Clip = {
   ramp?: Ramp;
   /** Keep the pitch when the speed changes (default on). */
   pitch?: boolean;
-  /** Slow motion between source frames: "nearest" repeats a frame, "blend" mixes the two around it. */
-  interp?: "nearest" | "blend";
+  /** Slow motion between source frames: "nearest" repeats a frame, "blend" mixes the two around it, "flow" moves the picture along its motion between them. */
+  interp?: "nearest" | "blend" | "flow";
   /** A nested timeline played as this clip (a compound clip or a placed timeline): its time runs from sourceIn at `speed`. */
   timelineId?: string;
   /** Several synced angles with the cuts between them (phase 24). */

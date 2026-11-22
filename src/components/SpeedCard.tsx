@@ -76,9 +76,10 @@ export default function SpeedCard() {
       {isVideo && (
         <label className="block">
           <span className="label">Slow motion frames</span>
-          <select className="field" value={clip.interp ?? "nearest"} onChange={(e) => edit(() => ({ interp: e.target.value === "nearest" ? undefined : (e.target.value as "blend") }))}>
+          <select className="field" value={clip.interp ?? "nearest"} onChange={(e) => edit(() => ({ interp: e.target.value === "nearest" ? undefined : (e.target.value as "blend" | "flow") }))}>
             <option value="nearest">Repeat the nearest frame</option>
             <option value="blend">Blend the frames around</option>
+            <option value="flow">Follow the motion (optical flow)</option>
           </select>
         </label>
       )}

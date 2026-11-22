@@ -151,3 +151,14 @@ export function timeStretch(ch: Float32Array[], ratio: number, sr: number): Floa
     return r;
   });
 }
+
+/**
+ * The speed curve of a ramp as points for drawing on a clip: x is 0..1 across the clip, y is 0..1 up the strip, with
+ * the strip's top at the fastest speed shown. `base` is where speed 1 falls (0..1), so the plain-speed line can be drawn.
+ */
+export function rampCurve(ramp: Ramp, duration: number, n = 48): { points: { x: number; y: number }[]; base: number; top: number } {
+  const count = Math.max(2, Math.min(256, Math.round(n)));
+  const speeds = Array.from({ length: count }, (_, i) => speedAt(ramp, (i / (count - 1)) * duration));
+  const top = Math.max(1, ...speeds) * 1.05;
+  return { points: speeds.map((s, i) => ({ x: i / (count - 1), y: Math.min(1, s / top) })), base: 1 / top, top };
+}

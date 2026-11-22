@@ -319,13 +319,14 @@ export const matteTool = defineTool({
 export const speedTool = defineTool({
   name: "set_clip_speed",
   group: "timeline",
-  description: "Retime a video or audio clip: constant speed in percent (1 to 10000, the clip's length follows), reverse, keep pitch, slow-motion frame blending, or a speed ramp preset (ease-in = slow then normal, ease-out, speed-up, pulse) or remove_ramp.",
+  description: "Retime a video or audio clip: constant speed in percent (1 to 10000, the clip's length follows), reverse, keep pitch, slow-motion frames (blend_frames, or interpolation nearest/blend/flow where flow follows the motion), or a speed ramp preset (ease-in = slow then normal, ease-out, speed-up, pulse) or remove_ramp.",
   params: z.object({
     clip: z.string(),
     speed_percent: num(1, 10000).optional(),
     reverse: z.boolean().optional(),
     keep_pitch: z.boolean().optional(),
     blend_frames: z.boolean().optional(),
+    interpolation: z.enum(["nearest", "blend", "flow"]).optional(),
     ramp: z.enum(["ease-in", "ease-out", "speed-up", "pulse"]).optional(),
     remove_ramp: z.boolean().optional(),
   }),
@@ -339,6 +340,7 @@ export const speedTool = defineTool({
         if (a.reverse !== undefined) out.reverse = a.reverse || undefined;
         if (a.keep_pitch !== undefined) out.pitch = a.keep_pitch ? undefined : false;
         if (a.blend_frames !== undefined) out.interp = a.blend_frames ? "blend" : undefined;
+        if (a.interpolation) out.interp = a.interpolation === "nearest" ? undefined : a.interpolation;
         if (a.remove_ramp) Object.assign(out, { ramp: undefined, duration: durationFor(Math.abs(k.sourceOut - k.sourceIn), k.speed) });
         const preset = RAMP_PRESETS.find((p) => p.id === a.ramp);
         if (preset) {

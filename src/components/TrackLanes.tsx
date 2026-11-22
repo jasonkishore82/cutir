@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ClipSoundHandles from "./ClipSoundHandles";
+import ClipRamp from "./ClipRamp";
+import ClipNestMarks from "./ClipNestMarks";
 import { createPortal } from "react-dom";
 import { useProject } from "../store/project";
 import { useMedia, type MediaItem } from "../store/media";
@@ -491,11 +493,14 @@ export default function TrackLanes({ pps, width, gutter, scrollRef, setPps }: { 
                     );
                   })()}
                   {media?.note && <span title={media.note}>⚠</span>}
-                  {c.speed !== 1 && <span className="rounded bg-black/40 px-0.5">{Math.round(c.speed * 100)}%</span>}
+                  {c.reverse && <span className="rounded bg-black/40 px-0.5" title="Plays backwards">◀</span>}
+                  {c.ramp?.keys.length ? <span className="rounded bg-black/40 px-0.5" title="Speed ramp">ramp</span> : c.speed !== 1 && <span className="rounded bg-black/40 px-0.5">{Math.round(c.speed * 100)}%</span>}
                   {c.effects.length > 0 && <span className="rounded bg-black/40 px-0.5">fx</span>}
                   <span className="truncate">{c.name ?? media?.name ?? "clip"}</span>
                 </div>
                 <div className="relative px-1.5 text-[9px] text-white/70">{c.duration.toFixed(2)}s</div>
+                {c.ramp?.keys.length ? <ClipRamp clip={c} pps={pps} /> : null}
+                {c.timelineId ? <ClipNestMarks clip={c} pps={pps} /> : null}
                 {c.multicam && (
                   <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-3" aria-hidden>
                     {cutStrip(c.multicam, c).map((s, i) => (

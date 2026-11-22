@@ -9,6 +9,8 @@ import { poolMediaId, timecode, useTimelineUi } from "../timeline/ui";
 import { POOL_MIME } from "./TrackLanes";
 import { Icon } from "./ui";
 import { cancelJob, makeVariants, proxySettings, removeVariant, useProxyJobs, wantsProxy } from "../lib/proxy";
+import { placeSubclip } from "./TimelinesCard";
+import { removeSubclip } from "../timeline/compound";
 import { cancelBeats, detectBeatsFor, manualBeats, storeBeatResult, useBeatJobs } from "../lib/beats";
 
 const mmss = (s?: number) => {
@@ -412,6 +414,7 @@ export function MediaLibrary() {
             )}
           </div>
           {selected && <SourceStrip item={selected} />}
+          <SubclipList />
         </div>
       </div>
 
@@ -624,6 +627,30 @@ function BinList({ where, setWhere, usedCount }: { where: Where; setWhere: (w: W
 }
 
 /** Details of the chosen source and its in / out marks, used by insert, overwrite and the other edits. */
+/** Subclips (parts of a source named from its marks) listed with the media; Place puts one at the playhead. */
+function SubclipList() {
+  const doc = useProject((s) => s.doc);
+  const subs = doc.subclips ?? [];
+  if (!subs.length) return null;
+  return (
+    <div className="mt-2 space-y-1 rounded-lg border border-edge p-2" aria-label="Subclips">
+      <div className="text-[12px] font-medium text-gray-300">Subclips</div>
+      {subs.map((s) => {
+        const m = doc.media.find((x) => x.id === s.mediaId);
+        return (
+          <div key={s.id} className="flex items-center gap-2 text-[12px] text-gray-300">
+            <span className="flex-1 truncate">{s.name}</span>
+            <span className="truncate text-gray-500">{m?.name ?? "missing media"}</span>
+            <span className="tabular-nums text-gray-500">{mmss(s.in)} to {mmss(s.out)}</span>
+            <button className="rounded border border-edge px-1.5 hover:bg-white/10 disabled:opacity-40" disabled={!m} onClick={() => placeSubclip(doc, s)}>Place</button>
+            <button className="rounded px-1 text-gray-500 hover:text-red-400" aria-label={`Delete ${s.name}`} onClick={() => useProject.getState().editDoc((d) => removeSubclip(d, s.id))}>×</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SourceStrip({ item }: { item: MediaItem }) {
   const fps = useProject((s) => s.doc.settings.fps);
   const len = item.duration;
