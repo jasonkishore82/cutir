@@ -1,10 +1,11 @@
+import { useMacros } from "../../store/macros";
 /**
  * Phase 27: the command registry. Every menu item, tool, page switch and AI action is registered here once, with a
  * title, a category and default keys. The menu bar, the command palette, the shortcut settings and the cheat sheet all
  * read this list, so nothing can be reachable in one place and missing in another.
  */
 
-export type Category = "File" | "Edit" | "Playback" | "Timeline" | "Tools" | "Pages" | "View" | "Settings" | "AI" | "Project";
+export type Category = "File" | "Edit" | "Playback" | "Timeline" | "Tools" | "Pages" | "View" | "Settings" | "AI" | "Project" | "Macros";
 
 export type Command = {
   id: string;
@@ -35,6 +36,10 @@ export function register(...list: Command[]) {
   for (const c of list) commands.set(c.id, c);
 }
 
+export function unregister(...ids: string[]) {
+  for (const id of ids) commands.delete(id);
+}
+
 /** A source of commands that change while the app runs (recent projects). Called on every palette open. */
 export function registerSource(s: Source) {
   sources.push(s);
@@ -56,6 +61,7 @@ export async function runCommand(id: string): Promise<boolean> {
   const c = allCommands().find((x) => x.id === id);
   if (!c || (c.enabled && !c.enabled())) return false;
   const r = await c.run();
+  if (r !== false) useMacros.getState().recordCommand(c.id);
   return r !== false;
 }
 

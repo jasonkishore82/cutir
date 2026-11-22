@@ -10,6 +10,9 @@ import { useChat } from "../store/chat";
 import { Card, Icon, Segmented, type IconName } from "./ui";
 import { setTheme, useTheme, type ThemeChoice } from "../lib/theme";
 import ShortcutsEditor from "./ShortcutsEditor";
+import AssistantTab from "./AssistantTab";
+import ProjectDataTab from "./ProjectDataTab";
+import SystemTab from "./SystemTab";
 import { TEXT_SCALES, usePrefs, type Contrast, type Motion } from "../store/prefs";
 import { LAYOUT_PRESETS, PAGES } from "../lib/workspace/pages";
 import { useWorkspace } from "../store/workspace";
@@ -17,8 +20,11 @@ import { downloadBlob } from "../lib/exporter";
 
 const TABS: { id: SettingsTab; label: string; icon: IconName }[] = [
   { id: "ai", label: "AI models", icon: "ai" },
+  { id: "assistant", label: "Assistant", icon: "ai" },
   { id: "editor", label: "Editor", icon: "sliders" },
   { id: "storage", label: "Storage", icon: "storage" },
+  { id: "project", label: "Project data", icon: "archive" },
+  { id: "system", label: "Plugins and system", icon: "effects" },
   { id: "shortcuts", label: "Shortcuts", icon: "keyboard" },
 ];
 
@@ -422,8 +428,11 @@ export default function SettingsScreen() {
         <div className="mx-auto max-w-[680px] space-y-5 px-8 py-8">
           <h1 className="text-gradient text-[26px] font-semibold tracking-tight">{current.label}</h1>
           {tab === "ai" && <AiTab />}
+          {tab === "assistant" && <AssistantTab />}
           {tab === "editor" && <EditorTab />}
           {tab === "storage" && <StorageTab />}
+          {tab === "project" && <ProjectDataTab />}
+          {tab === "system" && <SystemTab />}
           {tab === "shortcuts" && <ShortcutsTab />}
         </div>
       </main>

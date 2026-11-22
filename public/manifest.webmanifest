@@ -1,0 +1,11 @@
+{
+  "name": "Cutir",
+  "short_name": "Cutir",
+  "description": "A video editor that runs in the browser",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0b0f",
+  "theme_color": "#0b0b0f",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

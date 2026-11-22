@@ -2,6 +2,7 @@ import { listModelInfo, normalizeUrl, streamChat as streamOllama, type ChatMessa
 import { NON_CHAT, listOpenAIModels, streamOpenAIChat } from "./openai";
 import { listAnthropicModels, streamAnthropicChat } from "./anthropic";
 import type { Provider } from "./providers";
+import { useAiLog } from "../../store/aiLog";
 
 /** The connection settings of the active provider. */
 export type LlmConfig = { provider: Provider; baseUrl: string; apiKey: string; model: string };
@@ -31,12 +32,22 @@ export async function listChatModels(cfg: LlmConfig, signal?: AbortSignal): Prom
 
 export function streamChat(
   cfg: LlmConfig,
-  opts: { messages: ChatMessage[]; tools?: unknown[]; signal?: AbortSignal }
+  opts: { messages: ChatMessage[]; tools?: unknown[]; signal?: AbortSignal; purpose?: "chat" | "translate" }
 ): AsyncGenerator<StreamChunk> {
-  if (cfg.provider.kind === "anthropic") return streamAnthropicChat({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, ...opts });
+  const { purpose, ...rest } = opts;
+  // the request log: where this is going and how much text, never the text or the key
+  useAiLog.getState().note({
+    kind: purpose ?? "chat",
+    provider: cfg.provider.name,
+    baseUrl: cfg.baseUrl,
+    model: cfg.model,
+    size: opts.messages.reduce((n, m) => n + (typeof m.content === "string" ? m.content.length : 0), 0),
+    unit: "chars",
+  });
+  if (cfg.provider.kind === "anthropic") return streamAnthropicChat({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, ...rest });
   return cfg.provider.kind === "ollama"
-    ? streamOllama({ baseUrl: normalizeUrl(cfg.baseUrl), model: cfg.model, ...opts })
-    : streamOpenAIChat({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, ...opts });
+    ? streamOllama({ baseUrl: normalizeUrl(cfg.baseUrl), model: cfg.model, ...rest })
+    : streamOpenAIChat({ baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, model: cfg.model, ...rest });
 }
 
 /** Why a provider cannot be used yet, or "" when it is ready. */

@@ -6,8 +6,12 @@ import { SCHEMA_VERSION, type ProjectDoc } from "../model/types";
 import { useChat } from "./chat";
 import { copyProjectMedia, deleteProjectMedia, useMedia } from "./media";
 import { useSettings } from "./settings";
+import { useVersions } from "./versions";
 import { copyProjectFiles, deleteFile, deleteProjectFiles, loadFile, saveFile } from "../lib/assetdb";
 import { makeThumbnail } from "../lib/thumbnail";
+import { openPackage } from "../lib/storage/pack";
+import { putFile } from "../lib/filestore";
+import { checksum, chooseSource, fileRecoveryBackend, recoveryWriter } from "../lib/storage/recovery";
 
 /**
  * The project library behind the Home screen.
@@ -36,6 +40,9 @@ type Library = {
   screen: "home" | "editor";
   ready: boolean;
   saveFailed: boolean;
+  /** Something the user should know about a project that was just opened (a recovery, an unreadable save). */
+  notice: string;
+  dismissNotice: () => void;
 
   init: () => void;
   createProject: (opts: { name: string; aspect: Aspect; fps: 30 | 60 }) => Promise<string>;
@@ -45,6 +52,8 @@ type Library = {
   duplicateProject: (id: string) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   importProject: (name: string, raw: unknown) => Promise<void>;
+  /** Open a project package (zip with the project and its media) as a new project. Returns the names of damaged files. */
+  importPackage: (file: Blob) => Promise<string[]>;
   /** Called by autosave with the live document and its lyric view. */
   saveContent: (doc: ProjectDoc, view: Project) => void;
   saveAsset: (slot: "audio" | "bg", file: Blob, name: string) => void;
@@ -101,6 +110,13 @@ const revokeLive = () => {
   liveUrls = [];
 };
 
+const recoveryBackend = fileRecoveryBackend();
+const recovery = recoveryWriter(recoveryBackend);
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => void recovery.flush());
+  document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && void recovery.flush());
+}
+
 export const useLibrary = create<Library>((set, get) => {
   const persistEntries = (entries: ProjectEntry[]) => {
     set({ entries, saveFailed: !safeSet(LIB_KEY, JSON.stringify(entries)) && get().saveFailed });
@@ -116,13 +132,16 @@ export const useLibrary = create<Library>((set, get) => {
   };
 
   const writeProject = (id: string, doc: ProjectDoc, p: Project, withThumb: boolean) => {
-    const ok = safeSet(`cutir:p:${id}`, serializeDoc(doc));
+    const text = serializeDoc(doc);
+    const ok = safeSet(`cutir:p:${id}`, text);
+    if (ok) safeSet(`cutir:s:${id}`, checksum(text));
+    recovery.schedule(id, text); // a second copy a few seconds later, in the file store
     let thumb: string | null = null;
     if (withThumb) {
       thumb = makeThumbnail(p);
       if (thumb) safeSet(`cutir:t:${id}`, thumb);
     }
-    const entries = get().entries.map((e) => (e.id === id ? { ...e, updatedAt: Date.now(), ...metaOf(p) } : e));
+    const entries = get().entries.map((e) => (e.id === id ? { ...e, updatedAt: ok ? Date.now() : e.updatedAt, ...metaOf(p) } : e));
     set({
       entries,
       thumbs: thumb ? { ...get().thumbs, [id]: thumb } : get().thumbs,
@@ -136,7 +155,19 @@ export const useLibrary = create<Library>((set, get) => {
    * A project saved in an older format is migrated; its original JSON is kept once as a read-only backup.
    */
   const hydrate = async (id: string): Promise<ProjectDoc> => {
-    const raw = safeGet(`cutir:p:${id}`);
+    let raw = safeGet(`cutir:p:${id}`);
+    const pick = chooseSource({ json: raw, sum: safeGet(`cutir:s:${id}`), savedAt: get().entries.find((e) => e.id === id)?.updatedAt ?? 0 }, await recoveryBackend.read(id));
+    if (pick.source === "recovery") {
+      raw = pick.json;
+      if (safeGet(`cutir:p:${id}`)) safeSet(`cutir:damaged:${id}`, safeGet(`cutir:p:${id}`) as string);
+      safeSet(`cutir:p:${id}`, raw);
+      safeSet(`cutir:s:${id}`, checksum(raw));
+      set({ notice: pick.why === "newer" ? "Your last changes did not reach the saved copy, so Cutir opened the recovery copy instead." : "The saved copy of this project was damaged. Cutir opened the recovery copy; the damaged one is kept." });
+    } else if (pick.source === "none" && raw) {
+      safeSet(`cutir:damaged:${id}`, raw);
+      raw = null;
+      set({ notice: "This project could not be read and no recovery copy exists. The damaged data is kept in this browser; the project opens empty." });
+    }
     let doc: ProjectDoc;
     if (!raw) doc = viewToDoc(defaultProject());
     else {
@@ -175,6 +206,8 @@ export const useLibrary = create<Library>((set, get) => {
     screen: "home",
     ready: false,
     saveFailed: false,
+    notice: "",
+    dismissNotice: () => set({ notice: "" }),
 
     init: () => {
       if (get().ready) return;
@@ -217,6 +250,7 @@ export const useLibrary = create<Library>((set, get) => {
         useChat.getState().loadProject(id); // chats belong to the project they were started in
         void useMedia.getState().load(id);
       }
+      useVersions.setState({ projectId: null, list: [] }); // loading another document is not a change to the old one
       useProject.getState().loadDoc(doc);
       useProject.setState({ chatOpen: useSettings.getState().showAiOnOpen });
       set({ currentId: id, screen: "editor" });
@@ -270,6 +304,26 @@ export const useLibrary = create<Library>((set, get) => {
       const entry = addEntry(uniqueName(name.trim() || "Imported project", get().entries), docToView(doc));
       safeSet(`cutir:p:${entry.id}`, serializeDoc(doc));
       await get().openProject(entry.id);
+    },
+
+    importPackage: async (file) => {
+      const pkg = await openPackage(file, { verify: true });
+      const entry = addEntry(uniqueName(pkg.manifest.name || "Imported project", get().entries), docToView(pkg.doc));
+      const id = entry.id;
+      for (const it of pkg.items) {
+        const e = pkg.files.get(it.id);
+        if (!e || pkg.damaged.includes(it.name)) continue;
+        await putFile(`${id}/m/${it.id}`, await e.read(), it.name);
+      }
+      for (const m of pkg.doc.media) {
+        const e = pkg.slots.get(m.fileKey);
+        if (e && !pkg.damaged.includes(m.name)) await saveFile(`${id}/${m.fileKey}`, await e.read(), m.name);
+      }
+      safeSet(`cutir:media:${id}`, JSON.stringify(pkg.items.filter((i) => pkg.files.has(i.id) && !pkg.damaged.includes(i.name))));
+      safeSet(`cutir:bins:${id}`, JSON.stringify(pkg.bins));
+      safeSet(`cutir:p:${id}`, serializeDoc(pkg.doc));
+      await get().openProject(id);
+      return pkg.damaged;
     },
 
     saveContent: (doc, p) => {

@@ -20,6 +20,7 @@ import { AudioMixer, songAudible } from "../render/audio";
 import { activeTimeline } from "../model/convert";
 import { timelineEnd } from "../timeline/engine";
 import { useMedia } from "../store/media";
+import { useSystem } from "../store/system";
 
 /** Pictures and sound of timeline clips come from the media pool. */
 const poolOf = (mediaId: string) => useProject.getState().doc.media.find((m) => m.id === mediaId)?.poolId;
@@ -291,7 +292,9 @@ export default function Preview() {
   }, [aspect]);
 
   /* the render loop: driven by audio.currentTime every animation frame */
-  const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+  // the quality governor lowers the drawn size while playback falls behind; the canvas is stretched back by CSS
+  const quality = useSystem((s) => s.scale);
+  const dpr = (typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1) * quality;
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !box.w) return;
@@ -368,6 +371,8 @@ export default function Preview() {
         frames = 0;
         since = now;
         setDiag({ fps, dropped: stats.dropped, decoded: stats.decoded, cacheMB: stats.cacheMB, missing });
+        const sys = useSystem.getState();
+        if (sys.autoQuality) sys.setScale(sys.governor.sample({ fps, target: st.doc.settings.fps, playing: usePlayback.getState().playing }));
         publishCache();
         // playback keeps dropping frames: suggest proxies once, if the project wants suggestions
         if (!suggested && usePlayback.getState().playing && stats.dropped - droppedAtStart > 15 && proxySettings().suggest) {

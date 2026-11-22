@@ -6,6 +6,7 @@ import type { LlmConfig } from "../llm";
 import type { Cue, CueWord } from "./cues";
 import { DEFAULT_RULES, fixCues, type CaptionRules } from "./checks";
 import { applyVocabulary } from "./transcript";
+import { useAiLog } from "../../store/aiLog";
 
 export type TSegment = { start: number; end: number; text: string; words: CueWord[]; speaker?: string };
 export type Transcript = { language?: string; segments: TSegment[] };
@@ -163,6 +164,7 @@ export async function transcribeCloud(cfg: LlmConfig, wav: Blob, o: { language?:
   const problem = cloudProblem(cfg);
   if (problem) throw new Error(problem);
   if (wav.size > CLOUD_LIMIT) throw new Error(`The speech is ${(wav.size / 1048576).toFixed(0)} MB; ${cfg.provider.name} accepts up to 25 MB (about 13 minutes). Transcribe a shorter stretch or use the local helper.`);
+  useAiLog.getState().note({ kind: "transcribe", provider: cfg.provider.name, baseUrl: cfg.baseUrl, model: cloudModelFor(cfg)!, size: wav.size, unit: "bytes" });
   const form = new FormData();
   form.append("file", new File([wav], "speech.wav"));
   form.append("model", cloudModelFor(cfg)!);

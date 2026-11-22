@@ -10,6 +10,12 @@ import MenuBar from "./components/MenuBar";
 import SettingsScreen from "./components/SettingsScreen";
 import SectionTabs, { type SectionId } from "./components/SectionTabs";
 import PageBar from "./components/PageBar";
+import MacroPill from "./components/MacroPill";
+import LibraryNotice from "./components/LibraryNotice";
+import SystemNotice from "./components/SystemNotice";
+import { installErrorCapture, useSystem } from "./store/system";
+import { usePlugins } from "./store/plugins";
+import { registerServiceWorker } from "./lib/system/pwa";
 import QuickBar from "./components/QuickBar";
 import DeliverPage from "./components/DeliverPage";
 import CommandPalette from "./components/CommandPalette";
@@ -23,6 +29,7 @@ import { MediaLibrary } from "./components/MediaPool";
 import { startAutosave, useProject } from "./store/project";
 import { installUnloadSave, useLibrary } from "./store/library";
 import { useMedia } from "./store/media";
+import { startVersioning } from "./store/versions";
 import { startMcpBridge } from "./lib/mcpBridge";
 import { ClaudeBadge } from "./components/ClaudeControlCard";
 
@@ -198,7 +205,12 @@ export default function App() {
     useLibrary.getState().init(); // loads the project list (and migrates the old single autosave)
     startMcpBridge(); // connects to the Cutir MCP server only if the user switched Claude control on
     installUnloadSave();
-    return startAutosave((doc, view) => useLibrary.getState().saveContent(doc, view));
+    const stopSave = startAutosave((doc, view) => useLibrary.getState().saveContent(doc, view));
+    const stopVersions = startVersioning();
+    const stopErrors = installErrorCapture();
+    usePlugins.getState().start(); // effects, presets and script commands of installed plugins
+    registerServiceWorker((update) => useSystem.setState({ update }));
+    return () => (stopSave(), stopVersions(), stopErrors());
   }, []);
 
   // A song picked from the media library keeps its pool id when a project is saved, but its object URL only lives for a
@@ -343,6 +355,9 @@ export default function App() {
         </>
       )}
       <PageBar />
+      <MacroPill />
+      <LibraryNotice />
+      <SystemNotice />
     </div>
   );
 }

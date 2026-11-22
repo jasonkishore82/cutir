@@ -12,7 +12,7 @@ import type { ProjectDoc } from "../../model/types";
  * To add a tool: write defineTool({...}) in a group file and add it to that file's export. Nothing else.
  */
 
-export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers" | "transform" | "motion" | "timeline" | "kinetic" | "captions";
+export type ToolGroup = "style" | "lines" | "scene" | "sync" | "layers" | "transform" | "motion" | "timeline" | "kinetic" | "captions" | "smart" | "ui";
 
 export type ToolResultOk = { project: Project; summary: string };
 
@@ -28,8 +28,13 @@ export type ToolDef<S extends z.ZodType = z.ZodType> = {
   params: S;
   /** Repair common small-model mistakes before validation (wrong wrapper, flattened args...). */
   normalize?: (args: unknown) => unknown;
-  /** Optional async step that runs BEFORE apply (e.g. download a font). Throw to reject the call with a message. */
-  prepare?: (args: z.output<S>) => Promise<void>;
+  /**
+   * Optional async step that runs BEFORE apply (e.g. download a font). Throw to reject the call with a message.
+   * For an `effect` tool this is where the work happens and the string it returns is the summary.
+   */
+  prepare?: (args: z.output<S>) => Promise<void | string>;
+  /** Acts outside the project (starts an export, runs a view command): reported as done, nothing to undo. */
+  effect?: boolean;
   /** Pure: returns the new project, or throws an Error whose message is shown to the user and the model. */
   apply?: (project: Project, args: z.output<S>) => ToolResultOk;
   /**

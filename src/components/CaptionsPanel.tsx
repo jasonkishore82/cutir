@@ -1,24 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "./ui";
 import { useProject, uid, linesOfLayer, type Layer } from "../store/project";
-import { useMedia } from "../store/media";
 import { useCaptionPrefs } from "../store/captions";
 import { activeConfig } from "../store/settings";
 import { activeTimeline } from "../model/convert";
 import { editTimeline, useTimelineUi } from "../timeline/ui";
 import * as E from "../timeline/engine";
 import { ASPECT_SIZES } from "../lib/renderer";
-import { getAlignSettings } from "../lib/autosync";
 import { getTime, pause, play, seek, usePlayback } from "../lib/transport";
-import { mixInputs, mixdownChannels } from "../render/audio";
 import { CUE_FORMATS, parseCues, serializeCues, type Cue, type CueFormat } from "../lib/captions/cues";
 import { RULE_PRESETS, checkCues, fixCues, type CaptionRules } from "../lib/captions/checks";
 import { CAPTION_PRESETS, SAFE_LABEL, presetById, styleFor, type SafeArea } from "../lib/captions/presets";
 import { DEFAULT_FILLERS, OPTIONAL_FILLERS, applyCutsToCues, cuesFromWords, findFillers, findPauses, flatWords, planCuts, totalOf, type Range } from "../lib/captions/transcript";
-import { cloudProblem, monoOf, transcribeCloud, transcribeLocal, transcriptToCues, wavBytes } from "../lib/captions/transcribe";
+import { cloudProblem } from "../lib/captions/transcribe";
+import { transcribeTimeline } from "../lib/captions/run";
 import { LANGUAGES, languageName, translateCues, withTranslation } from "../lib/captions/translate";
 import { configProblem } from "../lib/llm";
-import { cutDoc, linesToCues, timelineLength, withLayerCues } from "../lib/captions/ops";
+import { cutDoc, linesToCues, withLayerCues } from "../lib/captions/ops";
 import { downloadBlob } from "../lib/exporter";
 
 const btn = "rounded-md border border-edge px-2 py-0.5 text-[11px] text-gray-300 hover:bg-white/10 disabled:opacity-40";
@@ -78,7 +76,6 @@ function TranscribeCard() {
   const ctl = useRef<AbortController | null>(null);
   const cfg = activeConfig();
   const sources = tl.tracks.filter((t) => t.kind !== "subtitle" && tl.clips.some((c) => c.trackId === t.id && !c.fill));
-  const vocab = () => prefs.vocabulary.split(/[,\n]/).map((v) => v.trim()).filter(Boolean);
 
   const run = async () => {
     setBusy(true);
@@ -86,28 +83,8 @@ function TranscribeCard() {
     ctl.current = new AbortController();
     const { signal } = ctl.current;
     try {
-      const d = useProject.getState().doc;
-      const len = timelineLength(d);
-      if (len <= 0) throw new Error("There is nothing on the timeline to transcribe.");
-      const urls = useMedia.getState().urls;
-      const urlOf = (mediaId: string) => {
-        const m = d.media.find((x) => x.id === mediaId);
-        return m?.url ?? (m?.poolId ? urls[m.poolId] : undefined);
-      };
-      let inputs = mixInputs(d, undefined, len, urlOf);
-      if (track) inputs = inputs.filter((i) => i.trackId === track);
-      if (!inputs.length) throw new Error("No sound found" + (track ? " on that track." : " on the timeline."));
-      const ch = await mixdownChannels(inputs, len, 16000, signal);
-      if (!ch) throw new Error("No sound to transcribe.");
-      const wav = new Blob([wavBytes(monoOf(ch[0] as Float32Array, ch[1] as Float32Array), 16000)], { type: "audio/wav" });
-      const stages: Record<string, string> = { uploading: "Sending the sound...", separating: "Separating the voice...", loading: "Loading the speech model (the first time downloads it)...", transcribing: "Listening..." };
-      const t =
-        prefs.engine === "cloud"
-          ? (setMsg(`Sending to ${cfg.provider.name}...`), await transcribeCloud(cfg, wav, { language: prefs.language, vocabulary: vocab() }, signal))
-          : await transcribeLocal(getAlignSettings().url, wav, { language: prefs.language, model: prefs.model, vocabulary: vocab() }, signal, (stage, pct) => setMsg(`${stages[stage] ?? stage}${pct !== undefined ? ` ${Math.round(pct * 100)}%` : ""}`));
-      const cues = transcriptToCues(t, prefs.rules, { vocabulary: vocab() });
-      if (!cues.length) throw new Error("No speech was found.");
-      const lang = t.language && LANGUAGES.some((l) => l.code === t.language) ? t.language : prefs.language || undefined;
+      const { cues, language: lang } = await transcribeTimeline({ track: track || undefined, signal, onStatus: setMsg });
+      const t = { language: lang };
       addCaptionTrack(lang ? `Captions (${languageName(lang)})` : "Captions", cues, lang);
       setMsg(`Made ${cues.length} captions${t.language ? `, language: ${languageName(t.language)}` : ""}. Edit them in the transcript below.`);
     } catch (e) {

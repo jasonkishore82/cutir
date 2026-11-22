@@ -22,9 +22,11 @@ type TimelineUi = {
   previewEffect: string | null;
   /** Transition selected on the timeline (edited in the Effects panel). */
   selectedTransition: string | null;
+  /** The time range the timeline shows (seconds), kept up to date by the timeline for the AI prompt. */
+  view: { t0: number; t1: number } | null;
 };
 
-export const useTimelineUi = create<TimelineUi>(() => ({ tool: "select", snapping: true, beatSnap: true, selected: [], sourceId: null, guide: null, mode: null, previewEffect: null, selectedTransition: null }));
+export const useTimelineUi = create<TimelineUi>(() => ({ tool: "select", snapping: true, beatSnap: true, selected: [], sourceId: null, guide: null, mode: null, previewEffect: null, selectedTransition: null, view: null }));
 
 export const TOOL_KEYS: Record<string, Tool> = { KeyA: "select", KeyT: "trim", KeyB: "blade", KeyH: "hand", KeyZ: "zoom" };
 

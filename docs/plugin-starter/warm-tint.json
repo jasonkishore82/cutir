@@ -1,0 +1,25 @@
+{
+  "id": "warm-tint",
+  "name": "Warm tint",
+  "version": "1.0.0",
+  "author": "Cutir",
+  "description": "A starter plugin: a tint effect and a script that counts clips.",
+  "api": 1,
+  "permissions": ["effects", "scripts"],
+  "effects": [
+    {
+      "id": "tint",
+      "name": "Tint",
+      "category": "Colour",
+      "description": "Mix a colour over the picture",
+      "params": [
+        { "key": "amount", "label": "Amount", "type": "number", "min": 0, "max": 100, "default": 40, "unit": "%" },
+        { "key": "tone", "label": "Colour", "type": "color", "default": "#ff7a3d" }
+      ],
+      "glsl": "void main() {\n  vec4 c = texture(uTex, vUv);\n  outColor = vec4(mix(c.rgb, uCol_tone, u_amount / 100.0), c.a);\n}"
+    }
+  ],
+  "scripts": [
+    { "id": "count", "title": "Count clips", "code": "const clips = await cutir.clips();\nreturn clips.length + ' clips';" }
+  ]
+}

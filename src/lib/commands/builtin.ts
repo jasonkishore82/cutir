@@ -4,6 +4,9 @@ import { useLibrary } from "../../store/library";
 import { useChat } from "../../store/chat";
 import { useMedia } from "../../store/media";
 import { useSettings } from "../../store/settings";
+import { useMacros } from "../../store/macros";
+import { useVersions } from "../../store/versions";
+import { playMacro } from "../ai/playMacro";
 import { useOverlay } from "../../store/overlay";
 import { useWorkspace } from "../../store/workspace";
 import { TEXT_SCALES, usePrefs } from "../../store/prefs";
@@ -31,6 +34,11 @@ const file: Command[] = [
   { id: "file.importMedia", title: "Import media", category: "File", keys: ["Ctrl+I"], run: importMediaFiles, enabled: inEditor },
   { id: "file.importProject", title: "Import project file", category: "File", run: importProjectFile },
   { id: "file.saveProject", title: "Save project file", category: "File", run: () => downloadProject(useProject.getState().project), enabled: inEditor },
+  { id: "file.saveVersion", title: "Save a version of the project", category: "File", keywords: "snapshot history", run: () => void useVersions.getState().take("manual", { label: "Saved from the palette" }), enabled: inEditor },
+  { id: "file.versions", title: "Versions: compare and restore", category: "File", keywords: "history snapshot", run: () => useSettings.getState().openDialog("project"), enabled: inEditor },
+  { id: "file.branchTimeline", title: "Branch this timeline (copy to try something)", category: "File", keywords: "duplicate version", run: () => void useVersions.getState().branch(), enabled: inEditor },
+  { id: "file.package", title: "Project package: save or open a zip with media", category: "File", keywords: "backup move zip", run: () => useSettings.getState().openDialog("project") },
+  { id: "file.interchange", title: "Export or import OpenTimelineIO, EDL, FCPXML", category: "File", keywords: "resolve premiere final cut otio edl", run: () => useSettings.getState().openDialog("project"), enabled: inEditor },
   { id: "file.export", title: "Export video", category: "File", keys: ["Ctrl+E"], keywords: "render deliver mp4", run: () => emit("cutir:open-export"), enabled: inEditor },
 ];
 
@@ -186,6 +194,8 @@ const settings: Command[] = [
   { id: "settings.ai", title: "AI models and API keys", category: "Settings", run: () => useSettings.getState().openDialog("ai") },
   { id: "settings.editor", title: "Editor preferences", category: "Settings", run: () => useSettings.getState().openDialog("editor") },
   { id: "settings.storage", title: "Storage", category: "Settings", run: () => useSettings.getState().openDialog("storage") },
+  { id: "settings.project", title: "Project data: versions, packages, sync", category: "Settings", run: () => useSettings.getState().openDialog("project") },
+  { id: "settings.system", title: "Plugins, scripting and system", category: "Settings", keywords: "plugin script console diagnostics performance browser", run: () => useSettings.getState().openDialog("system") },
   { id: "settings.shortcuts", title: "Keyboard shortcuts: rebind, import, export", category: "Settings", run: () => useSettings.getState().openDialog("shortcuts") },
 ];
 
@@ -203,7 +213,20 @@ const ai: Command[] = aiTools.all
     },
   }));
 
-register(...file, ...edit, ...playback, ...timeline, ...pages, ...view, ...settings, ...ai);
+/** Macros (phase 28): record, stop, and one command per saved macro to play it. */
+const macros: Command[] = [
+  { id: "macro.record", title: "Start recording a macro", category: "Macros", keywords: "record", enabled: () => !useMacros.getState().recording, run: () => useMacros.getState().start() },
+  { id: "macro.stop", title: "Stop recording and save the macro", category: "Macros", keywords: "record save", enabled: () => useMacros.getState().recording, run: () => { useMacros.getState().stop(); } },
+  { id: "macro.discard", title: "Discard the macro being recorded", category: "Macros", enabled: () => useMacros.getState().recording, run: () => useMacros.getState().discard() },
+  { id: "macro.manage", title: "Macros: edit, export, import", category: "Macros", run: () => useSettings.getState().openDialog("assistant") },
+  { id: "ai.log", title: "Where my data went: the AI request log", category: "AI", keywords: "privacy requests", run: () => useSettings.getState().openDialog("assistant") },
+];
+
+register(...file, ...edit, ...playback, ...timeline, ...pages, ...view, ...settings, ...macros, ...ai);
+
+registerSource(() =>
+  useMacros.getState().macros.map((m): Command => ({ id: `macro.play.${m.id}`, title: `Play macro: ${m.name}`, category: "Macros", keywords: "macro run", enabled: () => !useMacros.getState().recording, run: async () => { await playMacro(m); } }))
+);
 
 /** Recent projects are not fixed commands: the list changes, so it is read each time the palette opens. */
 registerSource(() =>

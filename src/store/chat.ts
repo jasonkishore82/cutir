@@ -6,6 +6,8 @@ import { activeConfig, useSettings } from "./settings";
 import { cancelAlignment, isAutoSyncIntent, syncOverridesFromText } from "../lib/autosync";
 import { fontIntent, titleCaseFont } from "../lib/fonts";
 import { beginReply, endReply, speakReplyStream, spokenSummary, stopSpeaking, turnEnded } from "../lib/voice";
+import { askText, heldCalls } from "../lib/ai/safety";
+import { useAiSafety } from "./aiLog";
 import { CHAT_ONLY_PROMPT, applyCalls, buildSystemPrompt, getOllamaTools, isSmallTalk, limitDeletes, parseActionsFromText, quickAnswer, selectToolGroups, type CallResult, type RawCall } from "../lib/tools";
 
 /** `before` and `after` only exist for the current session: they are not saved, so old cards cannot be undone. */
@@ -18,6 +20,8 @@ export type ChatEntry = {
   role: "user" | "assistant" | "error" | "note";
   content: string;
   applied?: Applied;
+  /** Calls held until the user says yes (deletes, cuts, exports). Never saved: an old question must not be answerable later. */
+  pending?: { calls: RawCall[]; reasons: string[]; shown: string };
   streaming?: boolean;
   attachments?: Attachment[];
   sync?: boolean; // reply is an auto-sync run: show the sync progress bar while streaming
@@ -62,6 +66,8 @@ type ChatState = {
   stop: () => void;
   clear: () => void;
   undoApplied: (id: string) => void;
+  /** Answer the question shown when an edit was held: apply it, or drop it. */
+  confirmPending: (id: string, yes: boolean) => Promise<void>;
 
   newChat: () => void;
   openChat: (id: string) => void;
@@ -128,6 +134,7 @@ function slim(m: ChatEntry): ChatEntry {
     streaming: false,
     attachments: attachments?.map((a) => (a.kind === "image" ? { ...a, data: "" } : a)),
     applied: applied ? { results: applied.results, undone: applied.undone } : undefined,
+    pending: undefined,
   };
 }
 
@@ -377,7 +384,13 @@ ${a.data}
         // a model must not delete lines the user did not name
         const guard = limitDeletes(text, calls);
         calls = guard.calls;
-        if (calls.length || guard.skipped.length) {
+        const held = useAiSafety.getState().askFirst ? heldCalls(calls) : [];
+        if (held.length) {
+          // destructive edits wait for a yes; nothing has changed yet
+          const q = askText(held);
+          patchMsg(cid, replyId, { content: shown ? `${shown}\n\n${q}` : q, pending: { calls, reasons: held.map((h) => h.reason), shown }, streaming: false, thoughtSecs: took() });
+          endReply(q);
+        } else if (calls.length || guard.skipped.length) {
           const applied = await applyCalls(calls);
           applied.results.push(...guard.skipped);
           const changed = applied.results.some((r) => r.ok && !r.noop);
@@ -422,6 +435,24 @@ ${a.data}
       stopSpeaking();
     },
     clear: () => patchConv(get().activeId, (c) => ({ ...c, messages: [], title: NEW_TITLE })),
+
+    confirmPending: async (id, yes) => {
+      const cid = get().activeId;
+      const m = get().convs[cid]?.messages.find((x) => x.id === id);
+      if (!m?.pending) return;
+      const { calls, shown } = m.pending;
+      if (!yes) {
+        patchMsg(cid, id, { pending: undefined, content: shown ? `${shown}\n\nCancelled. Nothing was changed.` : "Cancelled. Nothing was changed." });
+        return;
+      }
+      patchMsg(cid, id, { pending: undefined, content: shown });
+      try {
+        const applied = await applyCalls(calls);
+        patchMsg(cid, id, { applied });
+      } catch (e) {
+        push(cid, { role: "error", content: `Request failed: ${(e as Error).message}` });
+      }
+    },
 
     undoApplied: (id) => {
       const cid = get().activeId;

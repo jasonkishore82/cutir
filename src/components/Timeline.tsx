@@ -513,7 +513,11 @@ export default function Timeline() {
   useEffect(() => {
     const sc = scrollRef.current;
     if (!sc) return;
-    const update = () => setView({ t0: Math.max(0, sc.scrollLeft / pps - 1), t1: (sc.scrollLeft + sc.clientWidth) / pps + 1 });
+    const update = () => {
+      const v = { t0: Math.max(0, sc.scrollLeft / pps - 1), t1: (sc.scrollLeft + sc.clientWidth) / pps + 1 };
+      setView(v);
+      useTimelineUi.setState({ view: v });
+    };
     update();
     sc.addEventListener("scroll", update, { passive: true });
     window.addEventListener("resize", update);

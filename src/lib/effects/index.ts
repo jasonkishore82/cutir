@@ -1,7 +1,7 @@
 import { EASINGS } from "../animations";
 import { evalLane, evalNumber, type Key, type KeyValue, type ValueKind } from "../keyframes/engine";
 import type { Clip, ClipEffect, ClipTransition, ParamKey, Timeline } from "../../model/types";
-import { runGpu } from "./gpu";
+import { forgetProgram, runGpu } from "./gpu";
 import type { AnyCanvas, Canvas2D, EffectDef, EffectEnv, Layer, ParamSpec, Params, TransitionDef } from "./types";
 import { transform } from "./builtins/transform";
 import { crop } from "./builtins/crop";
@@ -34,6 +34,10 @@ const transitions = new Map<string, TransitionDef>();
 export function registerEffect(def: EffectDef) {
   if (!/^[a-z0-9-]+$/.test(def.id)) throw new Error(`effect id "${def.id}" must be lowercase letters, digits and dashes`);
   effects.set(def.id, def);
+}
+export function unregisterEffect(id: string) {
+  effects.delete(id);
+  forgetProgram(id);
 }
 export function registerTransition(def: TransitionDef) {
   if (!/^[a-z0-9-]+$/.test(def.id)) throw new Error(`transition id "${def.id}" must be lowercase letters, digits and dashes`);

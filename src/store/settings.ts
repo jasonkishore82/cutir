@@ -10,7 +10,7 @@ import type { LlmConfig } from "../lib/llm";
 
 export type ProviderSettings = { baseUrl?: string; apiKey?: string; model?: string };
 
-export type SettingsTab = "ai" | "editor" | "storage" | "shortcuts";
+export type SettingsTab = "ai" | "assistant" | "editor" | "storage" | "project" | "system" | "shortcuts";
 
 type State = {
   provider: ProviderId;

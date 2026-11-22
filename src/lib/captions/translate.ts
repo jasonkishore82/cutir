@@ -67,7 +67,7 @@ export function withTranslation(cues: Cue[], translated: string[], rules?: Capti
 
 async function ask(cfg: LlmConfig, messages: ChatMessage[], signal?: AbortSignal): Promise<string> {
   let out = "";
-  for await (const chunk of streamChat(cfg, { messages, signal })) if (chunk.content) out += chunk.content;
+  for await (const chunk of streamChat(cfg, { messages, signal, purpose: "translate" })) if (chunk.content) out += chunk.content;
   return out;
 }
 

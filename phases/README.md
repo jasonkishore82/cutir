@@ -32,6 +32,6 @@ Phases 1 to 5 built the lyric video editor. Phases 6 to 10 add movable text, ove
 | 25 | [Captions and Subtitles](phase-25-captions-and-subtitles.md) | 🟡 |
 | 26 | [Deliver: Render Queue and Presets](phase-26-deliver-and-render-queue.md) | 🟡 |
 | 27 | [Workspaces, Pages, Shortcuts and Command Palette](phase-27-workspaces-and-ux.md) | 🟡 |
-| 28 | [AI Assistant Across the Editor](phase-28-ai-assistant-v2.md) |  |
-| 29 | [Storage, Versioning, Interchange and Collaboration](phase-29-storage-versioning-interchange.md) |  |
-| 30 | [Performance, Extensibility and Release](phase-30-performance-extensibility-release.md) |  |
+| 28 | [AI Assistant Across the Editor](phase-28-ai-assistant-v2.md) | 🟡 |
+| 29 | [Storage, Versioning, Interchange and Collaboration](phase-29-storage-versioning-interchange.md) | 🟡 |
+| 30 | [Performance, Extensibility and Release](phase-30-performance-extensibility-release.md) | 🟡 |

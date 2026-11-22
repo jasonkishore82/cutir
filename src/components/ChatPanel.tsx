@@ -21,12 +21,33 @@ function Row({ dot = "bg-gray-500", time, children }: { dot?: string; time?: num
   );
 }
 
+/** An edit that waits for a yes: what it would do, and Apply / Cancel. Nothing has changed yet. */
+function PendingCard({ m }: { m: ChatEntry }) {
+  const confirm = useChat((s) => s.confirmPending);
+  const p = m.pending!;
+  return (
+    <Row>
+      <div role="group" aria-label="Confirm this edit" className="rounded border border-yellow-500/40 bg-yellow-500/10 px-3 py-2">
+        <ul className="list-disc space-y-0.5 pl-4 text-[12px] text-yellow-100">
+          {p.reasons.map((r, i) => <li key={i}>{r}</li>)}
+        </ul>
+        <div className="mt-2 flex gap-2">
+          <button className="rounded border border-yellow-400/60 px-2.5 py-1 text-[12px] font-medium text-yellow-100 hover:bg-yellow-400/20" onClick={() => confirm(m.id, true)}>Apply</button>
+          <button className="rounded border border-edge px-2.5 py-1 text-[12px] text-gray-300 hover:bg-edge" onClick={() => confirm(m.id, false)}>Cancel</button>
+        </div>
+      </div>
+    </Row>
+  );
+}
+
 function AppliedCard({ m }: { m: ChatEntry }) {
   const undoApplied = useChat((s) => s.undoApplied);
   const current = useProject((s) => s.project);
   const a = m.applied!;
   const okCount = a.results.filter((r) => r.ok && !r.noop).length;
-  const canUndo = !a.undone && okCount > 0 && !!a.after && current === a.after;
+  // things done outside the project (an export queued, a page opened) have nothing to undo
+  const undoable = a.results.filter((r) => r.ok && !r.noop && !r.effect).length;
+  const canUndo = !a.undone && undoable > 0 && !!a.after && current === a.after;
 
   return (
     <Row>
@@ -34,7 +55,7 @@ function AppliedCard({ m }: { m: ChatEntry }) {
         <span className="font-semibold text-[13px] text-gray-200">
           {a.undone ? "Changes undone" : okCount ? "Applied changes" : "No changes applied"}
         </span>
-        {okCount > 0 && (
+        {undoable > 0 && (
           <button
             className="px-2 py-0.5 text-[11px] rounded border border-edge text-gray-400 hover:bg-edge disabled:opacity-40 disabled:hover:bg-transparent"
             disabled={!canUndo}
@@ -448,6 +469,7 @@ export default function ChatPanel() {
                     </p>
                   </Row>
                 )}
+                {m.pending && <PendingCard m={m} />}
                 {m.applied && <AppliedCard m={m} />}
               </div>
             );

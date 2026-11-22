@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { layerIdOf, lineWords, useProject, type Project } from "../../store/project";
+import { layerIdOf, lineWords, linesOfLayer, useProject, type Project } from "../../store/project";
+import type { ProjectDoc } from "../../model/types";
 import { createRegistry, toOllamaTool, toolSignature, type AnyTool, type ToolGroup } from "./registry";
 import { lineTools } from "./lines";
 import { styleTools } from "./style";
@@ -16,9 +17,15 @@ import { titleTools } from "./titles";
 import { clipKeyTools } from "./clipKeys";
 import { activeTimeline, IDS } from "../../model/convert";
 import { useMedia } from "../../store/media";
+import { useMacros } from "../../store/macros";
+import { smartTools } from "./smart";
+import { commandTools } from "./commands";
+import { timelineContext } from "../ai/context";
+import { useTimelineUi } from "../../timeline/ui";
+import { getTime } from "../transport";
 
 /** The one list of tools. Add a tool to a group file; it is picked up everywhere from here. */
-export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools, ...titleTools, ...kineticTools, ...effectTools, ...clipKeyTools, ...captionTools]);
+export const registry = createRegistry([...styleTools, ...animationTools, ...lineTools, ...layerTools, ...sceneTools, ...syncTools, ...transformTools, ...motionTools, ...timelineTools, ...titleTools, ...kineticTools, ...effectTools, ...clipKeyTools, ...captionTools, ...smartTools, ...commandTools]);
 
 export const TOOL_NAMES = registry.all.map((t) => t.name);
 
@@ -36,6 +43,12 @@ const MOTION_WORDS =
 /** Words that bring in the timeline tools (clips on video and audio tracks, markers, in/out). */
 const TIMELINE_WORDS =
   /\b(clips?|tracks?|video|footage|b-?roll|audio|sound|music|voice.?over|image|photo|titles?|lower.?third|credits?|picture|trim|ripple|blade|cut|split|marker|in.?point|out.?point|insert|overwrite|append|timeline|volume|mute|solo|library|media|effects?|blur|glow|vignette|shadow|mask|chroma|green.?screen|keying|invert|mirror|flip|noise|grain|pixel\w*|sharpen|crop|dissolve|wipe|dip|fade|transitions?|keyframes?|key ?frames?|animat\w*|ease|easing|ken ?burns|zoom|scale|rotat\w*|opacity|speed|slow\w*|reverse|ramp|freeze|compound|nested|version|vertical|matte|mixer|pan|loudness|multicam|angles?)\b/i;
+
+/** Words that bring in the smart actions (silences, scenes, moments, translation, summaries, export). */
+const SMART_WORDS =
+  /\b(silen\w*|pauses?|dead air|scenes?|shots?|cuts? (?:to|on) the beat|auto.?cut|moments?|highlights?|find where|where (?:they|he|she|i|we) (?:talk|say|mention)|mentions?|summar\w*|titles?|chapters?|translat\w*|captions?|subtitles?|transcri\w*|reframe|vertical|9:16|shorts?|reels?|tiktok|export|render)\b/i;
+/** Words that bring in view and page commands. */
+const UI_WORDS = /\b(page|workspace|fullscreen|full screen|snapping|snap|select tool|blade tool|hand tool|zoom tool|play|pause|go to the (?:start|end))\b/i;
 
 /** Words that bring in the kinetic tools (single words, emphasis, beats, energy). */
 const CAPTION_WORDS = /\b(captions?|subtitles?|transcri\w*|fillers?|filler words?|ums?|uhs?|pauses?|silences?|reading speed|safe area|burn(?:ed)?[- ]?in)\b/i;
@@ -55,13 +68,15 @@ export function selectToolGroups(text: string, p: Project): ToolGroup[] {
   if (TIMELINE_WORDS.test(text)) groups.push("timeline");
   if (KINETIC_WORDS.test(text)) groups.push("kinetic");
   if (CAPTION_WORDS.test(text)) groups.push("captions");
+  if (SMART_WORDS.test(text)) groups.push("smart", "timeline");
+  if (UI_WORDS.test(text)) groups.push("ui");
   return groups;
 }
 
 /* ---------- applying calls ---------- */
 
 export type RawCall = { tool: string; args: unknown };
-export type CallResult = { tool: string; args: unknown; ok: boolean; summary: string; noop?: boolean };
+export type CallResult = { tool: string; args: unknown; ok: boolean; summary: string; noop?: boolean; /** Did something outside the project, so there is nothing to undo. */ effect?: boolean };
 
 const fmtIssues = (e: z.ZodError) => e.issues.map((i) => `${i.path.join(".") || "args"}: ${i.message}`).join("; ");
 
@@ -70,7 +85,7 @@ const fmtIssues = (e: z.ZodError) => e.issues.map((i) => `${i.path.join(".") || 
  * Async because some tools prepare resources first (e.g. downloading a font); that happens before any change is made.
  */
 export async function applyCalls(calls: RawCall[]): Promise<{ results: CallResult[]; before: Project; after: Project }> {
-  type Ready = { call: RawCall; def: AnyTool; data: unknown } | { call: RawCall; fail: string };
+  type Ready = { call: RawCall; def: AnyTool; data: unknown; note?: string } | { call: RawCall; fail: string };
 
   // phase 1 (async): look up, repair, validate, prepare
   const ready: Ready[] = [];
@@ -94,13 +109,15 @@ export async function applyCalls(calls: RawCall[]): Promise<{ results: CallResul
       ready.push({ call, fail: `${def.name}: ${fmtIssues(parsed.error)}` });
       continue;
     }
+    let note: string | undefined;
     try {
-      await def.prepare?.(parsed.data);
+      const r = await def.prepare?.(parsed.data);
+      if (typeof r === "string") note = r;
     } catch (err) {
       ready.push({ call, fail: `${def.name}: ${(err as Error).message}` });
       continue;
     }
-    ready.push({ call, def, data: parsed.data });
+    ready.push({ call, def, data: parsed.data, note });
   }
 
   // phase 2 (sync): apply everything inside a single history step
@@ -114,6 +131,10 @@ export async function applyCalls(calls: RawCall[]): Promise<{ results: CallResul
         continue;
       }
       try {
+        if (r.def.effect) {
+          results.push({ ...r.call, ok: true, effect: true, summary: r.note ?? r.def.name });
+          continue;
+        }
         if (r.def.applyDoc) {
           // timeline and media edits work on the whole document
           const cur = useProject.getState().doc;
@@ -124,6 +145,7 @@ export async function applyCalls(calls: RawCall[]): Promise<{ results: CallResul
           }
           useProject.getState().editDoc(() => doc);
           results.push({ ...r.call, ok: true, summary });
+          useMacros.getState().recordCall(r.def.name, r.data);
           continue;
         }
         const current = useProject.getState().project;
@@ -134,6 +156,7 @@ export async function applyCalls(calls: RawCall[]): Promise<{ results: CallResul
         }
         useProject.getState().update(() => project);
         results.push({ ...r.call, ok: true, summary });
+        useMacros.getState().recordCall(r.def.name, r.data);
       } catch (err) {
         results.push({ ...r.call, ok: false, summary: `${r.def.name}: ${(err as Error).message}` });
       }
@@ -176,16 +199,14 @@ export function buildSystemPrompt(p: Project, fallbackJson: boolean, groups?: To
     const doc = useProject.getState().doc;
     const tl = activeTimeline(doc);
     const tracks = tl.tracks.filter((t) => t.kind !== "subtitle").map((t) => `${t.name} (${t.kind}${t.target ? ", target" : ""}${t.locked ? ", locked" : ""}${t.muted ? ", muted" : ""})`);
-    const clips = tl.clips
-      .filter((c) => !c.fill && !c.text)
-      .slice(0, 80)
-      .map((c) => {
-        const keyed = Object.entries(c.anim ?? {}).filter(([, k]) => k?.length).map(([n, k]) => `${n}:${k!.length}`);
-        const fx = c.effects.map((f) => f.type + (Object.keys(f.keys ?? {}).length ? "(keyed)" : "")).join(",");
-        return `${c.id} | ${tl.tracks.find((t) => t.id === c.trackId)?.name} | ${c.start.toFixed(2)}-${(c.start + c.duration).toFixed(2)} | ${doc.media.find((m) => m.id === c.mediaId)?.name ?? ""}${fx ? ` | fx ${fx}` : ""}${keyed.length ? ` | keys ${keyed.join(" ")}` : ""}`;
-      });
     const media = useMedia.getState().items.slice(0, 60).map((i) => `${i.name} (${i.kind}${i.duration ? ` ${i.duration.toFixed(1)}s` : ""})`);
-    parts.push(`TRACKS: ${tracks.join(", ") || "(none)"}`, `CLIPS (id | track | start-end | media):\n${clips.join("\n") || "(none)"}`, `MEDIA LIBRARY: ${media.join(", ") || "(empty)"}`);
+    parts.push(`TRACKS: ${tracks.join(", ") || "(none)"}`, contextFor(doc), `MEDIA LIBRARY: ${media.join(", ") || "(empty)"}`);
+  } else if (groups?.includes("smart")) {
+    parts.push(contextFor(useProject.getState().doc));
+  }
+  if (groups?.includes("smart")) {
+    const t = transcriptText(p);
+    if (t) parts.push(t);
   }
   if (groups?.includes("kinetic")) parts.push(kineticPrompt(p));
   if (fallbackJson) {
@@ -194,6 +215,38 @@ export function buildSystemPrompt(p: Project, fallbackJson: boolean, groups?: To
     );
   }
   return parts.join("\n");
+}
+
+/** The compact timeline summary: selection, playhead, visible range, the clips around them (phase 28). */
+function contextFor(doc: ProjectDoc): string {
+  const ui = useTimelineUi.getState();
+  return timelineContext(doc, {
+    selected: ui.selected,
+    playhead: getTime(),
+    view: ui.view,
+    extra: (c) => {
+      const keyed = Object.entries(c.anim ?? {}).filter(([, k]) => k?.length).map(([n, k]) => `${n}:${k!.length}`);
+      const fx = c.effects.map((f) => f.type + (Object.keys(f.keys ?? {}).length ? "(keyed)" : "")).join(",");
+      return `${fx ? ` | fx ${fx}` : ""}${keyed.length ? ` | keys ${keyed.join(" ")}` : ""}`;
+    },
+  });
+}
+
+const MAX_TRANSCRIPT = 6000;
+/** The words spoken, for summaries, titles and "find where they talk about...": the first caption track, trimmed. */
+function transcriptText(p: Project): string {
+  const lines = [...linesOfLayer(p, p.layers[0].id)].sort((a, b) => a.start - b.start).filter((l) => l.text.trim());
+  if (!lines.length) return "";
+  let out = "";
+  for (const l of lines) {
+    const row = `[${l.start.toFixed(1)}] ${l.text.replace(/\s+/g, " ").trim()}\n`;
+    if (out.length + row.length > MAX_TRANSCRIPT) {
+      out += "(transcript continues)";
+      break;
+    }
+    out += row;
+  }
+  return `TRANSCRIPT (captions of "${p.layers[0].name}", [seconds] text):\n${out}`;
 }
 
 /** Beats, tempo and the words that already carry emphasis, for the kinetic tools. */

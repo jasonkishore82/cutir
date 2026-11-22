@@ -7,6 +7,10 @@ import type { EffectEnv, GpuPass, Layer, Params } from "./types";
  * caller uses the effect's canvas version instead.
  */
 
+let enabled = true;
+/** Settings: turn the graphics card path off and every effect uses its canvas version. */
+export const setGpuEnabled = (on: boolean) => void (enabled = on);
+
 let gl: WebGL2RenderingContext | null | undefined;
 let glCanvas: OffscreenCanvas | HTMLCanvasElement | null = null;
 const programs = new Map<string, { prog: WebGLProgram; uniforms: Map<string, WebGLUniformLocation | null> }>();
@@ -74,6 +78,11 @@ ${pass.fragment}`;
   return entry;
 }
 
+/** Drop compiled programs of an effect (a plugin was removed or replaced). */
+export function forgetProgram(id: string) {
+  for (const k of [...programs.keys()]) if (k.startsWith(`${id}:`)) programs.delete(k);
+}
+
 /** Uniform types come from the name prefix: uCol... and uKey... are vec3, uPt... is vec2, everything else float. */
 function guessType(name: string) {
   return /^u(Col|Key)/.test(name) ? "vec3" : /^uPt/.test(name) ? "vec2" : "float";
@@ -81,6 +90,7 @@ function guessType(name: string) {
 
 /** Run a GPU pass from `src` into `dst`. False when WebGL2 is unavailable or the shader failed. */
 export function runGpu(id: string, pass: GpuPass, src: Layer, dst: Layer, p: Params, env: EffectEnv): boolean {
+  if (!enabled) return false;
   const g = context();
   if (!g || !glCanvas) return false;
   try {

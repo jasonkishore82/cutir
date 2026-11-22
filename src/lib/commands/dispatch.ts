@@ -4,6 +4,7 @@ import { blocked, commandFor, focusOf } from "./focus";
 import { usePrefs } from "../../store/prefs";
 import { useProject } from "../../store/project";
 import { useLibrary } from "../../store/library";
+import { useMacros } from "../../store/macros";
 import "./builtin";
 
 /**
@@ -32,6 +33,7 @@ export function installKeymap(): () => void {
     if (c.fromButtons && f.tag === "BUTTON") (document.activeElement as HTMLElement).blur();
     const r = c.run();
     if (r === false) return;
+    useMacros.getState().recordCommand(id);
     e.preventDefault();
     e.stopPropagation();
     if (!c.global) usePrefs.getState().noteRun(id);
@@ -43,7 +45,8 @@ export function installKeymap(): () => void {
 /** Run a command chosen in the palette and remember it. */
 export async function runFromPalette(c: Command) {
   usePrefs.getState().noteRun(c.id);
-  await c.run();
+  const r = await c.run();
+  if (r !== false) useMacros.getState().recordCommand(c.id);
 }
 
 export { allCommands };

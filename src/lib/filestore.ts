@@ -152,3 +152,18 @@ export async function pickLinkedFiles(accept: Record<string, string[]>): Promise
     return []; // cancelled
   }
 }
+
+/** Every file under a folder of the file store (OPFS), with its size. Files kept in IndexedDB are not listed. */
+export async function listFiles(prefix: string): Promise<{ key: string; size: number }[]> {
+  if (!hasOpfs()) return [];
+  const root = await dirOf(["cutir", ...prefix.split("/").filter(Boolean)], false);
+  const out: { key: string; size: number }[] = [];
+  const walk = async (dir: FileSystemDirectoryHandle, path: string) => {
+    for await (const [name, h] of (dir as unknown as { entries(): AsyncIterable<[string, FileSystemHandle]> }).entries()) {
+      if (h.kind === "directory") await walk(h as FileSystemDirectoryHandle, `${path}/${name}`);
+      else out.push({ key: `${path}/${name}`, size: (await (h as FileSystemFileHandle).getFile()).size });
+    }
+  };
+  if (root) await walk(root, prefix.replace(/\/+$/, ""));
+  return out;
+}
