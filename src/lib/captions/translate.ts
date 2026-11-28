@@ -98,3 +98,66 @@ export async function translateCues(cfg: LlmConfig, cues: Cue[], to: string, o: 
   for (let i = 0; i < lines.length; i += BATCH) await translate(i, Math.min(lines.length, i + BATCH));
   return out;
 }
+
+/* ---------- keeping a translation in step with its source ---------- */
+
+/**
+ * For each translated cue, the source cue it belongs to. With as many cues on both sides they pair by position, so a
+ * source that was only retimed keeps its translation; otherwise a translated cue goes to the source cue it overlaps
+ * most (or whose middle is nearest), so splits and merges still find their text.
+ */
+export function pairTranslation(source: Cue[], translated: Cue[]): number[] {
+  if (!source.length) return translated.map(() => -1);
+  if (source.length === translated.length) return translated.map((_, i) => i);
+  return translated.map((t) => {
+    let best = 0;
+    let bestOverlap = -Infinity;
+    let bestGap = Infinity;
+    source.forEach((s, i) => {
+      const o = Math.min(s.end, t.end) - Math.max(s.start, t.start);
+      const gap = Math.abs((s.start + s.end) / 2 - (t.start + t.end) / 2);
+      if (o > bestOverlap + 1e-9 || (Math.abs(o - bestOverlap) <= 1e-9 && gap < bestGap)) (best = i), (bestOverlap = o), (bestGap = gap);
+    });
+    return best;
+  });
+}
+
+export type Resynced = {
+  /** One cue per source cue, with the source's timing; empty text where there is no translation yet. */
+  cues: Cue[];
+  /** Source cue indexes that have no translation (new or split lines). */
+  missing: number[];
+  /** How many translated cues had a different time from their source. */
+  retimed: number;
+};
+
+/**
+ * Bring a translated track back in step with its source after the source was retimed, split or merged: each source
+ * cue takes its translation (a merged one takes the texts of the cues that fell into it, in order) and the source's
+ * times. Source cues with nothing to take are listed as missing, to be translated.
+ */
+export function resyncTranslation(source: Cue[], translated: Cue[]): Resynced {
+  const owner = pairTranslation(source, translated);
+  const parts: string[][] = source.map(() => []);
+  const order = translated.map((_, i) => i).sort((a, b) => translated[a].start - translated[b].start);
+  for (const j of order) if (owner[j] >= 0 && translated[j].text.trim()) parts[owner[j]].push(translated[j].text.trim());
+  let retimed = 0;
+  const missing: number[] = [];
+  const cues = source.map((s, i) => {
+    const text = parts[i].join(" ");
+    if (!text) missing.push(i);
+    const mine = translated.filter((_, j) => owner[j] === i);
+    if (mine.length && mine.some((t) => Math.abs(t.start - s.start) > 1e-3 || Math.abs(t.end - s.end) > 1e-3)) retimed++;
+    return { start: s.start, end: s.end, text, ...(s.speaker ? { speaker: s.speaker } : {}) };
+  });
+  return { cues, missing, retimed };
+}
+
+/** Translate only the source cues that have no translation and put the answers in place. */
+export async function translateMissing(cfg: LlmConfig, source: Cue[], r: Resynced, to: string, o: Parameters<typeof translateCues>[3] = {}): Promise<Cue[]> {
+  if (!r.missing.length) return r.cues;
+  const out = await translateCues(cfg, r.missing.map((i) => source[i]), to, o);
+  const cues = r.cues.map((c) => ({ ...c }));
+  r.missing.forEach((i, k) => (cues[i].text = out[k]));
+  return cues;
+}

@@ -59,3 +59,16 @@ export function styleFor(preset: CaptionPreset, rules: Pick<CaptionRules, "maxCh
   const s = preset.style;
   return { ...s, fontSize: fitFontSize(s.fontSize ?? 52, rules, aspectRatio, safe, !!s.uppercase), maxCharsPerLine: rules.maxChars };
 }
+
+/** A rectangle as fractions of the frame. */
+export type FrameRect = { x: number; y: number; w: number; h: number };
+
+/**
+ * The safe areas drawn over the viewer: action safe and title safe are the centred rectangles that keep the stated
+ * share of width and height; the caption area is the width a line may use, from the title-safe bottom edge up.
+ */
+export function safeRects(safe: SafeArea = "title"): { action: FrameRect; title: FrameRect; caption: FrameRect } {
+  const centred = (s: number): FrameRect => ({ x: (1 - s) / 2, y: (1 - s) / 2, w: s, h: s });
+  const width = SAFE_WIDTH[safe];
+  return { action: centred(SAFE_WIDTH.action), title: centred(SAFE_WIDTH.title), caption: { x: (1 - width) / 2, y: 0.5, w: width, h: 0.5 - (1 - SAFE_WIDTH.title) / 2 } };
+}

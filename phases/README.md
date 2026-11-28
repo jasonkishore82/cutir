@@ -29,7 +29,7 @@ Phases 1 to 5 built the lyric video editor. Phases 6 to 10 add movable text, ove
 | 22 | [Compositing, Masks and Node Graph](phase-22-compositing-and-masks.md) | ✅ |
 | 23 | [Speed, Retiming, Freeze Frames and Nested Timelines](phase-23-speed-and-nested-clips.md) | ✅ |
 | 24 | [Multicam and Audio Sync](phase-24-multicam-and-sync.md) | ✅ |
-| 25 | [Captions and Subtitles](phase-25-captions-and-subtitles.md) | 🟡 |
+| 25 | [Captions and Subtitles](phase-25-captions-and-subtitles.md) | ✅ |
 | 26 | [Deliver: Render Queue and Presets](phase-26-deliver-and-render-queue.md) | 🟡 |
 | 27 | [Workspaces, Pages, Shortcuts and Command Palette](phase-27-workspaces-and-ux.md) | 🟡 |
 | 28 | [AI Assistant Across the Editor](phase-28-ai-assistant-v2.md) | 🟡 |

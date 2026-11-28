@@ -8,6 +8,8 @@ export type CaptionPrefs = {
   rules: CaptionRules;
   presetId: string;
   safe: SafeArea;
+  /** Draw the safe areas over the viewer. */
+  showSafe: boolean;
   engine: "local" | "cloud";
   model: string;
   language: string;
@@ -22,6 +24,7 @@ const DEFAULTS: CaptionPrefs = {
   rules: DEFAULT_RULES,
   presetId: "classic",
   safe: "title",
+  showSafe: false,
   engine: "local",
   model: "base",
   language: "",

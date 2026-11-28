@@ -69,7 +69,7 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
       if (wantSoft.length && !softResult.written) {
         // the compatibility encoder cannot write subtitle tracks: hand them over as files next to the video
         wantSoft.forEach((s) => downloadBlob(new Blob([s.vtt], { type: "text/vtt" }), `cutir-${s.lang}-${s.name.replace(/[^\w-]+/g, "_")}.vtt`));
-        setNote(`This export used the compatibility encoder, which cannot store subtitle tracks in the video. They were saved as ${wantSoft.length} .vtt file${wantSoft.length === 1 ? "" : "s"} instead${captionMode === "soft" ? ", and the picture has no captions" : ""}.`);
+        setNote(`The video encoder in this export could not store subtitle tracks in the file. They were saved as ${wantSoft.length} .vtt file${wantSoft.length === 1 ? "" : "s"} instead${captionMode === "soft" ? ", and the picture has no captions" : ""}.`);
       }
     } catch (e) {
       if ((e as Error).name === "AbortError") setError("Export cancelled.");

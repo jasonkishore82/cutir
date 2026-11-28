@@ -9,12 +9,12 @@ import * as E from "../timeline/engine";
 import { ASPECT_SIZES } from "../lib/renderer";
 import { getTime, pause, play, seek, usePlayback } from "../lib/transport";
 import { CUE_FORMATS, parseCues, serializeCues, type Cue, type CueFormat } from "../lib/captions/cues";
-import { RULE_PRESETS, checkCues, fixCues, type CaptionRules } from "../lib/captions/checks";
+import { RULE_PRESETS, checkCues, fixCues, rewrap, type CaptionRules } from "../lib/captions/checks";
 import { CAPTION_PRESETS, SAFE_LABEL, presetById, styleFor, type SafeArea } from "../lib/captions/presets";
 import { DEFAULT_FILLERS, OPTIONAL_FILLERS, applyCutsToCues, cuesFromWords, findFillers, findPauses, flatWords, planCuts, totalOf, type Range } from "../lib/captions/transcript";
 import { cloudProblem } from "../lib/captions/transcribe";
-import { transcribeTimeline } from "../lib/captions/run";
-import { LANGUAGES, languageName, translateCues, withTranslation } from "../lib/captions/translate";
+import { detectSpeakers, transcribeTimeline } from "../lib/captions/run";
+import { LANGUAGES, languageName, resyncTranslation, translateCues, translateMissing, withTranslation } from "../lib/captions/translate";
 import { configProblem } from "../lib/llm";
 import { cutDoc, linesToCues, withLayerCues } from "../lib/captions/ops";
 import { downloadBlob } from "../lib/exporter";
@@ -24,6 +24,39 @@ const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).
 const safeName = (s: string) => s.replace(/[^\w-]+/g, "_");
 
 /** The caption (subtitle) track being worked on and its cues. */
+/** Detect who is speaking in the selected track's captions and name them Speaker 1, 2... */
+function SpeakerRow() {
+  const { layer, cues } = useCaptionLayer();
+  const [n, setN] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const run = async () => {
+    setBusy(true);
+    setMsg("Listening to the voices...");
+    try {
+      const r = await detectSpeakers(cues, { speakers: n || undefined });
+      setCues(layer.id, r.cues);
+      setMsg(r.speakers > 1 ? `Found ${r.speakers} speakers. Rename them in the transcript.` : "Only one voice found.");
+    } catch (e) {
+      setMsg((e as Error).message || "Could not tell the speakers apart.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-400">
+      <label className="flex items-center gap-1">Speakers
+        <select className="field !w-auto !py-0.5" value={n} onChange={(e) => setN(Number(e.target.value))} aria-label="Number of speakers">
+          <option value={0}>Find out</option>
+          {[2, 3, 4, 5, 6].map((k) => <option key={k} value={k}>{k}</option>)}
+        </select>
+      </label>
+      <button className={btn} disabled={busy || !cues.length} onClick={run}>Detect speakers</button>
+      {msg && <span role="status">{msg}</span>}
+    </div>
+  );
+}
+
 function useCaptionLayer() {
   const project = useProject((s) => s.project);
   const activeLayerId = useProject((s) => s.activeLayerId);
@@ -133,7 +166,8 @@ function TranscribeCard() {
         {problem && <span className="text-[11px] text-yellow-400">{problem}</span>}
       </div>
       {msg && <p className="text-[11px] text-gray-400" role="status">{msg}</p>}
-      <p className="text-[10px] text-gray-500">Speaker names are set by hand in the transcript: select words and name the speaker.</p>
+      <SpeakerRow />
+      <p className="text-[10px] text-gray-500">Speakers are told apart by pitch and voice colour: good for a few clearly different voices in clean speech, not for people talking at once. Rename them in the transcript by selecting words.</p>
     </Card>
   );
 }
@@ -177,6 +211,7 @@ function TracksCard() {
             {(Object.keys(SAFE_LABEL) as SafeArea[]).map((s) => <option key={s} value={s}>{SAFE_LABEL[s]}</option>)}
           </select>
         </label>
+        <label className="flex items-center gap-1" title="Draw the action-safe and title-safe rectangles and the caption width over the viewer"><input type="checkbox" checked={prefs.showSafe} onChange={(e) => prefs.set({ showSafe: e.target.checked })} /> Show on viewer</label>
         <button className={btn} onClick={applyLook} title="Set the chosen look on the selected track, sized so a full line stays inside the safe area">Apply to "{layer.name}"</button>
       </div>
       <p className="text-[10px] text-gray-500">{presetById(prefs.presetId)?.hint}. The size is chosen so {prefs.rules.maxChars} characters fit inside the safe width; captions sit on the 90% line at the bottom.</p>
@@ -494,6 +529,24 @@ function TranslateCard() {
     return best;
   };
   const edit = (i: number, text: string) => pair && setCues(pair.id, pairCues.map((c, k) => (k === i ? { ...c, text } : c)));
+  // the source was retimed, split or merged after translating: bring the translation back in step
+  const sync = useMemo(() => (pair && cues.length && pairCues.length ? resyncTranslation(cues, pairCues) : null), [cues, pairCues, pair]);
+  const stale = !!sync && (sync.retimed > 0 || sync.missing.length > 0 || cues.length !== pairCues.length);
+  const resync = async () => {
+    if (!pair || !sync) return;
+    setBusy(true);
+    ctl.current = new AbortController();
+    try {
+      const next = sync.missing.length ? await translateMissing(cfg, cues, sync, pair.lang ?? to, { from: layer.lang, signal: ctl.current.signal, onProgress: (d, t) => setMsg(`Translating the new lines ${d} of ${t}...`) }) : sync.cues;
+      setCues(pair.id, next.map((c, i) => (sync.missing.includes(i) ? { ...c, text: rewrap(c.text.replace(/\n/g, " "), prefs.rules) } : c)));
+      setMsg(`Matched ${pair.name} to ${layer.name}${sync.missing.length ? ` and translated ${sync.missing.length} new line${sync.missing.length === 1 ? "" : "s"}` : ""}.`);
+    } catch (e) {
+      setMsg((e as Error).name === "AbortError" ? "Cancelled." : (e as Error).message);
+    } finally {
+      setBusy(false);
+      ctl.current = null;
+    }
+  };
   const problem = configProblem(cfg);
   return (
     <Card title="Translate" hint={`Make a second track from "${layer.name}" in another language with your AI provider, then edit it side by side.`}>
@@ -514,6 +567,12 @@ function TranslateCard() {
               {others.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           </label>
+          {stale && sync && (
+            <div className="flex flex-wrap items-center gap-2 rounded border border-yellow-700/50 bg-yellow-900/10 p-1.5 text-[11px] text-yellow-200" role="status">
+              <span>{pair.name} no longer matches {layer.name}{sync.retimed ? `: ${sync.retimed} line${sync.retimed === 1 ? " is" : "s are"} at another time` : ""}{sync.missing.length ? `; ${sync.missing.length} line${sync.missing.length === 1 ? " has" : "s have"} no translation` : ""}.</span>
+              <button className={btn} disabled={busy || (sync.missing.length > 0 && !!problem)} onClick={resync}>{sync.missing.length ? "Match timing and translate new lines" : "Match timing"}</button>
+            </div>
+          )}
           <div className="max-h-56 space-y-1 overflow-y-auto">
             {cues.map((c, i) => {
               const m = match(c);

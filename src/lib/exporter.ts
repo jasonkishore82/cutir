@@ -1,4 +1,5 @@
 import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { muxArgs, type MuxSubtitle } from "./muxArgs";
 import coreURL from "@ffmpeg/core?url";
 import wasmURL from "@ffmpeg/core/wasm?url";
 import {
@@ -320,7 +321,7 @@ const toJpeg = (canvas: HTMLCanvasElement) =>
  * Frames are encoded in segments (JPEG frames are deleted after each segment is encoded) and the segments are
  * concatenated with the original audio muxed in at the end, to keep memory bounded on long songs.
  */
-async function exportViaFfmpeg(project: Project, { duration, onProgress, signal, scale }: Opts): Promise<Blob> {
+async function exportViaFfmpeg(project: Project, { duration, onProgress, signal, scale, softSubtitles, softResult }: Opts): Promise<Blob> {
   const { fps, total, canvas, render } = await setup(project, duration, scale);
 
   onProgress({ stage: "Loading encoder", fraction: 0 });
@@ -381,15 +382,21 @@ async function exportViaFfmpeg(project: Project, { duration, onProgress, signal,
 
     onProgress({ stage: "Muxing audio", fraction: 0.97 });
     await ffmpeg.writeFile("list.txt", new TextEncoder().encode(segments.map((s) => `file '${s}'`).join("\n")));
-    const args = ["-f", "concat", "-safe", "0", "-i", "list.txt"];
-    if (audioName) {
-      args.push("-i", audioName, "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest");
-    } else {
-      args.push("-c", "copy");
+    // soft subtitle tracks go in as text files and are stored as mov_text
+    const subs: MuxSubtitle[] = [];
+    for (const [i, s] of (softSubtitles ?? []).filter((x) => x.vtt.trim()).entries()) {
+      const file = `sub${i}.vtt`;
+      await ffmpeg.writeFile(file, new TextEncoder().encode(s.vtt));
+      subs.push({ file, lang: s.lang, name: s.name });
     }
-    args.push("-movflags", "+faststart", "out.mp4");
-    const code = await ffmpeg.exec(args);
+    const args = muxArgs({ list: "list.txt", audio: audioName, subtitles: subs, out: "out.mp4" });
+    let code = await ffmpeg.exec(args);
     check();
+    if (code !== 0 && subs.length) {
+      // some builds cannot write the text track: join without it, and the caller saves the tracks as files
+      code = await ffmpeg.exec(muxArgs({ list: "list.txt", audio: audioName, out: "out.mp4" }));
+      check();
+    } else if (subs.length && softResult) softResult.written = true;
     if (code !== 0) throw new Error(`Muxing failed (ffmpeg exit ${code})`);
 
     const data = (await ffmpeg.readFile("out.mp4")) as Uint8Array;
@@ -417,6 +424,7 @@ export async function exportMp4(project: Project, opts: Opts): Promise<Blob> {
   } catch (e) {
     if (opts.signal.aborted || (e as Error).name === "AbortError") throw abortError();
     if (!(e instanceof Unsupported)) console.warn("Fast export failed, using the compatibility encoder:", e);
+    if (opts.softResult) opts.softResult.written = false; // the fast path may have started writing them
     opts.onProgress({ stage: "Using the compatibility encoder (slower)", fraction: 0, engine: "cpu" });
     return exportViaFfmpeg(project, { ...opts, onProgress: (p) => opts.onProgress({ ...p, engine: "cpu" }) });
   }

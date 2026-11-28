@@ -23,7 +23,7 @@ Reference: Lyric sync already exists. This phase makes it a general transcriptio
 - Subtitles import and export round trip without losing timing
 - Translation produces a second subtitle track the user can edit
 
-## Status (built)
+## Status (done)
 Built (`src/lib/captions/` cues, checks, transcript, transcribe, translate, presets, ops; `src/components/CaptionsPanel.tsx` (the Captions tab); `src/lib/tools/captions.ts`; `backend/app/routers/transcribe.py`; tests in `tests/captions.test.ts`):
 - Transcription: the local helper (Whisper through the aligner backend, new `/api/transcribe_stream`) or OpenAI and Groq from the AI settings (`verbose_json` with word times). The timeline's mix (or one track) is rendered to 16 kHz mono and sent. Language is detected or chosen; a vocabulary list goes to the model as a prompt and is also applied afterwards to near-miss spellings.
 - Transcript panel: every word is clickable (seeks), shift-click selects a run, Delete cuts the words from picture, sound and every caption track (ripple), "Delete text only" keeps the time, double-click corrects a word, "Select range" sets In and Out and selects the clips there. Speaker names are set by hand on the selected words and survive in the project and in VTT, ASS and iTT.
@@ -35,4 +35,10 @@ Built (`src/lib/captions/` cues, checks, transcript, transcribe, translate, pres
 - Translation: the configured AI provider translates in batches with context into a new track with the same timing; a side-by-side editor edits the translation against the source. A bad answer is retried in halves.
 - Chat tools: `check_captions`, `fix_captions`, `caption_look`, `remove_fillers`.
 
-Not built: automatic speaker detection (diarization), translation of cues that were retimed after translating (the editor matches by overlap), a safe-area overlay in the preview, and soft tracks from the compatibility encoder. Nothing here was run against a real recording, a real Whisper model, a cloud account or a real LLM; the parsing, timing, cutting, checks and request building are tested, the network calls and the panel are not exercised in a browser.
+Also built (the rest of the phase; tests/captions-rest.test.ts):
+- Speaker detection (`src/lib/captions/speakers.ts`, "Detect speakers" in the Transcribe card): each caption's sound becomes a voice print (median pitch of the voiced frames and the shape of the spectrum in twelve bands), the captions are grouped with k-means, and the number of speakers is chosen by how well separated the groups are (or set by hand, 2 to 6). Speakers are named Speaker 1, 2... in order of appearance and can be renamed in the transcript. Tested on synthetic voices (two pitches and timbres in a conversation; one voice that wobbles stays one speaker).
+- Translation kept in step with its source: when the source track is retimed, split or merged after translating, the side-by-side editor says so and "Match timing" brings the translation back (by position when the counts match, else by overlap; a merged source takes the joined texts), and "Match timing and translate new lines" translates only the cues that have no translation.
+- Safe-area overlay: "Show on viewer" in the Looks card draws the action-safe and title-safe rectangles and the caption width over the viewer.
+- Soft tracks from the compatibility encoder: the ffmpeg mux now takes the subtitle files and stores them as language-tagged mov_text tracks (`src/lib/muxArgs.ts`). If an ffmpeg build cannot write them, the video is joined without them and the tracks are saved as .vtt files as before.
+
+Not checked in a real browser or against real speech (the clustering is tried on synthetic voices, not recordings; ffmpeg.wasm was not run). Limits: speaker detection is a light method: it can confuse two voices of the same pitch and colour, cannot separate people talking at once, and judges a caption as a whole (one caption with two speakers gets one); matching a translation by overlap after heavy re-cutting can pair a text with the wrong line, so check the side-by-side view.

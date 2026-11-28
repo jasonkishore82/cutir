@@ -5,6 +5,7 @@ import { Icon } from "./ui";
 import TextOverlay from "./TextOverlay";
 import ClipGizmo from "./ClipGizmo";
 import MaskOverlay from "./MaskOverlay";
+import SafeAreaOverlay from "./SafeAreaOverlay";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useProject } from "../store/project";
 import { ensureFont } from "../lib/fonts";
@@ -433,6 +434,7 @@ export default function Preview() {
           <StillCompare />
           <TrackPointOverlay />
           <MaskOverlay />
+          <SafeAreaOverlay />
           {box.w > 0 && <TextOverlay w={box.w} h={box.h} />}
           {box.w > 0 && <ClipGizmo w={box.w} h={box.h} />}
           {showStats && (

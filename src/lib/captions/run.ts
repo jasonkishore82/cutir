@@ -9,6 +9,7 @@ import { CAPTION_PRESETS, presetById, styleFor } from "./presets";
 import { cloudProblem, monoOf, transcribeCloud, transcribeLocal, transcriptToCues, wavBytes } from "./transcribe";
 import { LANGUAGES } from "./translate";
 import { timelineLength } from "./ops";
+import { labelSpeakers } from "./speakers";
 import type { Cue } from "./cues";
 import { useProject } from "../../store/project";
 
@@ -23,6 +24,25 @@ export function captionLook() {
   const prefs = useCaptionPrefs.getState();
   const s = ASPECT_SIZES[useProject.getState().project.aspect];
   return styleFor(presetById(prefs.presetId) ?? CAPTION_PRESETS[0], prefs.rules, s.w / s.h, prefs.safe);
+}
+
+/** The timeline's sound (or one track of it) as 16 kHz mono samples. */
+export async function mixMono16k(o: { track?: string; signal?: AbortSignal } = {}): Promise<Float32Array> {
+  const d = useProject.getState().doc;
+  const len = timelineLength(d);
+  if (len <= 0) throw new Error("There is nothing on the timeline to listen to.");
+  let inputs = mixInputs(d, undefined, len, (id) => mediaUrl(d, id));
+  if (o.track) inputs = inputs.filter((i) => i.trackId === o.track);
+  if (!inputs.length) throw new Error("No sound found" + (o.track ? " on that track." : " on the timeline."));
+  const ch = await mixdownChannels(inputs, len, 16000, o.signal);
+  if (!ch) throw new Error("No sound to listen to.");
+  return monoOf(ch[0] as Float32Array, ch[1] as Float32Array);
+}
+
+/** Name the speakers of some captions (Speaker 1, Speaker 2...) from the sound. */
+export async function detectSpeakers(cues: Cue[], o: { track?: string; signal?: AbortSignal; speakers?: number } = {}): Promise<{ cues: Cue[]; speakers: number }> {
+  const samples = await mixMono16k(o);
+  return labelSpeakers(cues, samples, 16000, { speakers: o.speakers });
 }
 
 export type Transcribed = { cues: Cue[]; language?: string };
